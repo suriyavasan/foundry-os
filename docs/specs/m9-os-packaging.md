@@ -1,4 +1,4 @@
-# M8 — OS packaging, CLI & hardening — spec
+# M9 — OS packaging, CLI & hardening — spec
 
 ## 1. `companyos` CLI (backend package, Typer + Rich, talks HTTP to the API)
 Config: `~/.config/companyos/config.toml` (`api_url`, `company_id`, session token file

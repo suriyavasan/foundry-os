@@ -1,70 +1,78 @@
-# Company OS — Roadmap (v2)
+# Company OS — Roadmap (v3)
 
-Revised 2026-10-23 after M1, following the owner's direction:
+Revised 2026-10-24 with the owner's expanded direction:
 
-- **Autonomous company.** Agents decide and act on their own. The human co-founder sets the
-  goal and the hard limits and is not asked to approve routine work.
-- **Our own agent layer.** Hermes Agent is forked into `runtime/` and reshaped into a
-  company-employee runtime (company toolset, task protocol, per-employee skills, sandbox).
-- **Skills per role.** Designers, developers, marketing, sales, customer success, etc. get
-  curated AI skills (SKILL.md). An **HR agent** hires new employees and authors or installs
-  skills when the company lacks a capability.
-- **One canvas UI.** No sidebar. The first widget is a live org chart of circular avatars
-  in a tree; hovering an avatar shows what that employee is doing right now.
-- **An OS, not just a web app:** API + worker/scheduler + `companyos` CLI + dashboard.
+- **Autonomous top to bottom.** Strategy, management, execution and support all run as
+  agent loops. The human **Founder** does not micromanage; the **AI Co-founder** (internal
+  kind `founder`, displayed as "AI Co-founder") exists to manage every other agent.
+- **Founder's notes.** A widget right of the org chart where the human pours in any
+  thought (relevant or not). The AI Co-founder triages every note and turns it into goals,
+  tasks, schedules, requirements or memory — and replies with what it did.
+- **Guardrails are part of the agent framework**, enforced in code at every layer.
+- **Login & team.** Username + password at onboarding; invite other humans by email; humans
+  can sit inside the org tree and take tasks like any agent.
+- **Reachability & identity.** The landing screen shows how to reach the control UI on the
+  local network and on the public internet (tunnel, free domain, optional Vercel hosting);
+  the company gets its own email identity.
+- **Our own agent layer** (Hermes fork in `runtime/`), **skills per role + HR agent**,
+  **single-canvas UI**, **an OS with CLI**.
 
-North-star: *set a company goal → the AI Founder plans → the company hires the skills it
-lacks → specialists execute real tasks through the forked runtime → the dashboard shows
-live work, artifacts and actual costs — without the human approving each step.*
+North-star: *the Founder signs up with a username and password, writes a few thoughts →
+the AI Co-founder sets goals, hires the skills it lacks and schedules the work → the team
+executes real tasks → the Founder watches progress, artifacts and costs on one canvas,
+reachable from anywhere — without approving each step.*
 
 | # | Milestone | Outcome | Status |
 |---|---|---|---|
-| M1 | Foundation | Architecture, AGENTS.md, backend + web skeleton, company/org persistence, runtime registry | done (2026-10-23) |
-| M2 | Work engine | Goals, projects, tasks + dependencies, task runs + events, artifacts, policies, budget ledger with atomic reservations, approvals, decisions, schedules; DB job queue, worker, scheduler, crash recovery; live event stream (SSE); agent API with scoped run tokens; deterministic test runtime | planned |
-| M3 | Company agent runtime (Hermes fork) | Lean fork in `runtime/` with attribution; company toolset calling the agent API; JSONL run protocol; model providers (Ollama local first, OpenRouter/Anthropic/OpenAI); encrypted credential store; restricted execution (workspace jail, tool allowlists; Docker when available); real end-to-end task on a local model | planned |
-| M4 | Skills & HR | Skill library + catalog (curated from Hermes' MIT skills, GitHub discovery), license + security scan, role templates (founder, HR, engineering, design, marketing, sales, customer success, research, QA, ops), per-agent skill materialization, HR agent that fills capability gaps by hiring and authoring skills | planned |
-| M5 | Autonomous company | Founder heartbeat loop: goal → plan → tasks → delegate → review → revise; managers delegate; hiring on gaps; routines; autonomy policy + hard governance limits; company pause / kill switch | planned |
-| M6 | Finance & governance | Usage ledger attribution, enforcement at dispatch and mid-run, free-first model routing, minimal human gate (real-money purchases, budget increases), finance views | planned |
-| M7 | Canvas UI | Sidebar-less single canvas: avatar org tree with live hover cards, live activity, tasks, goals/plan, artifacts, skills, finance, approvals widgets; command palette; detail drawers; light/dark | planned |
-| M8 | OS packaging & hardening | `companyos` CLI (up/status/goal/agents/tasks/runs tail/skills/budget), single-port serve, Docker Compose, password auth + sessions, backups, security review, final verification checklist | planned |
+| M1 | Foundation | Architecture, AGENTS.md, backend + web skeleton, company/org persistence | done |
+| M2 | Work engine | Goals, projects, tasks, runs, events, artifacts, policy, budget ledger, approvals, schedules, job queue, worker, SSE, agent API | done |
+| M3a | Agent runtime (Hermes fork) | `runtime/` fork, run protocol, company toolset, file jail, live on local Ollama | done |
+| M3b | Runtime integration | Adapter, model providers, encrypted credentials, HR tools in runtime, local-owner auth gate, real E2E task | in progress |
+| M4 | Skills & HR | Skill library (Hermes + GitHub), scan/quarantine, role templates, HR agent, hiring, gap detection; skills UI | backend done · UI in progress |
+| M5 | Autonomous operating model | Layered loops (strategic/management/execution/support), Founder's notes + AI Co-founder triage, event triggers, self-healing, lessons, company memory, schedules | planned |
+| M6 | Guardrails & governance | Action risk tiers + policy engine, rate limits, maker-checker for external actions, outbound DLP, injection defenses, stall/runaway detection, emergency stop, mid-run budgets, free-first routing, finance views, guardrail audit | planned |
+| M7 | Accounts, login & team | Username/password onboarding, sessions, roles, email/link invitations, humans in the org tree with assignable tasks, notifications | planned |
+| M8 | Reachability & identity | Landing "how to reach" (LAN + public), tunnel, free-domain flows, optional paid domain (approval), Vercel-hosted control UI, company email identity, connected-accounts vault | planned |
+| M9 | OS packaging & hardening | `companyos` CLI, single-port serve, Docker Compose, backups, security review, final verification | planned |
 
-Execution order: M2 → (M3 ∥ M7 shell) → M4 → M5 → M6 → M7 completion → M8.
+Order: M3b ∥ M4-UI → M5 → M6 → M7 → M8 → M9. UI for each milestone ships with it.
 
-## Autonomy and its limits
+## Autonomy model (summary — details in specs/m5)
 
-The company runs without asking the human for routine decisions. The following remain
-**hard limits enforced in code** (not prompts), all configurable by the human only:
+| Layer | Who | Cadence / triggers | Does |
+|---|---|---|---|
+| Strategic | AI Co-founder | Founder's note, goal change, daily + weekly reviews, escalations | Triage notes, set/adjust goals & projects, assign leads, hiring plan, schedules, budget allocation, decisions, reply to the Founder |
+| Management | Department leads | project created/assigned, subtask done, review due | Break projects into tasks, assign to reports, review, unblock, escalate |
+| Execution | Specialists | task ready | Do the work with their skills, produce artifacts, request help/hire |
+| Support | HR, Finance, QA/Review, Ops | hiring task, budget threshold, review task, health check | Hire + skills; cost optimisation; acceptance reviews; runtime/reachability health |
 
-- Company and per-agent daily/monthly budgets (atomic reservations before every run).
-- Max concurrent runs, max delegation depth, max tasks per planning cycle, max retries,
-  max revisions, max run time, max headcount.
-- Tool allowlists and a restricted execution environment per agent.
-- Agents can never change their own permissions, budgets or the company policy.
+## Guardrails (summary — details in specs/m6-guardrails-and-governance.md)
 
-By default the human is only asked about **real-money commitments outside the budget**
-(external purchases, budget increases). The owner can widen or narrow that list
-(`policy.human_approval_required_for`), or set it to empty for full autonomy.
+Every action an agent can take is classified by **risk tier** (read · internal write ·
+external read · external communication · external commitment · spend · identity/account ·
+destructive). Policy maps each tier to *allow*, *peer review* (maker-checker by another
+agent), *AI Co-founder approval*, *human approval* or *deny*. On top: budgets, rate
+limits, sandbox + file jail, outbound DLP, prompt-injection containment, runaway/stall
+detection, circuit breaker and emergency stop. Agents can never change their own limits.
 
-## M1 notes (done 2026-10-23)
+## Hard boundaries (not automated, by design)
 
-- Hermes source inspected at commit `db1fa15`; findings in `docs/architecture.md` §6.1.
-- Backend: companies, members, departments, agents with lifecycle, audit log, overview,
-  runtime registry. 125 pytest tests.
-- Web: console with 10 sections (to be replaced by the canvas UI in M7). 76 vitest tests.
-  `src/api/contract.check.ts` fails typecheck if backend OpenAPI drifts from client types.
-- Verified in a browser against the live backend.
+- Agents do not sign up for third-party accounts that require CAPTCHA/phone verification
+  or acceptance of terms (e.g. Gmail, Vercel, registrars). The Founder connects such
+  accounts once (API token / OAuth); after that the AI Co-founder operates them.
+- Real-money commitments outside budget (paid domains, subscriptions, budget increases)
+  require the Founder's approval by default (configurable).
 
-## Environment facts (2026-10-23)
+## Status notes
 
-- Local models available through Ollama: `qwen2.5:7b` (tool calling verified),
-  `deepseek-r1:14b`, `olmo2:13b`. No cloud LLM keys configured.
-- Docker is installed but the daemon is not running → sandboxing falls back to a
-  restricted local mode until Docker is started.
-- `gh` CLI is authenticated → usable for GitHub skill discovery.
-- Disk is ~98% full (≈9 GB free): keep the runtime fork lean, avoid large extras.
+- M1–M3a, M4 backend committed (`1a113fa`, `6d2ef72`, `555a561`, `361a9be`).
+- Local models via Ollama (`qwen2.5:7b` verified). Ollama must run with
+  `OLLAMA_CONTEXT_LENGTH=32768` (its OpenAI endpoint ignores `num_ctx`).
+- Docker daemon not running → no sandboxed terminal for agents yet.
+- Disk nearly full; keep footprint lean.
 
 ## Known limitations (rolling)
 
-- No real authentication yet (M8); local single-owner mode only.
-- No task execution yet (M2/M3).
-- Founder cannot be retired (succession: M5).
+- Auth: local single-owner mode until M3b-sec (token gate) and M7 (accounts).
+- A 7B local model needs launcher scaffolding to follow workflows; bigger/cloud models
+  will plan better (provider routing in M6).

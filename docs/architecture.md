@@ -282,3 +282,8 @@ run stock Hermes.
 | D9 | 2026-10-23 | Budget reservations are serialized per company by a write to the company's policy row at the start of the transaction (portable lock on SQLite and Postgres). |
 | D10 | 2026-10-23 | Live updates via a `company_events` outbox table polled by the SSE endpoint (works across API and worker processes; resumable with Last-Event-ID). |
 | D11 | 2026-10-23 | UI moves to a single sidebar-less canvas (owner direction); org chart of avatars with live hover is the primary widget. |
+| D12 | 2026-10-24 | Layered autonomy (strategic / management / execution / support loops). The human is the **Founder**; the AI agent of kind `founder` is presented as the **AI Co-founder** and manages all other agents. |
+| D13 | 2026-10-24 | Founder's notes: free-form thought stream right of the org chart, triaged and acted on by the AI Co-founder with a threaded reply per note. |
+| D14 | 2026-10-24 | Guardrails as a first-class engine: every agent action has a risk tier; company rules map tiers to allow / peer review / AI Co-founder approval / human approval / deny. |
+| D15 | 2026-10-24 | Accounts: username + password (Argon2id, server sessions, CSRF); humans can be org members ("human agents") assignable to tasks; invitations by email or link. |
+| D16 | 2026-10-24 | Reachability & identity through connected accounts and control-plane provider adapters. No automated sign-up on CAPTCHA/phone/ToS-gated services; the Founder connects them once. Public exposure requires password auth. |
