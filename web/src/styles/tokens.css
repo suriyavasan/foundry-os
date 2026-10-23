@@ -1,0 +1,96 @@
+/*
+ * Design tokens. Every colour used by the UI comes from here.
+ * Dark is the default; [data-theme='light'] overrides.
+ */
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* surfaces (low -> high elevation) */
+  --canvas: #0c0d10;
+  --surface: #121317;
+  --raised: #181a1f;
+  --hover: #1e2026;
+  --active: #262930;
+  --overlay: rgb(0 0 0 / 0.6);
+
+  /* borders */
+  --line: #25272e;
+  --line-strong: #353841;
+
+  /* text */
+  --fg: #e8e9ec;
+  --fg-2: #a5a8b1;
+  --fg-3: #747882;
+  --fg-on-accent: #ffffff;
+
+  /* accent (single restrained hue) */
+  --accent: #5b7cfa;
+  --accent-hover: #7490fb;
+  --accent-subtle: rgb(91 124 250 / 0.14);
+  --accent-fg: #93a9fd;
+
+  /* status */
+  --success: #3fb97a;
+  --success-subtle: rgb(63 185 122 / 0.14);
+  --warning: #d9a53a;
+  --warning-subtle: rgb(217 165 58 / 0.14);
+  --danger: #e5584f;
+  --danger-hover: #ee7068;
+  --danger-subtle: rgb(229 88 79 / 0.14);
+  --info: #4ea1e8;
+  --info-subtle: rgb(78 161 232 / 0.14);
+  --neutral: #8a8e99;
+  --neutral-subtle: rgb(138 142 153 / 0.14);
+
+  --focus-ring: #5b7cfa;
+  --cos-shadow-pop: 0 8px 24px rgb(0 0 0 / 0.45), 0 0 0 1px var(--line-strong);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --canvas: #f6f7f9;
+  --surface: #ffffff;
+  --raised: #fafbfc;
+  --hover: #f0f1f4;
+  --active: #e6e8ed;
+  --overlay: rgb(15 17 21 / 0.4);
+
+  --line: #e3e5ea;
+  --line-strong: #cfd2d9;
+
+  --fg: #16181d;
+  --fg-2: #505560;
+  --fg-3: #767b87;
+  --fg-on-accent: #ffffff;
+
+  --accent: #3b5bdb;
+  --accent-hover: #2f4ac0;
+  --accent-subtle: rgb(59 91 219 / 0.1);
+  --accent-fg: #3552cc;
+
+  --success: #1f8a55;
+  --success-subtle: rgb(31 138 85 / 0.1);
+  --warning: #a8750c;
+  --warning-subtle: rgb(168 117 12 / 0.12);
+  --danger: #cc3d34;
+  --danger-hover: #b5322a;
+  --danger-subtle: rgb(204 61 52 / 0.1);
+  --info: #1f78c1;
+  --info-subtle: rgb(31 120 193 / 0.1);
+  --neutral: #6b707c;
+  --neutral-subtle: rgb(107 112 124 / 0.12);
+
+  --focus-ring: #3b5bdb;
+  --cos-shadow-pop: 0 8px 24px rgb(15 17 21 / 0.14), 0 0 0 1px var(--line-strong);
+}
+
+:root {
+  --cos-radius-sm: 4px;
+  --cos-radius-md: 6px;
+  --sidebar-width: 232px;
+  --header-height: 56px;
+  --cos-font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --cos-font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+}
