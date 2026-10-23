@@ -47,6 +47,15 @@ describe('buildCommands', () => {
     expect(labels('write note')[0]).toBe('Write a note to the AI Co-founder')
     expect(labels('wake')[0]).toBe('Wake AI Co-founder')
   })
+  it('offers Open guardrails, Open finance and Emergency stop, and hides the stop while M6 is missing', () => {
+    expect(labels('open guardrails')).toContain('Open Guardrails')
+    expect(labels('open finance')).toContain('Open Finance')
+    expect(cmds.find((c) => c.id === 'panel:guardrails')?.action).toEqual({ type: 'panel', panel: { kind: 'guardrails' } })
+    expect(cmds.find((c) => c.id === 'act:emergency-stop')).toMatchObject({ label: 'Emergency stop\u2026', action: { type: 'emergency-stop' } })
+    expect(labels('emergency')[0]).toBe('Emergency stop\u2026')
+    const none = buildCommands({ agents: [], tasks: [], companyStatus: 'active', workEngine: true, guardrails: false })
+    expect(none.some((c) => c.id === 'act:emergency-stop')).toBe(false)
+  })
   it('has a command for every panel', () => {
     expect(cmds.filter((c) => c.group === 'Panels').length).toBeGreaterThanOrEqual(10)
   })

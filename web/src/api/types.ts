@@ -360,7 +360,21 @@ export interface CompanyPolicy {
   default_run_reservation_micros: number
   allowed_model_providers: string[]
   updated_at?: Timestamp
+  /**
+   * Milestone 6 fields (docs/specs/m6 section 6). All optional: a backend without M6 does not send them and the
+   * Settings form then hides them instead of inventing defaults. USD fields are micros.
+   */
+  max_agent_monthly_budget_micros?: number | null
+  hire_default_monthly_budget_micros?: number | null
+  /** Percentages of a budget at which an alert is raised, e.g. [50, 80, 100]. */
+  budget_alert_thresholds?: number[]
+  model_routing?: ModelRouting
+  allow_paid_fallback?: boolean
+  auto_spend_limit_micros?: number
+  stall_seconds?: number
 }
+
+export type ModelRouting = 'free_first' | 'pinned' | 'quality_first'
 
 /** Only human owner/admin may PATCH. Agents get 403. */
 export type UpdatePolicyRequest = Partial<Omit<CompanyPolicy, 'company_id' | 'updated_at'>>
@@ -599,7 +613,8 @@ export interface ArtifactFilters {
 /* -------------------------------- approvals -------------------------------- */
 
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'changes_requested' | 'expired'
-export type ApproverType = 'human' | 'founder'
+/** `peer` (M6): another agent checks the outbound content (maker-checker). The human is only informed. */
+export type ApproverType = 'human' | 'founder' | 'peer'
 export type ApprovalDecision = 'approve' | 'reject' | 'request_changes'
 export type Risk = 'low' | 'medium' | 'high'
 
@@ -627,6 +642,14 @@ export interface Approval {
   consumed_at: Timestamp | null
   created_at: Timestamp
   updated_at: Timestamp
+  /** M6 (assumed): the risk tier of the guarded action and the action name. Absent before M6. */
+  tier?: ActionTier | null
+  action?: string | null
+  /** M6 (assumed): the reviewer agent of a `peer` approval. */
+  reviewer_agent_id?: Uuid | null
+  /** M6 (assumed): the exact outbound content under review and the DLP scan result. Read via lib/approvalsM6. */
+  outbound?: ApprovalOutbound | null
+  dlp_findings?: DlpFinding[] | null
 }
 
 export interface ApprovalFilters {
@@ -1154,4 +1177,269 @@ export interface CofounderWakeResult {
   /** `queued` when a new planning task was created, `coalesced` when one was already open. */
   status: 'queued' | 'coalesced' | (string & {})
   task_id: Uuid | null
+}
+
+/* ======================================================================== *
+ * Milestone 6 (docs/specs/m6-guardrails-and-governance.md): guardrails and finance.
+ * ASSUMPTION: the M6 backend does not exist yet. Paths and schema names below follow the spec and fill its gaps
+ * conservatively. Each type is re-checked against schema.d.ts in contract.check.ts (WhenInSchema) as soon as a
+ * generated schema carries the expected name, so drift fails `pnpm typecheck`. A 404 renders "Arrives in M6".
+ *
+ * Company-scoped (`/companies/{cid}`):
+ *   GET/POST /guardrails/rules                      GuardrailRule / GuardrailRuleCreate
+ *   PATCH/DELETE /guardrails/rules/{id}             GuardrailRuleUpdate
+ *   GET /guardrails/events?decision=&tier=&agent_id=&cursor=&limit=     GuardrailEvent  (newest first)
+ *   GET /guardrails/rate-limits[?agent_id=]         RateLimitStatus[] (as {items} or a bare array)
+ *   GET /agents/{id}/effective-permissions          EffectivePermissions
+ *   GET /finance/summary?from=&to=                  FinanceSummary   (from/to: YYYY-MM-DD, inclusive, company timezone)
+ *   GET /finance/breakdown?from=&to=&group_by=      FinanceBreakdown (agent|project|provider|model|runtime)
+ *   GET /finance/trend?from=&to=                    FinanceTrend     (one point per day)
+ *   GET /finance/runs?from=&to=&cursor=             FinanceRun       (page)
+ *   GET/POST /finance/expenses                      ExternalExpense / ExternalExpenseCreate
+ * Global (owner only, all companies):
+ *   GET /system/status   POST /system/emergency-stop {reason?}   POST /system/resume {}      EmergencyStopStatus
+ *     (the status may be the object itself or nested as `{emergency_stop: {...}}`; both are accepted)
+ * Stream event names: guardrail.event (one per decision), guardrail.rule_changed, system.emergency_stop,
+ *   system.resumed, expense.created.
+ * ======================================================================== */
+
+export type ActionTier =
+  | 'read'
+  | 'internal_write'
+  | 'org_change'
+  | 'external_read'
+  | 'external_communication'
+  | 'external_commitment'
+  | 'spend'
+  | 'identity'
+  | 'destructive'
+
+export type GuardrailDecision = 'allow' | 'peer_review' | 'cofounder_approval' | 'human_approval' | 'deny'
+/** A logged decision. `rate_limited` is a 429 outcome rather than a rule decision. */
+export type GuardrailEventDecision = GuardrailDecision | 'rate_limited'
+
+export type GuardrailScopeType = 'all' | 'family' | 'agent'
+
+export interface GuardrailConditions {
+  /** The rule applies up to this amount (micro-USD). */
+  max_amount_micros?: number | null
+  /** The rule applies while at most N such actions happened today. */
+  max_per_day?: number | null
+  /** Hosts the rule is limited to. */
+  allowed_domains?: string[] | null
+  [key: string]: unknown
+}
+
+/** A company policy row. Human-editable only: agents (even with a run token) get 403. */
+export interface GuardrailRule {
+  id: Uuid
+  company_id: Uuid
+  /** The tier the rule covers. With `action` set it is the tier of that action. */
+  tier: ActionTier
+  /** A specific action (e.g. `email.send`); null = the whole tier. A specific action wins over a tier rule. */
+  action: string | null
+  scope_type: GuardrailScopeType
+  /** Role family slug when `scope_type` is `family`, an agent id when `agent`, null for `all`. */
+  scope_value: string | null
+  decision: GuardrailDecision
+  conditions: GuardrailConditions
+  created_by_type?: CreatedByType | null
+  created_by_id?: Uuid | null
+  created_at: Timestamp
+  updated_at: Timestamp
+}
+
+export interface GuardrailRuleCreate {
+  tier: ActionTier
+  action?: string | null
+  scope_type: GuardrailScopeType
+  scope_value?: string | null
+  decision: GuardrailDecision
+  conditions?: GuardrailConditions
+}
+export type GuardrailRuleUpdate = Partial<GuardrailRuleCreate>
+
+/** One logged decision. Carries a payload digest only: never the payload, never a secret. */
+export interface GuardrailEvent {
+  id: Uuid
+  company_id: Uuid
+  created_at: Timestamp
+  agent_id: Uuid | null
+  run_id: Uuid | null
+  /** Needed to open the run (a run lives under its task). */
+  task_id: Uuid | null
+  action: string
+  tier: ActionTier
+  decision: GuardrailEventDecision
+  /** The rule that decided, or null when the built-in default did. */
+  rule_id: Uuid | null
+  approval_id: Uuid | null
+  payload_digest: string | null
+  reason: string | null
+}
+
+export interface GuardrailEventFilters {
+  decision?: GuardrailEventDecision
+  tier?: ActionTier
+  agent_id?: Uuid
+}
+
+export type RateLimitKey =
+  | 'api_calls_per_min'
+  | 'tasks_created_per_hour'
+  | 'external_communications_per_day'
+  | 'hires_per_day'
+  | 'skill_installs_per_day'
+  | 'web_fetches_per_hour'
+
+export interface RateLimitStatus {
+  /** null = a company-wide window. */
+  agent_id: Uuid | null
+  key: RateLimitKey | (string & {})
+  limit: number
+  used: number
+  window_seconds: number
+  resets_at: Timestamp | null
+}
+
+export interface EffectiveTier {
+  tier: ActionTier
+  decision: GuardrailDecision
+  /** `default` = the built-in table decided; `rule` = a company rule did. */
+  source: 'default' | 'rule'
+  rule_id: Uuid | null
+}
+export interface EffectiveTool {
+  name: string
+  tier: ActionTier
+  decision: GuardrailDecision
+  rule_id: Uuid | null
+}
+export interface EffectivePermissions {
+  agent_id: Uuid
+  tiers: EffectiveTier[]
+  tools: EffectiveTool[]
+  rate_limits?: RateLimitStatus[]
+}
+
+export interface ApprovalOutbound {
+  /** Where it goes, e.g. `email`, `post`, `pull_request`. */
+  channel?: string | null
+  to?: string | null
+  subject?: string | null
+  body: string
+}
+/** A finding of the outbound DLP scan. The matched text is never part of it (and the UI never renders one). */
+export interface DlpFinding {
+  /** `secret`, `own_token`, `email`, `phone`, `internal_memory`, ... */
+  kind: string
+  severity?: 'low' | 'medium' | 'high' | null
+  description?: string | null
+  count?: number | null
+}
+
+/* ---- emergency stop ---- */
+export interface EmergencyStopStatus {
+  active: boolean
+  activated_at: Timestamp | null
+  activated_by: string | null
+  reason: string | null
+  /** Runs cancelled by the stop (known once it has run). */
+  runs_cancelled?: number | null
+}
+
+/* ---- finance ---- */
+export type FinancePeriod = 'day' | 'week' | 'month'
+export type FinanceGroupBy = 'agent' | 'project' | 'provider' | 'model' | 'runtime'
+
+/** Cost split by provenance. Only `verified` is a charge; `estimated` is not; `unknown` has no price. */
+export interface CostSplit {
+  verified_micros: number
+  estimated_micros: number
+  unknown_micros: number
+}
+
+export interface BudgetStatus {
+  scope: 'company' | 'agent'
+  agent_id: Uuid | null
+  period: 'day' | 'month'
+  /** null = no limit. */
+  limit_micros: number | null
+  verified_micros: number
+  estimated_micros: number
+}
+
+export interface FinanceSummary {
+  from: string
+  to: string
+  timezone: string
+  totals: CostSplit & { input_tokens: number; output_tokens: number; runs: number }
+  /** Spend of failed, cancelled and timed-out runs. */
+  wasted: CostSplit & { runs: number }
+  /** Human-recorded external expenses in the period (a separate figure, not model usage). */
+  external_expenses_micros: number
+  budgets: BudgetStatus[]
+}
+
+export interface FinanceBreakdownRow extends CostSplit {
+  key: string
+  label: string | null
+  input_tokens: number
+  output_tokens: number
+  runs: number
+}
+export interface FinanceBreakdown {
+  group_by: FinanceGroupBy
+  from: string
+  to: string
+  items: FinanceBreakdownRow[]
+}
+
+export interface FinanceTrendPoint extends CostSplit {
+  /** YYYY-MM-DD in the company timezone. */
+  date: string
+}
+export interface FinanceTrend {
+  from: string
+  to: string
+  points: FinanceTrendPoint[]
+}
+
+export interface FinanceRun {
+  run_id: Uuid
+  task_id: Uuid
+  task_title: string | null
+  agent_id: Uuid | null
+  status: RunStatus
+  started_at: Timestamp | null
+  finished_at: Timestamp | null
+  cost_micros: number | null
+  cost_kind: CostKind
+  model: string | null
+  provider: string | null
+}
+
+export type ExpenseRecurrence = 'one_time' | 'monthly' | 'yearly'
+
+export interface ExternalExpense {
+  id: Uuid
+  company_id: Uuid
+  vendor: string
+  description: string | null
+  amount_micros: number
+  recurrence: ExpenseRecurrence
+  project_id: Uuid | null
+  /** YYYY-MM-DD, company timezone. */
+  incurred_on: string
+  created_by_type?: CreatedByType | null
+  created_by_id?: Uuid | null
+  created_at: Timestamp
+}
+export interface ExternalExpenseCreate {
+  vendor: string
+  description?: string | null
+  amount_micros: number
+  recurrence: ExpenseRecurrence
+  project_id?: Uuid | null
+  incurred_on: string
 }

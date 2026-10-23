@@ -2,10 +2,12 @@ import { useState } from 'react'
 import { errorMessage, useDecideApproval } from '@/api'
 import type { Agent, Approval, ApprovalDecision } from '@/api/types'
 import { Badge, Button, Dialog, Field, FormError, Textarea, useToast } from '@/components/ui'
+import { TierBadge } from '@/features/guardrails/DecisionChip'
 import { AgentChip } from '@/features/shared/AgentChip'
 import { ApprovalStatusBadge } from '@/features/shared/badges'
 import { formatRelative, titleCase } from '@/lib/format'
 import { formatUsd } from '@/lib/money'
+import { OutboundReview } from './OutboundReview'
 
 const DECISION_LABEL: Record<ApprovalDecision, string> = {
   approve: 'Approve',
@@ -19,7 +21,7 @@ export function isActionable(a: Pick<Approval, 'approver' | 'status'>): boolean 
   return a.approver === 'human' && a.status === 'pending'
 }
 
-export function ApprovalCard({ approval, agents, companyId, dense = false }: { approval: Approval; agents: Map<string, Agent>; companyId: string; dense?: boolean }) {
+export function ApprovalCard({ approval, agents, companyId, dense = false, showTier = true }: { approval: Approval; agents: Map<string, Agent>; companyId: string; dense?: boolean; showTier?: boolean }) {
   const [deciding, setDeciding] = useState<ApprovalDecision | null>(null)
   const actionable = isActionable(approval)
   const riskTone = approval.risk === 'high' ? 'danger' : approval.risk === 'medium' ? 'warning' : 'neutral'
@@ -32,6 +34,8 @@ export function ApprovalCard({ approval, agents, companyId, dense = false }: { a
       </div>
       <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-fg-3">
         <Badge tone="neutral">{titleCase(approval.kind)}</Badge>
+        {showTier && approval.tier && <TierBadge tier={approval.tier} />}
+        {approval.action && <span className="font-mono text-[11.5px] text-fg-2">{approval.action}</span>}
         {approval.risk && <Badge tone={riskTone}>{titleCase(approval.risk)} risk</Badge>}
         {approval.amount_micros !== null && (
           <span className="text-fg-2 tabular-nums">
@@ -44,6 +48,7 @@ export function ApprovalCard({ approval, agents, companyId, dense = false }: { a
         <time dateTime={approval.created_at}>{formatRelative(approval.created_at)}</time>
       </div>
       {approval.reason && <p className={dense ? 'mt-1.5 line-clamp-2 text-[12.5px] text-fg-2' : 'mt-1.5 text-[12.5px] whitespace-pre-wrap text-fg-2'}>{approval.reason}</p>}
+      <OutboundReview approval={approval} dense={dense} />
       {approval.decision_note && (
         <p className="mt-1.5 text-[12px] text-fg-3">
           Decision note: <span className="text-fg-2">{approval.decision_note}</span>
@@ -64,7 +69,11 @@ export function ApprovalCard({ approval, agents, companyId, dense = false }: { a
         </div>
       ) : approval.status === 'pending' ? (
         <p className="mt-2 text-[12px] text-fg-3">
-          {approval.approver === 'founder' ? 'The AI Co-founder decides this one. You are not asked.' : 'Waiting for a decision.'}
+          {approval.approver === 'founder'
+            ? 'The AI Co-founder decides this one. You are not asked.'
+            : approval.approver === 'peer'
+              ? 'A peer reviewer agent checks this content first. You are only informed.'
+              : 'Waiting for a decision.'}
         </p>
       ) : null}
 

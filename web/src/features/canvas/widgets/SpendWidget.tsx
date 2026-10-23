@@ -1,8 +1,9 @@
 import { useMemo } from 'react'
 import { usePolicy, useUsage } from '@/api'
-import { Boundary, Widget } from '@/components/ui'
+import { Boundary, Button, Widget } from '@/components/ui'
 import { SpendBlock } from '@/features/finance/SpendBlock'
 import { isSameMonth } from '@/lib/dates'
+import { normalizeThresholds } from '@/lib/finance'
 import { emptyRow, sumRows } from '@/lib/usage'
 import { useCanvas } from '../CanvasContext'
 import { useCompanyTimezone } from '../hooks'
@@ -14,6 +15,8 @@ export function SpendWidget({ className }: { className?: string }) {
   const { today, monthStart } = useCompanyDates(tz)
   const usage = useUsage(companyId, 'day', monthStart, today)
   const policy = usePolicy(companyId)
+  // Alert thresholds are only marked when the policy reports them (M6); otherwise the bar is just spend against the limit.
+  const thresholds = normalizeThresholds(policy.data?.budget_alert_thresholds)
 
   const periods = useMemo(() => {
     if (!usage.data) return null
@@ -27,11 +30,14 @@ export function SpendWidget({ className }: { className?: string }) {
         {() =>
           periods && (
             <div className="space-y-4 p-3.5">
-              <SpendBlock title="Today" row={periods.today} limitMicros={policy.data?.daily_budget_micros ?? null} />
+              <SpendBlock title="Today" row={periods.today} limitMicros={policy.data?.daily_budget_micros ?? null} thresholds={thresholds} />
               <div className="border-t border-line pt-3.5">
-                <SpendBlock title="This month" row={periods.month} limitMicros={policy.data?.monthly_budget_micros ?? null} />
+                <SpendBlock title="This month" row={periods.month} limitMicros={policy.data?.monthly_budget_micros ?? null} thresholds={thresholds} />
               </div>
               {policy.isError && <p className="text-[11.5px] text-fg-3">Budget limits could not be loaded, so no limit is shown.</p>}
+              <Button size="sm" className="w-full" onClick={() => openPanel({ kind: 'finance' })}>
+                Open finance: budgets, trend, expenses
+              </Button>
             </div>
           )
         }

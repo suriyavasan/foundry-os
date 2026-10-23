@@ -11,6 +11,7 @@ export type CommandAction =
   | { type: 'theme' }
   | { type: 'compose-note' }
   | { type: 'wake-cofounder' }
+  | { type: 'emergency-stop' }
 
 export interface PaletteCommand {
   id: string
@@ -25,7 +26,7 @@ export interface PaletteCommand {
 const GROUP_ORDER: CommandGroup[] = ['Actions', 'Panels', 'Agents', 'Tasks']
 
 /** How many rows each group may show when the query is empty (keeps the palette scannable). */
-const EMPTY_QUERY_CAP: Record<CommandGroup, number> = { Actions: 9, Panels: 14, Agents: 6, Tasks: 5 }
+const EMPTY_QUERY_CAP: Record<CommandGroup, number> = { Actions: 10, Panels: 16, Agents: 6, Tasks: 5 }
 
 const tokens = (s: string) => s.toLowerCase().split(/[\s/:_-]+/).filter(Boolean)
 
@@ -85,6 +86,8 @@ export interface CommandContext {
   workEngine: boolean
   /** false when the M5 notes / AI Co-founder endpoints are not deployed: their actions are hidden, not faked. */
   autonomy?: boolean
+  /** false when the M6 system endpoints are not deployed: the emergency stop is hidden, not faked. */
+  guardrails?: boolean
 }
 
 export function buildCommands(ctx: CommandContext): PaletteCommand[] {
@@ -107,6 +110,9 @@ export function buildCommands(ctx: CommandContext): PaletteCommand[] {
     ctx.companyStatus === 'active'
       ? { id: 'act:pause', group: 'Actions', label: 'Pause company', hint: 'Kill switch', keywords: ['stop', 'halt', 'kill'], action: { type: 'company', do: 'pause' } }
       : { id: 'act:resume', group: 'Actions', label: 'Resume company', hint: 'Restart dispatch', keywords: ['start', 'unpause'], action: { type: 'company', do: 'resume' } },
+    ...(ctx.guardrails !== false
+      ? [{ id: 'act:emergency-stop', group: 'Actions' as const, label: 'Emergency stop\u2026', hint: 'Halts every company', keywords: ['kill', 'halt', 'panic', 'stop all', 'guardrails'], action: { type: 'emergency-stop' as const } }]
+      : []),
     { id: 'act:theme', group: 'Actions', label: 'Toggle theme', hint: 'Dark / light', keywords: ['dark', 'light', 'appearance'], action: { type: 'theme' } },
   )
   for (const kind of SIMPLE_PANELS) {

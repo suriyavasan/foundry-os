@@ -1,22 +1,18 @@
-import clsx from 'clsx'
 import type { UsageRow } from '@/api/types'
-import { SectionLabel } from '@/components/ui'
-import { budgetFraction } from '@/lib/usage'
+import { BudgetBar, SectionLabel } from '@/components/ui'
+import { utilization } from '@/lib/finance'
 import { COST_KIND_LABEL, formatCost, formatUsd } from '@/lib/money'
 
 /**
- * One period of spend against its limit. Verified spend is the solid segment and the headline number
- * ("charged"); estimated spend is a separate hatched segment with its own label and is never added to
- * the headline. Unknown-cost usage is reported as such, without a dollar figure.
+ * One period of spend against its limit. Verified spend is the solid segment and the headline number ("charged");
+ * estimated spend is a separate hatched segment with its own label and is never added to the headline. Unknown-cost
+ * usage is reported as such, without a dollar figure. `thresholds` (percent) are drawn as ticks only when the
+ * policy supplies them.
  */
-export function SpendBlock({ title, row, limitMicros }: { title: string; row: UsageRow; limitMicros: number | null }) {
+export function SpendBlock({ title, row, limitMicros, thresholds }: { title: string; row: UsageRow; limitMicros: number | null; thresholds?: number[] | null }) {
   const { verified, estimated, unknown } = row.by_kind
   const limit = limitMicros && limitMicros > 0 ? limitMicros : null
-  const vFrac = budgetFraction(verified, limit)
-  const eFrac = budgetFraction(estimated, limit)
-  const over = (vFrac ?? 0) + (eFrac ?? 0) > 1
-  const vPct = Math.min(100, (vFrac ?? 0) * 100)
-  const ePct = Math.max(0, Math.min(100 - vPct, (eFrac ?? 0) * 100))
+  const util = utilization(verified, estimated, limit, thresholds ?? [])
 
   return (
     <div className="min-w-0">
@@ -28,20 +24,7 @@ export function SpendBlock({ title, row, limitMicros }: { title: string; row: Us
         <span className="text-[22px] leading-7 font-semibold tracking-tight text-fg tabular-nums">{formatCost(verified, 'verified')}</span>
         <span className="text-[12px] text-fg-3">charged · {COST_KIND_LABEL.verified.toLowerCase()}</span>
       </div>
-      {limit && (
-        <div
-          role="progressbar"
-          aria-label={`${title} spend against limit`}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={Math.round(vPct)}
-          aria-valuetext={`${formatCost(verified, 'verified')} charged${estimated ? `, ${formatCost(estimated, 'estimated')}` : ''} of ${formatUsd(limit)}`}
-          className="mt-2 flex h-2 w-full overflow-hidden rounded-full bg-active"
-        >
-          <div className={clsx('h-full', over ? 'bg-danger' : 'bg-success')} style={{ width: `${vPct}%` }} />
-          {ePct > 0 && <div className={clsx('cos-hatch h-full', over ? 'text-danger' : 'text-warning')} style={{ width: `${ePct}%` }} />}
-        </div>
-      )}
+      {limit && <BudgetBar className="mt-2" util={util} thresholds={thresholds ?? []} label={`${title} spend against limit`} />}
       <dl className="mt-2 space-y-0.5 text-[12px]">
         <div className="flex items-center justify-between gap-2">
           <dt className="flex items-center gap-1.5 text-fg-3">

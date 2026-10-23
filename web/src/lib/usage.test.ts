@@ -1,6 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import { budgetFraction, normalizeUsage, sumRows } from './usage'
 
+describe('normalizeUsage against the documented API shape', () => {
+  it('reads by_cost_kind as {verified_micros, estimated_micros, unknown_micros} (docs/api.md, schema CostByKind)', () => {
+    const r = normalizeUsage({
+      group_by: 'agent',
+      items: [{ key: 'a1', label: 'Ada', input_tokens: 10, output_tokens: 5, cached_tokens: 0, cost_micros: 1_400_000, by_cost_kind: { verified_micros: 1_000_000, estimated_micros: 400_000, unknown_micros: 0 }, records: 3 }],
+      totals: { key: null, label: 'Total', by_cost_kind: { verified_micros: 1_000_000, estimated_micros: 400_000, unknown_micros: 0 } },
+    })
+    expect(r.rows[0]!.by_kind).toEqual({ verified: 1_000_000, estimated: 400_000, unknown: 0 })
+    expect(r.rows[0]!.total_micros).toBe(1_400_000)
+    expect(r.rows[0]!.label).toBe('Ada')
+  })
+})
+
 describe('normalizeUsage', () => {
   it('reads a by_cost_kind map and keeps provenance separate', () => {
     const r = normalizeUsage({

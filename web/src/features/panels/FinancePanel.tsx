@@ -1,140 +1,94 @@
-import { useMemo, useState } from 'react'
-import { usePolicy, useUsage } from '@/api'
-import type { UsageGroupBy, UsageRow } from '@/api/types'
-import { Boundary, Card, CardBody, CardHeader, CostKindBadge, Select, SectionLabel, TBody, TD, TH, THead, TR, Table } from '@/components/ui'
+import { useState } from 'react'
+import { isNotDeployed, useFinanceSummary, usePolicy } from '@/api'
+import type { FinancePeriod } from '@/api/types'
+import { Card, CardBody, ErrorState, LoadingState, NotAvailable } from '@/components/ui'
 import { useCanvas } from '@/features/canvas/CanvasContext'
 import { useAgentMap, useCompanyTimezone } from '@/features/canvas/hooks'
-import { useCompanyDates } from '@/features/canvas/spend'
 import { PanelFrame } from '@/features/canvas/PanelFrame'
-import { SpendBlock } from '@/features/finance/SpendBlock'
-import { COST_KIND_LABEL, formatCost } from '@/lib/money'
-import { emptyRow, sumRows } from '@/lib/usage'
-import { useProjects } from '@/api'
+import { useCompanyDates } from '@/features/canvas/spend'
+import { BasicFinance } from '@/features/finance/BasicFinance'
+import { BreakdownCard } from '@/features/finance/BreakdownCard'
+import { BudgetCard } from '@/features/finance/BudgetCard'
+import { ExpensesCard } from '@/features/finance/ExpensesCard'
+import { PeriodBar } from '@/features/finance/PeriodBar'
+import { RunCostsCard } from '@/features/finance/RunCostsCard'
+import { TotalsCards } from '@/features/finance/TotalsCards'
+import { TrendCard } from '@/features/finance/TrendCard'
+import { DEFAULT_THRESHOLDS, normalizeThresholds, periodRange } from '@/lib/finance'
 
-type Range = 'today' | '7d' | 'month'
-const GROUPS: Array<{ value: UsageGroupBy; label: string }> = [
-  { value: 'agent', label: 'By agent' },
-  { value: 'project', label: 'By project' },
-  { value: 'model', label: 'By model' },
-  { value: 'day', label: 'By day' },
-]
-
+/**
+ * Finance: spend by provenance for a day, week or month in company time, budgets against their alert thresholds,
+ * breakdown, trend, wasted cost, external expenses and per-run cost. Before M6 (no `/finance/*`) it falls back to
+ * the usage-ledger view and says what is missing.
+ */
 export function FinancePanel() {
   const { companyId } = useCanvas()
   const tz = useCompanyTimezone(companyId)
-  const { today, monthStart, weekStart } = useCompanyDates(tz)
+  const { today } = useCompanyDates(tz)
   const policy = usePolicy(companyId)
-  const [group, setGroup] = useState<UsageGroupBy>('agent')
-  const [range, setRange] = useState<Range>('month')
-  const from = range === 'today' ? today : range === 'month' ? monthStart : weekStart
-  const q = useUsage(companyId, group, from, today)
-  const daily = useUsage(companyId, 'day', today, today)
-  const month = useUsage(companyId, 'day', monthStart, today)
   const { map } = useAgentMap(companyId)
-  const projects = useProjects(companyId)
-  const projectName = useMemo(() => new Map((projects.data ?? []).map((p) => [p.id, p.name])), [projects.data])
+  const [period, setPeriod] = useState<FinancePeriod>('month')
+  // null = follow today (the anchor moves when the company-local day changes).
+  const [picked, setPicked] = useState<string | null>(null)
+  const anchor = picked ?? today
+  const range = periodRange(period, anchor)
+  const summary = useFinanceSummary(companyId, range.from, range.to)
 
-  const labelFor = (row: UsageRow): string => {
-    if (row.label) return row.label
-    if (group === 'agent') return map.get(row.key)?.name ?? row.key
-    if (group === 'project') return projectName.get(row.key) ?? row.key
-    return row.key
+  if (isNotDeployed(summary.error)) {
+    return (
+      <PanelFrame title="Finance" subtitle="Spend by provenance: verified charges are never mixed with estimates">
+        <div className="space-y-4">
+          <Card>
+            <CardBody>
+              <NotAvailable
+                compact
+                milestone="M6"
+                description="Budget utilization with alert thresholds, the trend chart, breakdown by provider and runtime, wasted cost and external expenses. Showing the usage ledger meanwhile."
+              />
+            </CardBody>
+          </Card>
+          <BasicFinance />
+        </div>
+      </PanelFrame>
+    )
   }
+
+  const shown = summary.data?.from && summary.data.to ? { from: summary.data.from, to: summary.data.to } : range
+  const thresholds = normalizeThresholds(policy.data?.budget_alert_thresholds) ?? DEFAULT_THRESHOLDS
 
   return (
     <PanelFrame title="Finance" subtitle="Spend by provenance: verified charges are never mixed with estimates">
       <div className="space-y-4">
-        <div className="grid gap-4 md:grid-cols-2">
+        <PeriodBar period={period} anchor={anchor} today={today} timezone={summary.data?.timezone || tz} range={shown} onPeriod={(p) => setPeriod(p)} onAnchor={(iso) => setPicked(iso === today ? null : iso)} />
+        {summary.isPending ? (
           <Card>
-            <CardBody>
-              <Boundary query={daily} unavailableText="The usage ledger comes with the work engine.">
-                {(r) => <SpendBlock title="Today" row={r.rows.find((x) => x.key === today) ?? emptyRow(today)} limitMicros={policy.data?.daily_budget_micros ?? null} />}
-              </Boundary>
-            </CardBody>
+            <LoadingState rows={4} label="Loading finance summary" />
           </Card>
-          <Card>
-            <CardBody>
-              <Boundary query={month} unavailableText="The usage ledger comes with the work engine.">
-                {(r) => <SpendBlock title="This month" row={sumRows(r.rows)} limitMicros={policy.data?.monthly_budget_micros ?? null} />}
-              </Boundary>
-            </CardBody>
-          </Card>
-        </div>
-
-        <Card>
-          <CardHeader
-            title="Usage"
-            description="Aggregates from the usage ledger"
-            actions={
+        ) : (
+          <>
+            {summary.isError ? (
+              <Card>
+                <ErrorState error={summary.error} onRetry={() => void summary.refetch()} retrying={summary.isFetching} />
+              </Card>
+            ) : !summary.data ? (
+              <Card>
+                <ErrorState title="Unexpected finance response" error={new Error('The server answered with something that is not a finance summary.')} onRetry={() => void summary.refetch()} />
+              </Card>
+            ) : (
               <>
-                <Select aria-label="Group by" className="h-7 w-auto text-[12.5px]" value={group} onChange={(e) => setGroup(e.target.value as UsageGroupBy)}>
-                  {GROUPS.map((g) => (
-                    <option key={g.value} value={g.value}>
-                      {g.label}
-                    </option>
-                  ))}
-                </Select>
-                <Select aria-label="Period" className="h-7 w-auto text-[12.5px]" value={range} onChange={(e) => setRange(e.target.value as Range)}>
-                  <option value="today">Today</option>
-                  <option value="7d">Last 7 days</option>
-                  <option value="month">This month</option>
-                </Select>
-              </>
-            }
-          />
-          <Boundary query={q} compact={false} unavailableTitle="Finance is not built yet" unavailableText="Usage and budgets come with the work engine." isEmpty={(d) => d.rows.length === 0} empty={{ title: 'No usage in this period', description: 'Spend appears here once agents start running.' }}>
-            {(report) => (
-              <>
-                <Table>
-                  <THead>
-                    <TR>
-                      <TH>{GROUPS.find((g) => g.value === group)?.label.replace('By ', '')}</TH>
-                      <TH className="text-right">
-                        <span className="inline-flex items-center gap-1.5">
-                          <CostKindBadge kind="verified" /> charged
-                        </span>
-                      </TH>
-                      <TH className="text-right">
-                        <span className="inline-flex items-center gap-1.5">
-                          <CostKindBadge kind="estimated" />
-                        </span>
-                      </TH>
-                      <TH className="text-right">Tokens in / out</TH>
-                    </TR>
-                  </THead>
-                  <TBody>
-                    {report.rows.map((r) => (
-                      <TR key={r.key}>
-                        <TD className="font-medium">{labelFor(r)}</TD>
-                        <TD className="text-right tabular-nums">{formatCost(r.by_kind.verified, 'verified')}</TD>
-                        <TD className="text-right tabular-nums text-fg-2">{r.by_kind.estimated > 0 ? formatCost(r.by_kind.estimated, 'estimated') : '—'}</TD>
-                        <TD className="text-right tabular-nums text-fg-2">
-                          {r.input_tokens.toLocaleString()} / {r.output_tokens.toLocaleString()}
-                        </TD>
-                      </TR>
-                    ))}
-                    <TR className="bg-raised font-medium">
-                      <TD>Total</TD>
-                      <TD className="text-right tabular-nums">{formatCost(report.totals.by_kind.verified, 'verified')}</TD>
-                      <TD className="text-right tabular-nums text-fg-2">{report.totals.by_kind.estimated > 0 ? formatCost(report.totals.by_kind.estimated, 'estimated') : '—'}</TD>
-                      <TD className="text-right tabular-nums text-fg-2">
-                        {report.totals.input_tokens.toLocaleString()} / {report.totals.output_tokens.toLocaleString()}
-                      </TD>
-                    </TR>
-                  </TBody>
-                </Table>
-                <div className="border-t border-line px-4 py-3">
-                  <SectionLabel>How to read this</SectionLabel>
-                  <p className="mt-1 text-[12.5px] text-fg-3">
-                    <strong className="font-medium text-fg-2">{COST_KIND_LABEL.verified}</strong> amounts were reported by the provider or runtime and are real charges.{' '}
-                    <strong className="font-medium text-fg-2">{COST_KIND_LABEL.estimated}</strong> amounts are computed from token counts and list prices; the real bill may differ. Usage with an unreported cost is not given a price.
-                  </p>
-                </div>
+                <TotalsCards summary={summary.data} />
+                <BudgetCard budgets={summary.data.budgets} thresholds={thresholds} agents={map} />
               </>
             )}
-          </Boundary>
-        </Card>
+            {/* The other reports load after the summary, so a backend without M6 shows the fallback and not a flash of "not built yet" cards. */}
+            <TrendCard companyId={companyId} from={range.from} to={range.to} />
+            <BreakdownCard companyId={companyId} from={range.from} to={range.to} />
+            <ExpensesCard companyId={companyId} from={range.from} to={range.to} today={today} />
+            <RunCostsCard companyId={companyId} from={range.from} to={range.to} />
+          </>
+        )}
       </div>
     </PanelFrame>
   )
 }
+

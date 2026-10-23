@@ -7,6 +7,7 @@ import { CanvasProvider } from '@/features/canvas/CanvasContext'
 import { CommandPalette } from '@/features/canvas/CommandPalette'
 import { CreateHost } from '@/features/canvas/CreateHost'
 import { PanelHost } from '@/features/canvas/PanelHost'
+import { EmergencyStopDialog } from '@/features/guardrails/EmergencyStop'
 import { TopBar } from '@/features/canvas/TopBar'
 import { setLastCompanyId } from '@/lib/storage'
 import { NotFound } from './NotFound'
@@ -57,6 +58,7 @@ export function CompanyLayout() {
         <PanelHost />
         <CreateHost />
         <CommandPalette company={company.data} />
+        <EmergencyStopDialog />
       </CanvasProvider>
     </StreamProvider>
   )

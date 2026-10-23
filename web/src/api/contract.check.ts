@@ -100,3 +100,29 @@ check<WhenInSchema<'Alert', Accepts<T.Alert, S[Extract<'Alert', keyof S>]>>>()
 check<WhenInSchema<'MemoryEntry', Accepts<T.MemoryEntry, S[Extract<'MemoryEntry', keyof S>]>>>()
 check<WhenInSchema<'MemoryCreate', Accepts<S[Extract<'MemoryCreate', keyof S>], T.CreateMemoryRequest>>>()
 check<WhenInSchema<'CofounderSummary', Accepts<T.CofounderSummary, S[Extract<'CofounderSummary', keyof S>]>>>()
+
+// ---- Milestone 6 (guardrails & governance, finance) ----
+// The M6 backend does not exist yet; types.ts "Milestone 6" documents the assumed paths and shapes. The schema names
+// below are the expected ones (docs/specs/m6-guardrails-and-governance.md). Each check switches itself on when a
+// schema with that name appears after `pnpm gen:api`, and then fails typecheck on any drift.
+type M<K extends string> = S[Extract<K, keyof S>]
+check<WhenInSchema<'GuardrailRule', Accepts<T.GuardrailRule, M<'GuardrailRule'>>>>()
+check<WhenInSchema<'GuardrailRuleCreate', Accepts<M<'GuardrailRuleCreate'>, T.GuardrailRuleCreate>>>()
+check<WhenInSchema<'GuardrailRuleUpdate', Accepts<M<'GuardrailRuleUpdate'>, T.GuardrailRuleUpdate>>>()
+check<WhenInSchema<'GuardrailEvent', Accepts<T.GuardrailEvent, M<'GuardrailEvent'>>>>()
+check<WhenInSchema<'RateLimitStatus', Accepts<T.RateLimitStatus, M<'RateLimitStatus'>>>>()
+check<WhenInSchema<'EffectivePermissions', Accepts<T.EffectivePermissions, M<'EffectivePermissions'>>>>()
+check<WhenInSchema<'EmergencyStopStatus', Accepts<T.EmergencyStopStatus, M<'EmergencyStopStatus'>>>>()
+check<WhenInSchema<'FinanceSummary', Accepts<T.FinanceSummary, M<'FinanceSummary'>>>>()
+check<WhenInSchema<'FinanceBreakdown', Accepts<T.FinanceBreakdown, M<'FinanceBreakdown'>>>>()
+check<WhenInSchema<'FinanceTrend', Accepts<T.FinanceTrend, M<'FinanceTrend'>>>>()
+check<WhenInSchema<'FinanceRun', Accepts<T.FinanceRun, M<'FinanceRun'>>>>()
+check<WhenInSchema<'ExternalExpense', Accepts<T.ExternalExpense, M<'ExternalExpense'>>>>()
+check<WhenInSchema<'ExternalExpenseCreate', Accepts<M<'ExternalExpenseCreate'>, T.ExternalExpenseCreate>>>()
+// The enums the UI switches on must be exactly the server's, once the schema carries them.
+check<WhenInSchema<'GuardrailRule', Same<T.ActionTier, M<'GuardrailRule'>['tier']>>>()
+check<WhenInSchema<'GuardrailRule', Same<T.GuardrailDecision, M<'GuardrailRule'>['decision']>>>()
+check<WhenInSchema<'GuardrailRule', Same<T.GuardrailScopeType, M<'GuardrailRule'>['scope_type']>>>()
+// The M6 policy fields (the existing `Policy` schema gains them with the backend).
+type PolicySchema = S['Policy']
+check<'max_agent_monthly_budget_micros' extends keyof PolicySchema ? Accepts<Pick<T.CompanyPolicy, 'max_agent_monthly_budget_micros' | 'hire_default_monthly_budget_micros' | 'budget_alert_thresholds' | 'model_routing' | 'allow_paid_fallback' | 'auto_spend_limit_micros' | 'stall_seconds'>, Pick<PolicySchema, Extract<keyof PolicySchema, 'max_agent_monthly_budget_micros' | 'hire_default_monthly_budget_micros' | 'budget_alert_thresholds' | 'model_routing' | 'allow_paid_fallback' | 'auto_spend_limit_micros' | 'stall_seconds'>>> : true>()

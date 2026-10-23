@@ -18,6 +18,7 @@ export const SIMPLE_PANELS = [
   'notes',
   'memory',
   'cofounder',
+  'guardrails',
 ] as const
 export type SimplePanel = (typeof SIMPLE_PANELS)[number]
 
@@ -101,6 +102,7 @@ export const PANEL_TITLE: Record<SimplePanel, string> = {
   notes: 'Notes',
   memory: 'Memory',
   cofounder: 'AI Co-founder',
+  guardrails: 'Guardrails',
 }
 
 const LEGACY_AREAS: Record<string, SimplePanel | null> = {

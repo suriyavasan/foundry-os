@@ -19,7 +19,7 @@ export type CacheEffect =
   | { kind: 'invalidate'; key: QueryKey }
 
 export type FeedTone = 'neutral' | 'accent' | 'success' | 'warning' | 'danger'
-export type FeedKind = 'run' | 'task' | 'agent' | 'approval' | 'artifact' | 'activity' | 'decision' | 'note' | 'alert'
+export type FeedKind = 'run' | 'task' | 'agent' | 'approval' | 'artifact' | 'activity' | 'decision' | 'note' | 'alert' | 'guardrail'
 
 export interface FeedItem {
   /** Stable id for de-duplication across SSE replays and REST seeds. */
@@ -71,6 +71,13 @@ export const KNOWN_EVENT_TYPES = [
   'memory.updated',
   'alert.raised',
   'alert.resolved',
+  // M6 guardrails & finance (docs/specs/m6-guardrails-and-governance.md). `guardrail.event` is specified; the
+  // others are assumed names (an event no listener is registered for is simply never delivered).
+  'guardrail.event',
+  'guardrail.rule_changed',
+  'system.emergency_stop',
+  'system.resumed',
+  'expense.created',
 ] as const
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null)
@@ -134,7 +141,7 @@ export function effectsForEvent(cid: string, ev: CompanyEvent): CacheEffect[] {
     case 'run.started':
       return [inv(qk.runsAll(cid)), inv(qk.tasksAll(cid))]
     case 'run.finished':
-      return [inv(qk.runsAll(cid)), inv(qk.tasksAll(cid)), inv(qk.usageAll(cid)), inv(qk.artifactsAll(cid))]
+      return [inv(qk.runsAll(cid)), inv(qk.tasksAll(cid)), inv(qk.usageAll(cid)), inv(qk.financeAll(cid)), inv(qk.artifactsAll(cid))]
     case 'run.event': {
       const runId = str(p.run_id)
       return runId ? [inv(qk.runEvents(cid, runId))] : [inv(qk.runsAll(cid))]
@@ -148,7 +155,7 @@ export function effectsForEvent(cid: string, ev: CompanyEvent): CacheEffect[] {
       return [inv(qk.activityAll(cid))]
     case 'budget.changed':
     case 'policy.updated':
-      return [inv(qk.policy(cid)), inv(qk.usageAll(cid)), inv(qk.tasksAll(cid))]
+      return [inv(qk.policy(cid)), inv(qk.usageAll(cid)), inv(qk.financeAll(cid)), inv(qk.tasksAll(cid))]
     case 'company.updated':
       return [inv(qk.companyDetail(cid)), inv(qk.companies)]
     case 'skill.installed':
@@ -189,6 +196,16 @@ export function effectsForEvent(cid: string, ev: CompanyEvent): CacheEffect[] {
     case 'alert.raised':
     case 'alert.resolved':
       return [inv(qk.alertsAll(cid)), inv(qk.cofounderSummary(cid))]
+    case 'guardrail.event':
+      // A decision can open an approval (peer review / approval tiers) and moves the rate-limit counters.
+      return [inv(qk.guardrailsAll(cid)), inv(qk.approvalsAll(cid)), inv(qk.activityAll(cid))]
+    case 'guardrail.rule_changed':
+      return [inv(qk.guardrailsAll(cid)), inv(qk.activityAll(cid))]
+    case 'system.emergency_stop':
+    case 'system.resumed':
+      return [inv(qk.systemStatus), inv(qk.companyDetail(cid)), inv(qk.companies), inv(qk.runsAll(cid)), inv(qk.tasksAll(cid)), inv(qk.agents(cid))]
+    case 'expense.created':
+      return [inv(qk.financeAll(cid)), inv(qk.activityAll(cid))]
     default:
       return []
   }
@@ -309,6 +326,15 @@ export function feedItemForEvent(ev: CompanyEvent, now: string = new Date().toIS
     case 'alert.raised': {
       const sev = str(p.severity)
       return { ...base, kind: 'alert', tone: sev === 'critical' ? 'danger' : sev === 'info' ? 'neutral' : 'warning', text: title ? `Alert: ${title}` : 'An alert was raised', panel: null }
+    }
+    case 'guardrail.event': {
+      const decision = str(p.decision)
+      // Allowed actions are the norm and would drown the feed; only decisions that held something back are shown.
+      if (!decision || decision === 'allow') return null
+      const action = str(p.action)
+      const tone: FeedTone = decision === 'deny' || decision === 'rate_limited' ? 'danger' : 'warning'
+      const verb = decision === 'deny' ? 'Blocked' : decision === 'rate_limited' ? 'Rate limited' : decision === 'peer_review' ? 'Sent to peer review' : 'Needs approval'
+      return { ...base, kind: 'guardrail', tone, text: action ? `${verb}: ${action}` : verb, panel: { kind: 'guardrails' } }
     }
     default:
       return null

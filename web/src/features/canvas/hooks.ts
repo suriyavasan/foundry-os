@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useAgents, useCompany } from '@/api'
+import { useAgents, useCompany, useMe } from '@/api'
 import type { Agent } from '@/api/types'
 
 /** Re-render every `ms` so relative times ("3 min ago") stay honest. */
@@ -21,3 +21,11 @@ export function useAgentMap(companyId: string) {
 export function useCompanyTimezone(companyId: string): string {
   return useCompany(companyId).data?.timezone ?? 'UTC'
 }
+
+/** The signed-in human's role in this company (`owner`, `admin`, `viewer`), or undefined while unknown. */
+export function useCompanyRole(companyId: string): string | undefined {
+  return useMe().data?.memberships.find((m) => m.company_id === companyId)?.role
+}
+
+/** Only owners and admins edit policy, rules and budgets (the server enforces this; the UI just does not offer it to others). */
+export const canEditPolicy = (role: string | undefined): boolean => role === 'owner' || role === 'admin'

@@ -1,4 +1,4 @@
-import type { ActivityFilters, AgentFilters, ApprovalFilters, ArtifactFilters, CatalogSource, TaskFilters, UsageGroupBy } from './types'
+import type { ActivityFilters, AgentFilters, ApprovalFilters, ArtifactFilters, CatalogSource, FinanceGroupBy, GuardrailEventFilters, TaskFilters, UsageGroupBy } from './types'
 
 /** Query keys. Everything company-scoped lives under ['company', cid, ...]. */
 export const qk = {
@@ -59,4 +59,18 @@ export const qk = {
   memory: (cid: string) => ['company', cid, 'memory', 'list'] as const,
   alertsAll: (cid: string) => ['company', cid, 'alerts'] as const,
   alerts: (cid: string) => ['company', cid, 'alerts', 'open'] as const,
+  // M6 guardrails & finance. guardrail.* / expense.* stream events invalidate by prefix.
+  guardrailsAll: (cid: string) => ['company', cid, 'guardrails'] as const,
+  guardrailRules: (cid: string) => ['company', cid, 'guardrails', 'rules'] as const,
+  guardrailEvents: (cid: string, filters: GuardrailEventFilters = {}) => ['company', cid, 'guardrails', 'events', filters] as const,
+  rateLimits: (cid: string) => ['company', cid, 'guardrails', 'rate-limits'] as const,
+  effectivePermissions: (cid: string, agentId: string) => ['company', cid, 'guardrails', 'effective', agentId] as const,
+  financeAll: (cid: string) => ['company', cid, 'finance'] as const,
+  financeSummary: (cid: string, from: string, to: string) => ['company', cid, 'finance', 'summary', from, to] as const,
+  financeBreakdown: (cid: string, groupBy: FinanceGroupBy, from: string, to: string) => ['company', cid, 'finance', 'breakdown', groupBy, from, to] as const,
+  financeTrend: (cid: string, from: string, to: string) => ['company', cid, 'finance', 'trend', from, to] as const,
+  financeRuns: (cid: string, from: string, to: string) => ['company', cid, 'finance', 'runs', from, to] as const,
+  expenses: (cid: string, from: string, to: string) => ['company', cid, 'finance', 'expenses', from, to] as const,
+  // The emergency stop is global (all companies).
+  systemStatus: ['system', 'status'] as const,
 }

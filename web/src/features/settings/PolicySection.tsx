@@ -7,7 +7,9 @@ import { formatUsd } from '@/lib/money'
 import {
   APPROVAL_KINDS,
   LIMIT_FIELDS,
+  MODEL_ROUTING_OPTIONS,
   diffPolicy,
+  hasM6Fields,
   policyToForm,
   validatePolicyForm,
   type PolicyFormErrors,
@@ -47,6 +49,11 @@ function PolicyForm({ companyId, policy }: { companyId: string; policy: CompanyP
     setValues((v) => ({ ...v, limits: { ...v.limits, [key]: value } }))
     setErrors({})
   }
+  const setM6 = (p: Partial<PolicyFormValues['m6']>) => {
+    setValues((v) => ({ ...v, m6: { ...v.m6, ...p } }))
+    setErrors({})
+  }
+  const m6 = values.m6
   const toggleKind = (kind: PolicyFormValues['human_approval_required_for'][number]) =>
     patch({
       human_approval_required_for: values.human_approval_required_for.includes(kind)
@@ -140,6 +147,61 @@ function PolicyForm({ companyId, policy }: { companyId: string; policy: CompanyP
             ))}
           </div>
         </section>
+
+        {hasM6Fields(m6) && (
+          <section className="space-y-3" aria-label="Spend governance and model routing">
+            <SectionLabel>Spend governance &amp; model routing</SectionLabel>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {m6.max_agent_monthly_budget_micros !== undefined && (
+                <Field label="Max monthly budget per agent (USD)" error={errors.max_agent_monthly_budget_micros} hint={`Agents can never be given more than this. Now ${formatUsd(policy.max_agent_monthly_budget_micros, 'no cap')}. Blank = no cap.`}>
+                  {({ id, invalid, describedBy }) => <Input id={id} inputMode="decimal" value={m6.max_agent_monthly_budget_micros} invalid={invalid} aria-describedby={describedBy} onChange={(e) => setM6({ max_agent_monthly_budget_micros: e.target.value })} />}
+                </Field>
+              )}
+              {m6.hire_default_monthly_budget_micros !== undefined && (
+                <Field label="Default monthly budget for new hires (USD)" error={errors.hire_default_monthly_budget_micros} hint={`Given to a hire that arrives without one. Now ${formatUsd(policy.hire_default_monthly_budget_micros, 'none')}. Blank = none.`}>
+                  {({ id, invalid, describedBy }) => <Input id={id} inputMode="decimal" value={m6.hire_default_monthly_budget_micros} invalid={invalid} aria-describedby={describedBy} onChange={(e) => setM6({ hire_default_monthly_budget_micros: e.target.value })} />}
+                </Field>
+              )}
+              {m6.auto_spend_limit_micros !== undefined && (
+                <Field label="Automatic spend limit (USD)" error={errors.auto_spend_limit_micros} hint="Purchases above this need a human; up to this, the AI Co-founder approves. 0 means a human approves every purchase.">
+                  {({ id, invalid, describedBy }) => <Input id={id} inputMode="decimal" value={m6.auto_spend_limit_micros} invalid={invalid} aria-describedby={describedBy} onChange={(e) => setM6({ auto_spend_limit_micros: e.target.value })} />}
+                </Field>
+              )}
+              {m6.budget_alert_thresholds !== undefined && (
+                <Field label="Budget alert thresholds (%)" error={errors.budget_alert_thresholds} hint="Raise an alert when a budget reaches each of these percentages, e.g. 50, 80, 100.">
+                  {({ id, invalid, describedBy }) => <Input id={id} value={m6.budget_alert_thresholds} invalid={invalid} aria-describedby={describedBy} onChange={(e) => setM6({ budget_alert_thresholds: e.target.value })} />}
+                </Field>
+              )}
+              {m6.model_routing !== undefined && (
+                <Field label="Model routing" error={errors.model_routing} hint={MODEL_ROUTING_OPTIONS.find((o) => o.value === m6.model_routing)?.hint}>
+                  {({ id, invalid, describedBy }) => (
+                    <Select id={id} invalid={invalid} aria-describedby={describedBy} value={m6.model_routing} onChange={(e) => setM6({ model_routing: e.target.value as typeof m6.model_routing })}>
+                      {MODEL_ROUTING_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </Select>
+                  )}
+                </Field>
+              )}
+              {m6.stall_seconds !== undefined && (
+                <Field label="Stall detection (seconds)" error={errors.stall_seconds} hint="A run with no progress for this long is cancelled and counts toward the circuit breaker.">
+                  {({ id, invalid, describedBy }) => <Input id={id} inputMode="numeric" value={m6.stall_seconds} invalid={invalid} aria-describedby={describedBy} onChange={(e) => setM6({ stall_seconds: e.target.value })} />}
+                </Field>
+              )}
+            </div>
+            {m6.allow_paid_fallback !== undefined && (
+              <label className="flex cursor-pointer items-start gap-2 rounded-md border border-line bg-raised px-2.5 py-2 text-[13px] hover:bg-hover">
+                <input type="checkbox" className="mt-0.5 size-3.5 accent-(--accent)" checked={m6.allow_paid_fallback} onChange={(e) => setM6({ allow_paid_fallback: e.target.checked })} />
+                <span>
+                  <span className="block text-fg">Allow a paid model as a fallback</span>
+                  <span className="block text-[12px] text-fg-3">When no free model can do the job, route to a paid one (still within the budgets above).</span>
+                </span>
+              </label>
+            )}
+          </section>
+        )}
 
         <section className="space-y-2">
           <SectionLabel>Model providers</SectionLabel>

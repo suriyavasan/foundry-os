@@ -13,6 +13,11 @@ describe('parsePanel', () => {
     expect(parsePanel('?panel=skill:5202d89e-12ba-490a-910e-721837f36e70')).toEqual({ kind: 'skill', id: '5202d89e-12ba-490a-910e-721837f36e70' })
   })
 
+  it('parses the M6 guardrails panel', () => {
+    expect(parsePanel('?panel=guardrails')).toEqual({ kind: 'guardrails' })
+    expect(withPanel('', { kind: 'guardrails' })).toBe('?panel=guardrails')
+  })
+
   it('parses the M5 panels: notes, memory, cofounder and a note thread', () => {
     expect(parsePanel('?panel=notes')).toEqual({ kind: 'notes' })
     expect(parsePanel('?panel=memory')).toEqual({ kind: 'memory' })

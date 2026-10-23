@@ -13,6 +13,7 @@ import { CofounderPanel } from '@/features/cofounder/CofounderPanel'
 import { MemoryPanel } from '@/features/memory/MemoryPanel'
 import { NotesPanel } from '@/features/notes/NotesPanel'
 import { NoteThreadPanel } from '@/features/notes/NoteThreadPanel'
+import { GuardrailsPanel } from '@/features/guardrails/GuardrailsPanel'
 import { IntegrationsPanel } from '@/features/integrations/IntegrationsPanel'
 import { SkillDetailPanel } from '@/features/skills/SkillDetailPanel'
 import { SkillsPanel } from '@/features/skills/SkillsPanel'
@@ -54,6 +55,8 @@ export function PanelHost() {
       return <MemoryPanel key={key} />
     case 'cofounder':
       return <CofounderPanel key={key} />
+    case 'guardrails':
+      return <GuardrailsPanel key={key} />
     case 'note':
       return <NoteThreadPanel key={key} noteId={panel.id} />
     case 'skill':

@@ -1,4 +1,4 @@
-import type { Agent, Alert, ClientNote, CofounderSummary, Company, MemoryEntry, NoteReply, Overview, RoleTemplate, Skill, SkillDetail, Task } from '@/api/types'
+import type { Agent, Alert, Approval, ClientNote, CofounderSummary, Company, FinanceSummary, GuardrailEvent, GuardrailRule, MemoryEntry, NoteReply, Overview, RateLimitStatus, RoleTemplate, Skill, SkillDetail, Task } from '@/api/types'
 
 export function makeAgent(over: Partial<Agent> = {}): Agent {
   const id = over.id ?? crypto.randomUUID()
@@ -248,6 +248,86 @@ export function makeSummary(over: Partial<CofounderSummary> = {}): CofounderSumm
     last_run: null,
     wake_pending: false,
     unprocessed_notes: 0,
+    ...over,
+  }
+}
+
+/* ---------------------------------- M6 ---------------------------------- */
+
+export function makeRule(over: Partial<GuardrailRule> = {}): GuardrailRule {
+  return {
+    id: crypto.randomUUID(),
+    company_id: 'c1',
+    tier: 'external_communication',
+    action: null,
+    scope_type: 'all',
+    scope_value: null,
+    decision: 'human_approval',
+    conditions: {},
+    created_at: '2026-10-24T09:00:00Z',
+    updated_at: '2026-10-24T09:00:00Z',
+    ...over,
+  }
+}
+
+export function makeGuardrailEvent(over: Partial<GuardrailEvent> = {}): GuardrailEvent {
+  return {
+    id: crypto.randomUUID(),
+    company_id: 'c1',
+    created_at: '2026-10-24T09:00:00Z',
+    agent_id: 'a2',
+    run_id: null,
+    task_id: null,
+    action: 'email.send',
+    tier: 'external_communication',
+    decision: 'peer_review',
+    rule_id: null,
+    approval_id: null,
+    payload_digest: 'sha256:abc',
+    reason: null,
+    ...over,
+  }
+}
+
+export function makeRateLimit(over: Partial<RateLimitStatus> = {}): RateLimitStatus {
+  return { agent_id: 'a2', key: 'api_calls_per_min', limit: 60, used: 12, window_seconds: 60, resets_at: null, ...over }
+}
+
+export function makeApproval(over: Partial<Approval> = {}): Approval {
+  return {
+    id: crypto.randomUUID(),
+    company_id: 'c1',
+    kind: 'external_communication',
+    status: 'pending',
+    approver: 'human',
+    requested_by_agent_id: 'a2',
+    task_id: null,
+    title: 'Send launch email',
+    reason: null,
+    amount_micros: null,
+    vendor: null,
+    recurrence: null,
+    risk: 'medium',
+    decided_by_type: null,
+    decided_by_id: null,
+    decided_at: null,
+    decision_note: null,
+    consumed_at: null,
+    created_at: '2026-10-24T09:00:00Z',
+    updated_at: '2026-10-24T09:00:00Z',
+    ...over,
+  }
+}
+
+export function makeFinanceSummary(over: Partial<FinanceSummary> = {}): FinanceSummary {
+  return {
+    from: '2026-10-01',
+    to: '2026-10-31',
+    timezone: 'UTC',
+    totals: { verified_micros: 1_250_000, estimated_micros: 3_400_000, unknown_micros: 0, input_tokens: 1000, output_tokens: 500, runs: 7 },
+    wasted: { verified_micros: 250_000, estimated_micros: 0, unknown_micros: 0, runs: 2 },
+    external_expenses_micros: 12_000_000,
+    budgets: [],
     ...over,
   }
 }

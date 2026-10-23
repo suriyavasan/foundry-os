@@ -25,6 +25,9 @@ interface CanvasApi {
   /** The pause/resume confirmation, shared by the top bar button and the command palette. */
   pauseOpen: boolean
   setPauseOpen: (open: boolean) => void
+  /** The emergency-stop confirmation, shared by the Guardrails panel and the command palette. */
+  stopOpen: boolean
+  setStopOpen: (open: boolean) => void
 }
 
 const CanvasContext = createContext<CanvasApi | null>(null)
@@ -68,6 +71,7 @@ export function CanvasProvider({ companyId, children }: { companyId: string; chi
   const [creating, setCreating] = useState<CanvasApi['creating']>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [pauseOpen, setPauseOpen] = useState(false)
+  const [stopOpen, setStopOpen] = useState(false)
 
   const value = useMemo<CanvasApi>(
     () => ({
@@ -82,8 +86,10 @@ export function CanvasProvider({ companyId, children }: { companyId: string; chi
       setPaletteOpen,
       pauseOpen,
       setPauseOpen,
+      stopOpen,
+      setStopOpen,
     }),
-    [companyId, panel, openPanel, closePanel, creating, paletteOpen, pauseOpen],
+    [companyId, panel, openPanel, closePanel, creating, paletteOpen, pauseOpen, stopOpen],
   )
   return <CanvasContext value={value}>{children}</CanvasContext>
 }

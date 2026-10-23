@@ -49,7 +49,8 @@ export function normalizeUsage(raw: unknown): UsageReport {
     const kinds = rec(o.by_cost_kind) ?? rec(o.by_kind)
     if (kinds) {
       for (const k of KINDS) {
-        const v = kinds[k]
+        // The documented API shape is `{verified_micros, estimated_micros, unknown_micros}` (schema CostByKind); the bare names are also read.
+        const v = kinds[`${k}_micros`] ?? kinds[k]
         row.by_kind[k] = typeof v === 'number' ? v : num(rec(v)?.cost_micros ?? rec(v)?.micros)
       }
     } else if (KINDS.some((k) => `${k}_micros` in o)) {
