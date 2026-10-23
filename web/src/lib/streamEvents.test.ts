@@ -4,6 +4,7 @@ import type { AuditEvent, CompanyEvent } from '@/api/types'
 import { makeAgent } from '@/test/factories'
 import { normalizeLive } from './liveState'
 import {
+  KNOWN_EVENT_TYPES,
   dedupeEffects,
   effectsForEvent,
   feedItemForAudit,
@@ -70,6 +71,26 @@ describe('effectsForEvent', () => {
     expect(keys(ev('approval.created'))).toContainEqual(qk.approvalsAll(cid))
     expect(keys(ev('approval.decided'))).toContainEqual(qk.approvalsAll(cid))
     expect(keys(ev('artifact.created'))).toEqual([qk.artifactsAll(cid)])
+  })
+  it('refreshes skills, templates and the HR activity feed on skill events', () => {
+    for (const type of ['skill.installed', 'skill.updated', 'skill.quarantined', 'skill.archived', 'skill_library.seeded', 'agent.skills_changed', 'role_template.created']) {
+      const k = keys(ev(type))
+      expect(k, type).toContainEqual(qk.skillsAll(cid))
+      expect(k, type).toContainEqual(qk.activityAll(cid))
+    }
+  })
+  it('refreshes agents, hiring tasks and approvals when a hire happens', () => {
+    for (const type of ['hire.created', 'hire.requested']) {
+      const k = keys(ev(type))
+      expect(k, type).toContainEqual(qk.agents(cid))
+      expect(k, type).toContainEqual(qk.tasksAll(cid))
+      expect(k, type).toContainEqual(qk.approvalsAll(cid))
+    }
+  })
+  it('listens for every M4 company event', () => {
+    for (const type of ['skill.installed', 'skill.updated', 'skill.quarantined', 'skill.archived', 'skill_library.seeded', 'agent.skills_changed', 'role_template.created', 'hire.created', 'hire.requested']) {
+      expect(KNOWN_EVENT_TYPES).toContain(type)
+    }
   })
   it('ignores unknown event types', () => {
     expect(effectsForEvent(cid, ev('something.else'))).toEqual([])

@@ -1,4 +1,4 @@
-import type { ActivityFilters, AgentFilters, ApprovalFilters, ArtifactFilters, TaskFilters, UsageGroupBy } from './types'
+import type { ActivityFilters, AgentFilters, ApprovalFilters, ArtifactFilters, CatalogSource, TaskFilters, UsageGroupBy } from './types'
 
 /** Query keys. Everything company-scoped lives under ['company', cid, ...]. */
 export const qk = {
@@ -37,4 +37,16 @@ export const qk = {
   usage: (cid: string, groupBy: UsageGroupBy, from: string, to: string) =>
     ['company', cid, 'usage', groupBy, from, to] as const,
   usageAll: (cid: string) => ['company', cid, 'usage'] as const,
+  // M4 skills. Everything lives under ['company', cid, 'skills'] so skill.* stream events invalidate by prefix.
+  skillsAll: (cid: string) => ['company', cid, 'skills'] as const,
+  skillList: (cid: string) => ['company', cid, 'skills', 'list'] as const,
+  skill: (cid: string, id: string) => ['company', cid, 'skills', 'detail', id] as const,
+  skillFile: (cid: string, id: string, path: string) => ['company', cid, 'skills', 'file', id, path] as const,
+  skillCatalog: (cid: string, q: string, source: CatalogSource) => ['company', cid, 'skills', 'catalog', source, q] as const,
+  agentSkills: (cid: string, agentId: string) => ['company', cid, 'skills', 'agent', agentId] as const,
+  roleTemplates: (cid: string) => ['company', cid, 'role-templates'] as const,
+  // M3b model providers & credentials.
+  modelProviders: (cid: string) => ['company', cid, 'model-providers'] as const,
+  providerDetect: (cid: string) => ['company', cid, 'model-providers', 'detect'] as const,
+  credentials: (cid: string) => ['company', cid, 'credentials'] as const,
 }

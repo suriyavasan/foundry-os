@@ -129,8 +129,10 @@ export interface Agent {
   created_at: Timestamp
   updated_at: Timestamp
   status_changed_at: Timestamp
-  /** M4 adds an explicit employee type. Until then the UI infers it (lib/roleFamily). */
-  role_family?: string | null
+  /** M4: explicit employee type (set by role templates). The UI infers it only when absent (lib/roleFamily). */
+  role_family?: RoleFamily | null
+  /** M4: slug of the role template the agent was hired from. */
+  role_template?: string | null
   /** M2: what the agent is doing right now. Absent on an M1 backend. */
   live?: AgentLive | null
 }
@@ -138,7 +140,8 @@ export interface Agent {
 export interface CreateAgentRequest {
   name: string
   role_title: string
-  kind: AgentKind
+  /** Optional since M4: a role template supplies it when omitted. */
+  kind?: AgentKind
   department_id?: Uuid | null
   manager_agent_id?: Uuid | null
   reports_to_human?: boolean
@@ -151,6 +154,10 @@ export interface CreateAgentRequest {
   tool_permissions?: string[]
   monthly_budget_micros?: number | null
   daily_budget_micros?: number | null
+  /** M4: role template slug. Fields not sent take the template's defaults; its default skills are assigned. */
+  role_template?: string | null
+  /** M4: extra skills (library slugs) to assign on top of the template's defaults. */
+  skill_slugs?: string[] | null
 }
 
 /** Editable fields only: status, kind and company_id are not editable. */
@@ -697,4 +704,233 @@ export interface CompanyEvent {
   type: string
   payload: Record<string, unknown>
   created_at?: Timestamp
+}
+
+/* ======================================================================== *
+ * Milestone 4 (docs/api.md "Milestone 4", docs/specs/m4-skills-and-hr.md).
+ * Mirrored against schema.d.ts in contract.check.ts.
+ * ======================================================================== */
+
+export type SkillSourceKind = 'hermes_bundled' | 'hermes_optional' | 'github' | 'company_authored' | 'uploaded'
+export type SkillTrust = 'builtin' | 'trusted' | 'community'
+export type ScanVerdict = 'safe' | 'caution' | 'dangerous' | 'unscanned'
+export type SkillStatus = 'active' | 'quarantined' | 'archived'
+
+export interface Skill {
+  id: Uuid
+  company_id: Uuid
+  slug: string
+  name: string
+  description: string
+  category: string | null
+  tags: string[]
+  version: string | null
+  author: string | null
+  license: string | null
+  source_kind: SkillSourceKind
+  source_ref: string
+  blob_sha256: string
+  trust: SkillTrust
+  scan_verdict: ScanVerdict
+  status: SkillStatus
+  requires_toolsets: string[]
+  /** Variable names only, never values. */
+  required_env: string[]
+  created_by_type: CreatedByType
+  created_by_id: Uuid | null
+  created_at: Timestamp
+  updated_at: Timestamp
+}
+
+export interface SkillScanFinding {
+  category?: string
+  pattern?: string
+  severity?: string
+  file?: string
+  line?: number | null
+  description?: string
+}
+
+/**
+ * The server types `scan_report` as a free-form object; the documented members are read defensively
+ * (lib/skills.ts `readScanReport`).
+ */
+export interface SkillScanReport {
+  verdict?: ScanVerdict
+  scanner_version?: string
+  summary?: string
+  finding_count?: number
+  findings?: SkillScanFinding[]
+  [key: string]: unknown
+}
+
+export interface SkillFileInfo {
+  path: string
+  size_bytes: number
+}
+
+export interface SkillAssignedAgent {
+  id: Uuid
+  name: string
+  role_title: string
+  status: string
+}
+
+export interface SkillDetail extends Skill {
+  scan_report: Record<string, unknown>
+  frontmatter: Record<string, unknown>
+  files: SkillFileInfo[]
+  assigned_agents: SkillAssignedAgent[]
+}
+
+export interface SkillFileContent {
+  path: string
+  content: string
+  truncated: boolean
+}
+
+export interface SkillFilters {
+  status?: SkillStatus
+  source_kind?: SkillSourceKind
+  tag?: string
+  q?: string
+}
+
+export type CatalogSource = 'all' | 'library' | 'hermes' | 'github'
+
+export interface CatalogItem {
+  slug: string
+  name: string
+  description: string
+  tags: string[]
+  license: string | null
+  source: 'library' | 'hermes' | 'github'
+  source_kind: string | null
+  source_ref: string
+  item_type?: 'skill' | 'repository'
+  installed: boolean
+  skill_id?: Uuid | null
+  status?: string | null
+  stars?: number | null
+}
+
+export interface InstallSkillRequest {
+  source_ref: string
+  slug?: string | null
+}
+
+export interface InstallSkillResult {
+  skill: Skill
+  outcome: 'installed' | 'updated' | 'unchanged' | (string & {})
+  quarantined: boolean
+  scan: Record<string, unknown>
+}
+
+export interface AgentSkill {
+  skill: Skill
+  assigned_by_type: CreatedByType
+  assigned_by_id: Uuid | null
+  assigned_at: Timestamp
+}
+
+export interface AssignSkillsRequest {
+  skill_ids?: Uuid[]
+  slugs?: string[]
+}
+
+export interface RoleTemplate {
+  slug: string
+  family: RoleFamily
+  title: string
+  description: string
+  default_kind: AgentKind
+  default_department: string | null
+  instructions: string
+  default_toolsets: string[]
+  default_skill_slugs: string[]
+  required_skill_tags: string[]
+  builtin: boolean
+  id?: Uuid | null
+  created_by_type?: string | null
+  created_by_id?: Uuid | null
+}
+
+/* ======================================================================== *
+ * Milestone 3b (docs/specs/m3-company-agent-runtime.md "M3b"): model providers and credentials.
+ * ASSUMPTION: these endpoints are specified in prose only and were not served when this was written.
+ * Paths: /companies/{cid}/model-providers[/detect|/{id}/test], /companies/{cid}/credentials.
+ * Every response is normalised defensively (lib/providers.ts) and a 404 renders "not built yet".
+ * ======================================================================== */
+
+export type ProviderKind = 'ollama' | 'openrouter' | 'anthropic' | 'openai' | 'openai_compatible'
+
+export interface ModelProvider {
+  id: Uuid
+  name: string
+  kind: ProviderKind | (string & {})
+  base_url: string | null
+  credential_id: Uuid | null
+  default_model: string | null
+  context_length: number | null
+  is_local: boolean
+  enabled: boolean
+  /** Micro-USD per 1M tokens. null = unknown (never shown as $0). */
+  input_price_per_mtok_micros: number | null
+  output_price_per_mtok_micros: number | null
+  created_at?: Timestamp
+  updated_at?: Timestamp
+}
+
+export interface CreateModelProviderRequest {
+  name: string
+  kind: ProviderKind
+  base_url?: string | null
+  credential_id?: Uuid | null
+  default_model?: string | null
+  context_length?: number | null
+  is_local?: boolean
+  enabled?: boolean
+  input_price_per_mtok_micros?: number | null
+  output_price_per_mtok_micros?: number | null
+}
+export type UpdateModelProviderRequest = Partial<Pick<CreateModelProviderRequest, 'enabled' | 'default_model' | 'context_length'>>
+
+/** Credential metadata. The secret value is write-only: no response ever carries it. */
+export interface Credential {
+  id: Uuid
+  name: string
+  kind: string
+  created_at?: Timestamp
+  created_by_type?: string | null
+  revoked_at?: Timestamp | null
+}
+
+export interface CreateCredentialRequest {
+  name: string
+  kind: string
+  /** Write-only. Sent once, never read back, never logged. */
+  value: string
+}
+
+/** Normalised `GET /model-providers/detect` (lib/providers.ts `normalizeDetect`). */
+export interface DetectedModel {
+  name: string
+  size_bytes: number | null
+  context_length: number | null
+}
+export interface DetectResult {
+  reachable: boolean
+  base_url: string | null
+  models: DetectedModel[]
+  message: string | null
+}
+
+/** Normalised `POST /model-providers/{id}/test`. */
+export interface ProviderTestResult {
+  ok: boolean
+  message: string | null
+  /** Server-supplied warnings, e.g. the served context window is smaller than configured. */
+  warnings: string[]
+  latency_ms: number | null
+  model: string | null
 }

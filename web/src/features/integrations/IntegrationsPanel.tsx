@@ -10,7 +10,6 @@ import {
   ErrorState,
   HealthBadge,
   LoadingState,
-  NotAvailable,
   TBody,
   TD,
   TH,
@@ -19,14 +18,28 @@ import {
   Table,
 } from '@/components/ui'
 import { formatRelative, formatDateTime } from '@/lib/format'
+import { COMPANY_AGENT_RUNTIME } from '@/lib/runtimes'
+import { useCanvas } from '@/features/canvas/CanvasContext'
+import { CredentialsSection } from './CredentialsSection'
+import { ProvidersSection } from './ProvidersSection'
+import { RuntimeHealthCard } from './RuntimeHealthCard'
 
 export function IntegrationsPanel() {
+  const { companyId } = useCanvas()
   const q = useRuntimes()
   const items = q.data?.items ?? []
 
   return (
-    <PanelFrame title="Integrations" subtitle="Agent runtimes execute work for your employees. Health is checked live by the backend.">
+    <PanelFrame title="Integrations" subtitle="Runtimes execute work; model providers supply the language models. Health is checked live by the backend.">
       <div className="space-y-4">
+        <RuntimeHealthCard
+          runtime={items.find((r) => r.id === COMPANY_AGENT_RUNTIME)}
+          loading={q.isPending}
+          onRefresh={() => void q.refetch()}
+          refreshing={q.isFetching && !q.isPending}
+        />
+        <ProvidersSection companyId={companyId} />
+        <CredentialsSection companyId={companyId} />
         <Card>
           <CardHeader
             title="Agent runtimes"
@@ -93,13 +106,6 @@ export function IntegrationsPanel() {
           )}
         </Card>
 
-        <Card>
-          <CardHeader title="Model providers & other integrations" />
-          <NotAvailable
-            milestone="M3"
-            description="Model providers, credentials and third-party integrations will be managed here. Credentials are never shown in the browser."
-          />
-        </Card>
       </div>
     </PanelFrame>
   )

@@ -53,3 +53,35 @@ check<Accepts<S['ProjectCreate'], T.CreateProjectRequest>>()
 check<Accepts<S['ProjectUpdate'], T.UpdateProjectRequest>>()
 check<Accepts<S['TaskCreate'], T.CreateTaskRequest>>()
 check<Accepts<S['TaskUpdate'], T.UpdateTaskRequest>>()
+
+// ---- Milestone 4 (skills & HR) ----
+check<Accepts<T.Skill, S['Skill']>>()
+check<Accepts<T.SkillDetail, S['SkillDetail']>>()
+check<Accepts<T.SkillAssignedAgent, S['SkillAssignedAgent']>>()
+check<Accepts<T.SkillFileInfo, S['SkillFileInfo']>>()
+check<Accepts<T.SkillFileContent, S['SkillFileContent']>>()
+check<Accepts<T.CatalogItem, S['CatalogItem']>>()
+check<Accepts<T.InstallSkillResult, S['SkillInstallResult']>>()
+check<Accepts<T.AgentSkill, S['AgentSkill']>>()
+check<Accepts<T.RoleTemplate, S['RoleTemplate']>>()
+// The enums the UI switches on must be exactly the server's.
+check<Same<T.SkillSourceKind, S['Skill']['source_kind']>>()
+check<Same<T.SkillTrust, S['Skill']['trust']>>()
+check<Same<T.ScanVerdict, S['Skill']['scan_verdict']>>()
+check<Same<T.SkillStatus, S['Skill']['status']>>()
+check<Same<T.RoleFamily, S['RoleTemplate']['family']>>()
+
+check<Accepts<S['SkillInstall'], T.InstallSkillRequest>>()
+check<Accepts<S['SkillRefs'], T.AssignSkillsRequest>>()
+// Hiring from a role template: AgentCreate now takes `role_template` and `skill_slugs`.
+check<Accepts<S['AgentCreate'], Required<Pick<T.CreateAgentRequest, 'role_template' | 'skill_slugs'>> & T.CreateAgentRequest>>()
+
+// ---- Milestone 3b (model providers, credentials) ----
+// These endpoints are specified in prose only and were not in the OpenAPI schema when the UI was written
+// (types.ts "Milestone 3b" documents the assumed shapes). Each check below switches itself on as soon as
+// `pnpm gen:api` brings the schema in, and then fails typecheck on any drift.
+type WhenInSchema<K extends string, Check extends boolean> = K extends keyof S ? Check : true
+check<WhenInSchema<'ModelProvider', Accepts<T.ModelProvider, S[Extract<'ModelProvider', keyof S>]>>>()
+check<WhenInSchema<'ModelProviderCreate', Accepts<S[Extract<'ModelProviderCreate', keyof S>], T.CreateModelProviderRequest>>>()
+check<WhenInSchema<'Credential', Accepts<T.Credential, S[Extract<'Credential', keyof S>]>>>()
+check<WhenInSchema<'CredentialCreate', Accepts<S[Extract<'CredentialCreate', keyof S>], T.CreateCredentialRequest>>>()

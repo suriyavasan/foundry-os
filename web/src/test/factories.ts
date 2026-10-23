@@ -1,4 +1,4 @@
-import type { Agent, Company, Overview, Task } from '@/api/types'
+import type { Agent, Company, Overview, RoleTemplate, Skill, SkillDetail, Task } from '@/api/types'
 
 export function makeAgent(over: Partial<Agent> = {}): Agent {
   const id = over.id ?? crypto.randomUUID()
@@ -116,3 +116,62 @@ export function mockApi(routes: Record<string, unknown | ((url: URL, init?: Requ
 }
 
 export const page = <T,>(items: T[]) => ({ items, next_cursor: null })
+
+export function makeSkill(over: Partial<Skill> = {}): Skill {
+  const id = over.id ?? crypto.randomUUID()
+  const slug = over.slug ?? `skill-${id.slice(0, 4)}`
+  return {
+    id,
+    company_id: 'c1',
+    slug,
+    name: slug,
+    description: `Does ${slug} things`,
+    category: null,
+    tags: [],
+    version: '1.0.0',
+    author: null,
+    license: 'MIT',
+    source_kind: 'hermes_bundled',
+    source_ref: `hermes@abc:skills/${slug}`,
+    blob_sha256: 'a'.repeat(64),
+    trust: 'builtin',
+    scan_verdict: 'safe',
+    status: 'active',
+    requires_toolsets: [],
+    required_env: [],
+    created_by_type: 'system',
+    created_by_id: null,
+    created_at: '2026-10-23T12:00:00Z',
+    updated_at: '2026-10-23T12:00:00Z',
+    ...over,
+  }
+}
+
+export function makeSkillDetail(over: Partial<SkillDetail> = {}): SkillDetail {
+  return {
+    ...makeSkill(over),
+    scan_report: { verdict: 'safe', scanner_version: '1', summary: 'ok', finding_count: 0, findings: [] },
+    frontmatter: { name: 'x' },
+    files: [{ path: 'SKILL.md', size_bytes: 120 }],
+    assigned_agents: [],
+    ...over,
+  }
+}
+
+export function makeTemplate(over: Partial<RoleTemplate> = {}): RoleTemplate {
+  return {
+    slug: 'software-engineer',
+    family: 'engineering',
+    title: 'Software Engineer',
+    description: 'Builds and ships product code.',
+    default_kind: 'specialist',
+    default_department: 'Engineering',
+    instructions: 'Write clean code.',
+    default_toolsets: ['file', 'terminal'],
+    default_skill_slugs: ['plan', 'debugging'],
+    required_skill_tags: [],
+    builtin: true,
+    id: null,
+    ...over,
+  }
+}

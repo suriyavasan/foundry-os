@@ -10,6 +10,7 @@ describe('parsePanel', () => {
     expect(parsePanel('?panel=agent:abc-123')).toEqual({ kind: 'agent', id: 'abc-123' })
     expect(parsePanel('?panel=task:t_9')).toEqual({ kind: 'task', id: 't_9' })
     expect(parsePanel('?panel=artifact:a1')).toEqual({ kind: 'artifact', id: 'a1' })
+    expect(parsePanel('?panel=skill:5202d89e-12ba-490a-910e-721837f36e70')).toEqual({ kind: 'skill', id: '5202d89e-12ba-490a-910e-721837f36e70' })
   })
 
   it('reads a run id alongside a task panel only', () => {
@@ -24,6 +25,9 @@ describe('parsePanel', () => {
     expect(parsePanel('?panel=agent')).toBeNull() // id panel without id
     expect(parsePanel('?panel=agent:')).toBeNull()
     expect(parsePanel('?panel=tasks:1')).toBeNull() // simple panel with id
+    expect(parsePanel('?panel=skills:1')).toBeNull()
+    expect(parsePanel('?panel=skill')).toBeNull() // id panel without id
+    expect(parsePanel('?panel=skill:../x')).toBeNull()
     expect(parsePanel('?panel=agent:../../etc')).toBeNull()
     expect(parsePanel('?panel=task:t1&run=bad/run')).toEqual({ kind: 'task', id: 't1' })
     expect(parsePanel('?panel=agent:' + 'x'.repeat(65))).toBeNull()
@@ -42,6 +46,8 @@ describe('serializePanel / withPanel', () => {
     { kind: 'task', id: 't1' },
     { kind: 'task', id: 't1', run: 'r1' },
     { kind: 'artifact', id: 'x9' },
+    { kind: 'skills' },
+    { kind: 'skill', id: 'abc-1' },
   ]
 
   it('round-trips through the query string', () => {
@@ -51,6 +57,7 @@ describe('serializePanel / withPanel', () => {
   it('serializes to the documented form', () => {
     expect(serializePanel({ kind: 'agent', id: 'a1' })).toBe('agent:a1')
     expect(serializePanel({ kind: 'tasks' })).toBe('tasks')
+    expect(serializePanel({ kind: 'skill', id: 's1' })).toBe('skill:s1')
   })
 
   it('keeps unrelated params and replaces the panel', () => {

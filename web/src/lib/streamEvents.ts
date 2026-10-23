@@ -51,6 +51,16 @@ export const KNOWN_EVENT_TYPES = [
   'budget.changed',
   'policy.updated',
   'company.updated',
+  // M4 skills & HR (docs/api.md: company events)
+  'skill.installed',
+  'skill.updated',
+  'skill.quarantined',
+  'skill.archived',
+  'skill_library.seeded',
+  'agent.skills_changed',
+  'role_template.created',
+  'hire.created',
+  'hire.requested',
 ] as const
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null)
@@ -131,6 +141,17 @@ export function effectsForEvent(cid: string, ev: CompanyEvent): CacheEffect[] {
       return [inv(qk.policy(cid)), inv(qk.usageAll(cid)), inv(qk.tasksAll(cid))]
     case 'company.updated':
       return [inv(qk.companyDetail(cid)), inv(qk.companies)]
+    case 'skill.installed':
+    case 'skill.updated':
+    case 'skill.quarantined':
+    case 'skill.archived':
+    case 'skill_library.seeded':
+    case 'agent.skills_changed':
+    case 'role_template.created':
+      return [inv(qk.skillsAll(cid)), inv(qk.roleTemplates(cid)), inv(qk.activityAll(cid))]
+    case 'hire.created':
+    case 'hire.requested':
+      return [inv(qk.agents(cid)), inv(qk.tasksAll(cid)), inv(qk.approvalsAll(cid)), inv(qk.overview(cid)), inv(qk.departments(cid)), inv(qk.skillsAll(cid)), inv(qk.activityAll(cid))]
     default:
       return []
   }

@@ -1,6 +1,6 @@
-import type { Agent, AgentKind, Department, RuntimeInfo } from '@/api/types'
+import type { Agent, AgentKind, Department, ModelProvider, RuntimeInfo } from '@/api/types'
 import { Field, Input, Select, Textarea } from '@/components/ui'
-import { UNASSIGNED_RUNTIME, managerCandidates, type AgentFormErrors, type AgentFormValues } from './agentForm'
+import { UNASSIGNED_RUNTIME, managerCandidates, providerOptions, type AgentFormErrors, type AgentFormValues } from './agentForm'
 
 const KIND_LABEL: Record<AgentKind, string> = {
   founder: 'Founder',
@@ -27,6 +27,9 @@ export function AgentFormFields({
   selfId,
   disabled,
   showKind,
+  providers,
+  noDepartmentLabel = 'No department',
+  departmentHint,
 }: {
   values: AgentFormValues
   errors: AgentFormErrors
@@ -37,8 +40,14 @@ export function AgentFormFields({
   selfId?: string
   disabled?: boolean
   showKind?: boolean
+  /** Registered model providers (M3b). Undefined or empty -> the provider stays a free-text field. */
+  providers?: ModelProvider[]
+  noDepartmentLabel?: string
+  departmentHint?: string
 }) {
   const managers = managerCandidates(agents, selfId)
+  const registered = providers && providers.length > 0 ? providerOptions(providers, values.model_provider) : null
+  const chosen = providers?.find((p) => p.id === values.model_provider)
   return (
     <div className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
@@ -67,10 +76,10 @@ export function AgentFormFields({
             )}
           </Field>
         )}
-        <Field label="Department" error={errors.department_id}>
+        <Field label="Department" error={errors.department_id} hint={departmentHint}>
           {({ id, invalid }) => (
             <Select id={id} value={values.department_id} invalid={invalid} disabled={disabled} onChange={(e) => onChange({ department_id: e.target.value })}>
-              <option value="">No department</option>
+              <option value="">{noDepartmentLabel}</option>
               {departments.map((d) => (
                 <option key={d.id} value={d.id}>
                   {d.name}
@@ -103,14 +112,35 @@ export function AgentFormFields({
         )}
       </Field>
       <div className="grid gap-4 sm:grid-cols-3">
-        <Field label="Model provider" error={errors.model_provider}>
-          {({ id, invalid, describedBy }) => (
-            <Input id={id} value={values.model_provider} disabled={disabled} invalid={invalid} aria-describedby={describedBy} placeholder="e.g. anthropic" onChange={(e) => onChange({ model_provider: e.target.value })} />
-          )}
+        <Field label="Model provider" error={errors.model_provider} hint={registered ? undefined : 'No providers registered yet: free text. Register one in Integrations.'}>
+          {({ id, invalid, describedBy }) =>
+            registered ? (
+              <Select
+                id={id}
+                value={values.model_provider}
+                invalid={invalid}
+                disabled={disabled}
+                aria-describedby={describedBy}
+                onChange={(e) => {
+                  const opt = registered.find((o) => o.value === e.target.value)
+                  onChange({ model_provider: e.target.value, ...(opt?.defaultModel && !values.model_name.trim() ? { model_name: opt.defaultModel } : {}) })
+                }}
+              >
+                <option value="">No provider</option>
+                {registered.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </Select>
+            ) : (
+              <Input id={id} value={values.model_provider} disabled={disabled} invalid={invalid} aria-describedby={describedBy} placeholder="e.g. anthropic" onChange={(e) => onChange({ model_provider: e.target.value })} />
+            )
+          }
         </Field>
         <Field label="Model name" error={errors.model_name}>
           {({ id, invalid, describedBy }) => (
-            <Input id={id} value={values.model_name} disabled={disabled} invalid={invalid} aria-describedby={describedBy} onChange={(e) => onChange({ model_name: e.target.value })} />
+            <Input id={id} value={values.model_name} disabled={disabled} invalid={invalid} aria-describedby={describedBy} placeholder={chosen?.default_model ?? undefined} onChange={(e) => onChange({ model_name: e.target.value })} />
           )}
         </Field>
         <Field label="Runtime" error={errors.runtime}>
@@ -118,7 +148,7 @@ export function AgentFormFields({
             <Select id={id} value={values.runtime} invalid={invalid} disabled={disabled} onChange={(e) => onChange({ runtime: e.target.value })}>
               {runtimeOptions(runtimes, values.runtime).map((r) => (
                 <option key={r} value={r}>
-                  {r}
+                  {runtimes?.find((x) => x.id === r)?.display_name ?? r}
                 </option>
               ))}
             </Select>

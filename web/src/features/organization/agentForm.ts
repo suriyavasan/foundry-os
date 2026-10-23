@@ -1,4 +1,4 @@
-import type { Agent, AgentKind, CreateAgentRequest, UpdateAgentRequest } from '@/api/types'
+import type { Agent, AgentKind, CreateAgentRequest, ModelProvider, UpdateAgentRequest } from '@/api/types'
 import { microsToUsdString, parseBudgetInput } from '@/lib/money'
 
 export const AGENT_LIMITS = { name: 120, roleTitle: 120 } as const
@@ -128,4 +128,30 @@ export function managerCandidates(agents: Agent[], selfId?: string): Agent[] {
   return agents
     .filter((a) => a.id !== selfId && a.status !== 'retired' && a.status !== 'rejected')
     .sort((a, b) => a.name.localeCompare(b.name))
+}
+
+export interface ProviderOption {
+  value: string
+  label: string
+  /** True when the value is not a registered provider (a legacy free-text value on an existing agent). */
+  unregistered?: boolean
+  defaultModel?: string | null
+}
+
+/**
+ * Options for the agent's model-provider select. `agent.model_provider` is a registered provider's id
+ * (M3b). Disabled providers are omitted unless one is the current value; an unknown current value is
+ * kept and labelled so saving the form never silently changes it.
+ */
+export function providerOptions(providers: ModelProvider[], current: string): ProviderOption[] {
+  const out: ProviderOption[] = providers
+    .filter((p) => p.enabled || p.id === current)
+    .map((p) => ({
+      value: p.id,
+      label: `${p.name}${p.is_local ? ' · local' : ''}${p.enabled ? '' : ' (disabled)'}`,
+      defaultModel: p.default_model,
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label))
+  if (current && !providers.some((p) => p.id === current)) out.push({ value: current, label: `${current} (not a registered provider)`, unregistered: true })
+  return out
 }

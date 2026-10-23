@@ -80,6 +80,7 @@ function invalidateLive(qc: QueryClient, cid: string) {
     qk.activityAll(cid),
     qk.overview(cid),
     qk.schedules(cid),
+    qk.skillsAll(cid),
   ]) {
     void qc.invalidateQueries({ queryKey: key })
   }

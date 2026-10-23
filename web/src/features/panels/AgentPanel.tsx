@@ -34,7 +34,9 @@ import { PriorityBadge, RunStatusBadge, TaskStatusBadge } from '@/features/share
 import { formatDateTime, formatRelative, formatTokens } from '@/lib/format'
 import { formatCost } from '@/lib/money'
 import { formatDuration } from '@/lib/dates'
-import { NotAvailable } from '@/components/ui'
+import { NotAvailable, Badge, Chip } from '@/components/ui'
+import { AgentSkillsTab } from '@/features/skills/AgentSkillsTab'
+import { ROLE_FAMILY_LABEL, inferRoleFamily } from '@/lib/roleFamily'
 
 export function AgentPanel({ agentId }: { agentId: string }) {
   const { companyId, openPanel } = useCanvas()
@@ -80,6 +82,14 @@ export function AgentPanel({ agentId }: { agentId: string }) {
         <span className="flex items-center gap-2.5">
           {agent.name}
           <StatusBadge status={agent.status} />
+          <Badge tone="accent" title="Employee type (role family)">
+            {ROLE_FAMILY_LABEL[inferRoleFamily(agent)]}
+          </Badge>
+          {agent.role_template && (
+            <span className="hidden sm:inline-flex" title="Role template this agent was hired from">
+              <Chip>{agent.role_template}</Chip>
+            </span>
+          )}
         </span>
       }
       leading={<AgentAvatar agent={agent} size="md" />}
@@ -96,6 +106,7 @@ export function AgentPanel({ agentId }: { agentId: string }) {
           <TabsTrigger value="tasks">Tasks</TabsTrigger>
           <TabsTrigger value="runs">Runs</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
+          <TabsTrigger value="skills">Skills</TabsTrigger>
           <TabsTrigger value="configuration">Configuration</TabsTrigger>
           <TabsTrigger value="budget">Budget</TabsTrigger>
           <TabsTrigger value="permissions">Permissions</TabsTrigger>
@@ -111,6 +122,9 @@ export function AgentPanel({ agentId }: { agentId: string }) {
         </TabsContent>
         <TabsContent value="activity">
           <AgentActivityTab companyId={companyId} agentId={agent.id} />
+        </TabsContent>
+        <TabsContent value="skills">
+          <AgentSkillsTab agent={agent} />
         </TabsContent>
         <TabsContent value="configuration">
           <ConfigurationTab key={agent.updated_at} agent={agent} agents={allAgents} departments={departments} />

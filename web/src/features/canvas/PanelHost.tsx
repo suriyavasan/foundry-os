@@ -10,6 +10,8 @@ import { RoutinesPanel } from '@/features/panels/RoutinesPanel'
 import { TaskPanel } from '@/features/panels/TaskPanel'
 import { TasksPanel } from '@/features/panels/TasksPanel'
 import { IntegrationsPanel } from '@/features/integrations/IntegrationsPanel'
+import { SkillDetailPanel } from '@/features/skills/SkillDetailPanel'
+import { SkillsPanel } from '@/features/skills/SkillsPanel'
 import { SettingsPanel } from '@/features/settings/SettingsPanel'
 import { serializePanel } from '@/lib/panels'
 import { useCanvas } from './CanvasContext'
@@ -40,6 +42,10 @@ export function PanelHost() {
       return <GoalsPanel key={key} />
     case 'routines':
       return <RoutinesPanel key={key} />
+    case 'skills':
+      return <SkillsPanel key={key} />
+    case 'skill':
+      return <SkillDetailPanel key={key} skillId={panel.id} />
     case 'agent':
       return <AgentPanel key={key} agentId={panel.id} />
     case 'task':

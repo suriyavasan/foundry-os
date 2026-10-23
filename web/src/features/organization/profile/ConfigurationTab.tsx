@@ -1,6 +1,6 @@
 import { AlertTriangle } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
-import { useRuntimes } from '@/api'
+import { useModelProviders, useRuntimes } from '@/api'
 import type { Agent, Department } from '@/api/types'
 import { KeyValueEditor, rowsFromObject, rowsToObject, type KVRow } from '@/components/forms/KeyValueEditor'
 import { Button, Card, CardBody, CardHeader, FormError } from '@/components/ui'
@@ -18,6 +18,7 @@ import { useAgentSave } from './useAgentSave'
 export function ConfigurationTab({ agent, agents, departments }: { agent: Agent; agents: Agent[]; departments: Department[] }) {
   const readOnly = agent.status === 'retired'
   const runtimes = useRuntimes()
+  const providers = useModelProviders(agent.company_id)
   const { save, saving, error, fieldErrors } = useAgentSave(agent)
   const [values, setValues] = useState<AgentFormValues>(() => agentToForm(agent))
   const [rows, setRows] = useState<KVRow[]>(() => rowsFromObject(agent.runtime_config))
@@ -59,6 +60,7 @@ export function ConfigurationTab({ agent, agents, departments }: { agent: Agent;
             departments={departments}
             agents={agents}
             runtimes={runtimes.data?.items}
+            providers={providers.data}
             selfId={agent.id}
             disabled={readOnly}
           />
