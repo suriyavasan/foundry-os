@@ -99,8 +99,10 @@ describe('canvas on an M1 backend (work engine not deployed)', () => {
     renderCanvas()
     await screen.findByText('Atlas')
     await userEvent.click(screen.getByRole('button', { name: /Pause company/ }))
-    const dialog = await screen.findByRole('alertdialog').catch(() => screen.findByRole('dialog', { name: /Pause Acme Labs/ }))
-    expect(within(dialog).getByText(/cancels work that is running right now/)).toBeInTheDocument()
+    // Locate the confirmation by its content, whichever dialog role the primitive uses.
+    const consequence = await screen.findByText(/cancels work that is running right now/)
+    const dialog = consequence.closest<HTMLElement>('[role="dialog"], [role="alertdialog"]')!
+    expect(dialog).toBeTruthy()
     expect(api.calls.some((c) => c.path.endsWith('/pause'))).toBe(false)
     await userEvent.click(within(dialog).getByRole('button', { name: 'Pause company' }))
     await waitFor(() => expect(api.calls.some((c) => c.method === 'POST' && c.path === '/companies/c1/pause')).toBe(true))
