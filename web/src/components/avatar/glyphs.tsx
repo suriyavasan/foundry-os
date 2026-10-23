@@ -104,7 +104,7 @@ const G: Record<GlyphKey, ReactNode> = {
       <path d="M4.8 20c0-4 3.1-6.3 7.2-6.3s7.2 2.3 7.2 6.3" />
     </>
   ),
-  // the human co-founder: bust with a small star
+  // the Founder (the human): bust with a small star
   human: (
     <>
       <circle cx="11" cy="9" r="3.4" />

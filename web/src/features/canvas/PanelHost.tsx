@@ -9,6 +9,10 @@ import { OrgPanel } from '@/features/panels/OrgPanel'
 import { RoutinesPanel } from '@/features/panels/RoutinesPanel'
 import { TaskPanel } from '@/features/panels/TaskPanel'
 import { TasksPanel } from '@/features/panels/TasksPanel'
+import { CofounderPanel } from '@/features/cofounder/CofounderPanel'
+import { MemoryPanel } from '@/features/memory/MemoryPanel'
+import { NotesPanel } from '@/features/notes/NotesPanel'
+import { NoteThreadPanel } from '@/features/notes/NoteThreadPanel'
 import { IntegrationsPanel } from '@/features/integrations/IntegrationsPanel'
 import { SkillDetailPanel } from '@/features/skills/SkillDetailPanel'
 import { SkillsPanel } from '@/features/skills/SkillsPanel'
@@ -44,6 +48,14 @@ export function PanelHost() {
       return <RoutinesPanel key={key} />
     case 'skills':
       return <SkillsPanel key={key} />
+    case 'notes':
+      return <NotesPanel key={key} />
+    case 'memory':
+      return <MemoryPanel key={key} />
+    case 'cofounder':
+      return <CofounderPanel key={key} />
+    case 'note':
+      return <NoteThreadPanel key={key} noteId={panel.id} />
     case 'skill':
       return <SkillDetailPanel key={key} skillId={panel.id} />
     case 'agent':

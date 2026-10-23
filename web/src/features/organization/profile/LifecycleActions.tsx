@@ -76,7 +76,7 @@ export function LifecycleActions({ agent, companyId }: { agent: Agent; companyId
             <div className="space-y-3">
               <p>{pending.consequence}</p>
               {agent.kind === 'founder' && pending.action === 'retire' && (
-                <p className="text-warning">The founder cannot be retired while it is the company&apos;s only founder.</p>
+                <p className="text-warning">The AI Co-founder cannot be retired while it is the company&apos;s only AI Co-founder.</p>
               )}
               <Field label="Reason (optional)" hint="Recorded in the audit log.">
                 {({ id }) => <Textarea id={id} rows={2} value={reason} onChange={(e) => setReason(e.target.value)} />}

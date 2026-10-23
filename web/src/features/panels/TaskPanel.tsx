@@ -371,7 +371,7 @@ function Subtasks({ companyId, task }: { companyId: string; task: Task }) {
           )
         }
       />
-      <Boundary query={q} isEmpty={(d) => d.length === 0} empty={{ title: 'No subtasks', description: 'Managers and the AI Founder break work down into subtasks.' }} unavailableText="Tasks come with the work engine.">
+      <Boundary query={q} isEmpty={(d) => d.length === 0} empty={{ title: 'No subtasks', description: 'Managers and the AI Co-founder break work down into subtasks.' }} unavailableText="Tasks come with the work engine.">
         {(items) => (
           <ul className="divide-y divide-line">
             {items.map((t) => (

@@ -115,7 +115,7 @@ export function GoalsPanel() {
           </Card>
         ) : goals.data.length === 0 && (projects.data?.length ?? 0) === 0 ? (
           <Card>
-            <EmptyState title="No goals yet" description="Create a goal, or let the AI Founder propose them from the strategic goal." action={<Button variant="primary" onClick={() => create('goal')}>Create goal</Button>} />
+            <EmptyState title="No goals yet" description="Create a goal, or let the AI Co-founder propose them from the strategic goal." action={<Button variant="primary" onClick={() => create('goal')}>Create goal</Button>} />
           </Card>
         ) : (
           <>
@@ -140,7 +140,7 @@ export function GoalsPanel() {
                 <CardBody className="space-y-3">
                   {g.description && <p className="text-[13px] whitespace-pre-wrap text-fg-2">{g.description}</p>}
                   <div className="flex items-center gap-3 text-[12px] text-fg-3">
-                    Owner: <AgentChip agentId={g.owner_agent_id} agents={map} emptyLabel="AI Founder" />
+                    Owner: <AgentChip agentId={g.owner_agent_id} agents={map} emptyLabel="AI Co-founder" />
                   </div>
                   {renderProjects(byGoal.get(g.id) ?? [])}
                   <button type="button" className="text-[12.5px] text-accent-fg hover:underline" onClick={() => create('project', { goal_id: g.id })}>

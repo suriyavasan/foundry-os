@@ -64,7 +64,7 @@ export function ApprovalCard({ approval, agents, companyId, dense = false }: { a
         </div>
       ) : approval.status === 'pending' ? (
         <p className="mt-2 text-[12px] text-fg-3">
-          {approval.approver === 'founder' ? 'The AI Founder decides this one. You are not asked.' : 'Waiting for a decision.'}
+          {approval.approver === 'founder' ? 'The AI Co-founder decides this one. You are not asked.' : 'Waiting for a decision.'}
         </p>
       ) : null}
 

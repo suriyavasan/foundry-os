@@ -16,7 +16,7 @@ export const ROLE_FAMILIES: readonly RoleFamily[] = [
 ]
 
 export const ROLE_FAMILY_LABEL: Record<RoleFamily, string> = {
-  founder: 'Founder',
+  founder: 'AI Co-founder',
   hr: 'People & HR',
   engineering: 'Engineering',
   design: 'Design',

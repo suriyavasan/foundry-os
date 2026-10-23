@@ -85,3 +85,18 @@ check<WhenInSchema<'ModelProvider', Accepts<T.ModelProvider, S[Extract<'ModelPro
 check<WhenInSchema<'ModelProviderCreate', Accepts<S[Extract<'ModelProviderCreate', keyof S>], T.CreateModelProviderRequest>>>()
 check<WhenInSchema<'Credential', Accepts<T.Credential, S[Extract<'Credential', keyof S>]>>>()
 check<WhenInSchema<'CredentialCreate', Accepts<S[Extract<'CredentialCreate', keyof S>], T.CreateCredentialRequest>>>()
+
+// ---- Milestone 5 (Founder's notes, AI Co-founder, memory, alerts) ----
+// The M5 backend does not exist yet; types.ts "Milestone 5" documents the assumed shapes. The schema names
+// below are the expected ones (docs/specs/m5-autonomous-company.md §7). Each check switches itself on when a
+// schema with that name appears after `pnpm gen:api`, and then fails typecheck on any drift.
+check<WhenInSchema<'FounderNote', Accepts<T.FounderNote, S[Extract<'FounderNote', keyof S>]>>>()
+check<WhenInSchema<'NoteDetail', Accepts<T.NoteDetail, S[Extract<'NoteDetail', keyof S>]>>>()
+check<WhenInSchema<'NoteReply', Accepts<T.NoteReply, S[Extract<'NoteReply', keyof S>]>>>()
+check<WhenInSchema<'NoteCreate', Accepts<S[Extract<'NoteCreate', keyof S>], T.CreateNoteRequest>>>()
+check<WhenInSchema<'NoteReplyCreate', Accepts<S[Extract<'NoteReplyCreate', keyof S>], T.CreateNoteReplyRequest>>>()
+check<WhenInSchema<'NoteUpdate', Accepts<S[Extract<'NoteUpdate', keyof S>], T.UpdateNoteRequest>>>()
+check<WhenInSchema<'Alert', Accepts<T.Alert, S[Extract<'Alert', keyof S>]>>>()
+check<WhenInSchema<'MemoryEntry', Accepts<T.MemoryEntry, S[Extract<'MemoryEntry', keyof S>]>>>()
+check<WhenInSchema<'MemoryCreate', Accepts<S[Extract<'MemoryCreate', keyof S>], T.CreateMemoryRequest>>>()
+check<WhenInSchema<'CofounderSummary', Accepts<T.CofounderSummary, S[Extract<'CofounderSummary', keyof S>]>>>()

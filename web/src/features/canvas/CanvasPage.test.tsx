@@ -164,12 +164,12 @@ describe('canvas with the work engine', () => {
     renderCanvas()
     const box = await screen.findByRole('region', { name: 'Approvals' })
     const human = await within(box).findByRole('region', { name: 'Waiting for you' })
-    const founderSection = within(box).getByRole('region', { name: 'Decided by the founder' })
+    const founderSection = within(box).getByRole('region', { name: 'Decided by the AI Co-founder' })
     expect(within(human).getByText('Buy analytics seat')).toBeInTheDocument()
     expect(within(human).getByRole('button', { name: 'Approve' })).toBeInTheDocument()
     expect(within(founderSection).getByText('Hire a designer')).toBeInTheDocument()
     expect(within(founderSection).queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument()
-    expect(within(founderSection).getByText(/AI Founder decides this one/)).toBeInTheDocument()
+    expect(within(founderSection).getByText(/AI Co-founder decides this one/)).toBeInTheDocument()
   })
 
   it('approves with a note through the real endpoint', async () => {

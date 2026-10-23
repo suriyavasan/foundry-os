@@ -1,4 +1,4 @@
-import type { Agent, Company, Overview, RoleTemplate, Skill, SkillDetail, Task } from '@/api/types'
+import type { Agent, Alert, ClientNote, CofounderSummary, Company, MemoryEntry, NoteReply, Overview, RoleTemplate, Skill, SkillDetail, Task } from '@/api/types'
 
 export function makeAgent(over: Partial<Agent> = {}): Agent {
   const id = over.id ?? crypto.randomUUID()
@@ -172,6 +172,82 @@ export function makeTemplate(over: Partial<RoleTemplate> = {}): RoleTemplate {
     required_skill_tags: [],
     builtin: true,
     id: null,
+    ...over,
+  }
+}
+
+/* ---------------------------------- M5 ---------------------------------- */
+
+export function makeNote(over: Partial<ClientNote> = {}): ClientNote {
+  const id = over.id ?? crypto.randomUUID()
+  return {
+    id,
+    company_id: 'c1',
+    author_user_id: 'u1',
+    body: `Note ${id.slice(0, 4)}`,
+    attachments: [],
+    status: 'new',
+    triage: null,
+    triaged_by_run_id: null,
+    pinned: false,
+    created_at: '2026-10-24T09:00:00Z',
+    updated_at: '2026-10-24T09:00:00Z',
+    ...over,
+  }
+}
+
+export function makeReply(over: Partial<NoteReply> = {}): NoteReply {
+  return { id: crypto.randomUUID(), note_id: 'n1', author_type: 'agent', author_id: 'f1', body: 'Done.', created_at: '2026-10-24T09:05:00Z', ...over }
+}
+
+export function makeAlert(over: Partial<Alert> = {}): Alert {
+  return {
+    id: crypto.randomUUID(),
+    company_id: 'c1',
+    severity: 'warning',
+    kind: 'budget_threshold',
+    title: 'Budget at 80%',
+    body: null,
+    status: 'open',
+    related_type: null,
+    related_id: null,
+    created_at: '2026-10-24T09:00:00Z',
+    ...over,
+  }
+}
+
+export function makeMemory(over: Partial<MemoryEntry> = {}): MemoryEntry {
+  return {
+    id: crypto.randomUUID(),
+    company_id: 'c1',
+    kind: 'fact',
+    title: null,
+    body: 'We sell to dentists.',
+    status: 'verified',
+    source: null,
+    tags: [],
+    proposed_by_type: null,
+    proposed_by_id: null,
+    verified_by_type: null,
+    verified_by_id: null,
+    verified_at: null,
+    created_at: '2026-10-24T09:00:00Z',
+    updated_at: '2026-10-24T09:00:00Z',
+    ...over,
+  }
+}
+
+export function makeSummary(over: Partial<CofounderSummary> = {}): CofounderSummary {
+  return {
+    agent_id: 'f1',
+    goals: [],
+    plan: { summary: null, updated_at: null, projects: [] },
+    decisions: [],
+    blockers: [],
+    alerts: [],
+    last_run: null,
+    wake_pending: false,
+    unprocessed_notes: 0,
     ...over,
   }
 }

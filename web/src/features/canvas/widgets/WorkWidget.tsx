@@ -57,7 +57,7 @@ export function WorkWidget({ className }: { className?: string }) {
       ) : tasks.isError ? (
         <ErrorState compact error={tasks.error} onRetry={() => void tasks.refetch()} retrying={tasks.isFetching} />
       ) : tasks.data.length === 0 ? (
-        <EmptyState compact title="No tasks yet" description="Tasks created by you or by the AI Founder appear here." action={<Button size="sm" variant="primary" onClick={() => create('task')}>Create task</Button>} />
+        <EmptyState compact title="No tasks yet" description="Tasks created by you or by the AI Co-founder appear here." action={<Button size="sm" variant="primary" onClick={() => create('task')}>Create task</Button>} />
       ) : (
         <>
           <ul className="grid grid-cols-4 gap-px border-b border-line bg-line">

@@ -110,7 +110,7 @@ function PolicyForm({ companyId, policy }: { companyId: string; policy: CompanyP
               ))}
             </div>
             <p className="mt-1.5 text-[12px] text-fg-3">
-              {values.human_approval_required_for.length === 0 ? 'Nothing is reserved for you: the company is fully autonomous.' : 'Anything not checked is decided by the AI Founder.'}
+              {values.human_approval_required_for.length === 0 ? 'Nothing is reserved for you: the company is fully autonomous.' : 'Anything not checked is decided by the AI Co-founder.'}
             </p>
           </fieldset>
         </section>

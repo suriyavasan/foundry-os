@@ -934,3 +934,221 @@ export interface ProviderTestResult {
   latency_ms: number | null
   model: string | null
 }
+
+/* ======================================================================== *
+ * Milestone 5 (docs/specs/m5-autonomous-company.md §2 and §7): the Founder's notes, the AI
+ * Co-founder summary, company memory and alerts.
+ * ASSUMPTION: the M5 backend is not built yet. Paths and fields below follow the spec literally and
+ * fill the gaps conservatively; they are re-checked against schema.d.ts in contract.check.ts as soon
+ * as the generated schema contains the matching schema names. A 404 renders "not built yet".
+ *   POST/GET /companies/{cid}/notes            GET /companies/{cid}/notes/{id} (+ replies)
+ *   POST /companies/{cid}/notes/{id}/replies   PATCH /companies/{cid}/notes/{id}  {pinned?, status?}
+ *   GET /companies/{cid}/cofounder/summary     POST /companies/{cid}/cofounder/wake
+ *   GET/POST /companies/{cid}/memory           POST /companies/{cid}/memory/{id}/verify|reject
+ *   GET /companies/{cid}/alerts                POST /companies/{cid}/alerts/{id}/resolve
+ * Internal values keep the old name: the AI Co-founder is the agent of kind `founder`.
+ * ======================================================================== */
+
+export type NoteStatus = 'new' | 'triaged' | 'archived'
+export type NoteCategory = 'directive' | 'goal' | 'requirement' | 'idea' | 'feedback' | 'question' | 'context' | 'noise'
+
+/** A record the AI Co-founder created or changed while handling a note. `ref_id` is validated server-side. */
+export interface NoteAction {
+  type: string
+  ref_id: Uuid
+  /** Optional display name of the record (otherwise the UI resolves it from cached lists). */
+  label?: string | null
+}
+
+export interface NoteTriage {
+  category: NoteCategory
+  summary: string
+  actions: NoteAction[]
+  /** 0..1, or null when the model did not report one. */
+  confidence: number | null
+}
+
+export type NoteAuthorType = 'human' | 'agent'
+
+export interface NoteReply {
+  id: Uuid
+  note_id: Uuid
+  author_type: NoteAuthorType
+  author_id: Uuid | null
+  body: string
+  created_at: Timestamp
+}
+
+export interface FounderNote {
+  id: Uuid
+  company_id: Uuid
+  author_user_id: Uuid | null
+  /** Markdown, at most 10 KB. */
+  body: string
+  /** Artifact ids. */
+  attachments: Uuid[]
+  status: NoteStatus
+  triage: NoteTriage | null
+  triaged_by_run_id: Uuid | null
+  pinned: boolean
+  created_at: Timestamp
+  updated_at: Timestamp
+  /** List rows carry the newest reply (for the preview) and the reply count. */
+  last_reply?: NoteReply | null
+  reply_count?: number
+}
+
+export interface NoteDetail extends FounderNote {
+  replies: NoteReply[]
+}
+
+export interface CreateNoteRequest {
+  body: string
+  attachments?: Uuid[]
+}
+export interface UpdateNoteRequest {
+  pinned?: boolean
+  status?: 'archived' | 'new' | 'triaged'
+}
+export interface CreateNoteReplyRequest {
+  body: string
+}
+
+/** A note as held in the client cache: optimistic rows exist only until the server confirms them. */
+export type ClientNote = FounderNote & { pending?: boolean }
+
+/* ----------------------------------- alerts --------------------------------- */
+
+export type AlertSeverity = 'info' | 'warning' | 'critical'
+export type AlertStatus = 'open' | 'resolved'
+
+export interface Alert {
+  id: Uuid
+  company_id: Uuid
+  severity: AlertSeverity
+  /** Machine kind, e.g. `budget_threshold`, `run_failed`. */
+  kind: string
+  title: string
+  body: string | null
+  status: AlertStatus
+  /** The record the alert is about: `task`, `project`, `goal`, `agent`, `approval`, `run`, `artifact`, `note`, `schedule`. */
+  related_type: string | null
+  related_id: Uuid | null
+  created_at: Timestamp
+  resolved_at?: Timestamp | null
+  resolved_by_type?: CreatedByType | null
+  resolved_by_id?: Uuid | null
+}
+
+/* ----------------------------------- memory --------------------------------- */
+
+export type MemoryKind = 'fact' | 'decision' | 'requirement' | 'lesson' | 'research'
+export type MemoryStatus = 'proposed' | 'verified' | 'rejected' | 'superseded'
+
+export interface MemorySource {
+  /** `note`, `task`, `run`, `artifact`, `agent` or `human`. */
+  type: string
+  id: Uuid | null
+  /** A run lives under its task: the task panel opens with `?run=`. */
+  task_id?: Uuid | null
+  label?: string | null
+}
+
+export interface MemoryEntry {
+  id: Uuid
+  company_id: Uuid
+  kind: MemoryKind
+  title: string | null
+  body: string
+  status: MemoryStatus
+  source: MemorySource | null
+  tags: string[]
+  proposed_by_type: CreatedByType | null
+  proposed_by_id: Uuid | null
+  verified_by_type: CreatedByType | null
+  verified_by_id: Uuid | null
+  verified_at: Timestamp | null
+  rejection_reason?: string | null
+  superseded_by_id?: Uuid | null
+  created_at: Timestamp
+  updated_at: Timestamp
+}
+
+/** A human-created entry is verified straight away (server side). */
+export interface CreateMemoryRequest {
+  kind: MemoryKind
+  title?: string | null
+  body: string
+  tags?: string[]
+}
+
+/* ------------------------------ AI Co-founder summary ----------------------- */
+
+export interface CofounderPlanTask {
+  id: Uuid
+  title: string
+  status: TaskStatus
+  assignee_agent_id: Uuid | null
+}
+
+export interface CofounderPlanProject {
+  id: Uuid
+  goal_id: Uuid | null
+  name: string
+  status: ProjectStatus
+  lead_agent_id: Uuid | null
+  tasks_done: number
+  tasks_total: number
+  /** Open (not done / cancelled) tasks, newest plan first. */
+  open_tasks: CofounderPlanTask[]
+}
+
+export interface CofounderGoal {
+  id: Uuid
+  title: string
+  status: GoalStatus
+  priority: Priority
+  description?: string | null
+}
+
+export interface CofounderBlocker {
+  task_id: Uuid
+  title: string
+  reason: string | null
+  agent_id: Uuid | null
+  since: Timestamp | null
+}
+
+export interface CofounderLastRun {
+  run_id: Uuid
+  task_id: Uuid
+  status: RunStatus
+  started_at: Timestamp | null
+  finished_at: Timestamp | null
+  summary?: string | null
+}
+
+export interface CofounderSummary {
+  /** The agent of kind `founder`, null when none is active. */
+  agent_id: Uuid | null
+  goals: CofounderGoal[]
+  plan: {
+    /** The AI Co-founder's own short "what I am doing and why". */
+    summary: string | null
+    updated_at: Timestamp | null
+    projects: CofounderPlanProject[]
+  }
+  decisions: Decision[]
+  blockers: CofounderBlocker[]
+  alerts: Alert[]
+  last_run: CofounderLastRun | null
+  /** true while a coalesced wake task is already open. */
+  wake_pending: boolean
+  unprocessed_notes: number
+}
+
+export interface CofounderWakeResult {
+  /** `queued` when a new planning task was created, `coalesced` when one was already open. */
+  status: 'queued' | 'coalesced' | (string & {})
+  task_id: Uuid | null
+}

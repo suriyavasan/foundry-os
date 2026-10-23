@@ -22,7 +22,7 @@ export function RoutinesPanel() {
           unavailableTitle="Routines are not built yet"
           unavailableText="Schedules come with the work engine."
           isEmpty={(d) => d.length === 0}
-          empty={{ title: 'No routines yet', description: 'The AI Founder can set up heartbeats and recurring routines; they appear here.' }}
+          empty={{ title: 'No routines yet', description: 'The AI Co-founder can set up heartbeats and recurring routines; they appear here.' }}
         >
           {() => (
             <Table>

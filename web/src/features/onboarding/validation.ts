@@ -29,7 +29,7 @@ export function validateOnboarding(v: OnboardingValues): OnboardingErrors {
   else if (name.length > LIMITS.companyName) errors.name = `Company name must be at most ${LIMITS.companyName} characters`
 
   const founder = v.founder_name.trim()
-  if (founder.length > LIMITS.founderName) errors.founder_name = `Founder name must be at most ${LIMITS.founderName} characters`
+  if (founder.length > LIMITS.founderName) errors.founder_name = `AI Co-founder name must be at most ${LIMITS.founderName} characters`
 
   if (!v.timezone.trim()) errors.timezone = 'Choose a timezone'
 

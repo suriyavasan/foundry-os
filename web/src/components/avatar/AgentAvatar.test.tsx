@@ -7,7 +7,7 @@ import { AgentAvatar } from './AgentAvatar'
 import { GLYPH_KEYS, Glyph } from './glyphs'
 
 describe('avatar glyph set', () => {
-  it('has a glyph for every employee type plus the human co-founder', () => {
+  it('has a glyph for every employee type plus the human Founder', () => {
     for (const f of ROLE_FAMILIES) expect(GLYPH_KEYS).toContain(f)
     expect(GLYPH_KEYS).toContain('human')
     expect(GLYPH_KEYS).toHaveLength(ROLE_FAMILIES.length + 1)

@@ -1,7 +1,7 @@
 import { qk } from '@/api/keys'
 import type { Agent, AuditEvent, CompanyEvent } from '@/api/types'
 import { normalizeLive } from './liveState'
-import type { Panel } from './panels'
+import { ID_RE, type Panel } from './panels'
 
 /**
  * Pure core of `useCompanyStream`: what a CompanyEvent from the SSE outbox does to the client.
@@ -19,7 +19,7 @@ export type CacheEffect =
   | { kind: 'invalidate'; key: QueryKey }
 
 export type FeedTone = 'neutral' | 'accent' | 'success' | 'warning' | 'danger'
-export type FeedKind = 'run' | 'task' | 'agent' | 'approval' | 'artifact' | 'activity' | 'decision'
+export type FeedKind = 'run' | 'task' | 'agent' | 'approval' | 'artifact' | 'activity' | 'decision' | 'note' | 'alert'
 
 export interface FeedItem {
   /** Stable id for de-duplication across SSE replays and REST seeds. */
@@ -61,6 +61,16 @@ export const KNOWN_EVENT_TYPES = [
   'role_template.created',
   'hire.created',
   'hire.requested',
+  // M5 Founder's notes, AI Co-founder, memory, alerts (docs/specs/m5-autonomous-company.md §2, §7)
+  'note.created',
+  'note.updated',
+  'note.triaged',
+  'note.replied',
+  'cofounder.woke',
+  'memory.created',
+  'memory.updated',
+  'alert.raised',
+  'alert.resolved',
 ] as const
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null)
@@ -152,6 +162,33 @@ export function effectsForEvent(cid: string, ev: CompanyEvent): CacheEffect[] {
     case 'hire.created':
     case 'hire.requested':
       return [inv(qk.agents(cid)), inv(qk.tasksAll(cid)), inv(qk.approvalsAll(cid)), inv(qk.overview(cid)), inv(qk.departments(cid)), inv(qk.skillsAll(cid)), inv(qk.activityAll(cid))]
+    case 'note.created':
+    case 'note.updated':
+      return [inv(qk.notesAll(cid)), inv(qk.cofounderSummary(cid)), inv(qk.activityAll(cid))]
+    case 'note.replied': {
+      const noteId = str(p.note_id)
+      return [inv(qk.notesAll(cid)), ...(noteId ? [inv(qk.note(cid, noteId))] : []), inv(qk.cofounderSummary(cid)), inv(qk.activityAll(cid))]
+    }
+    case 'note.triaged':
+      // Triage creates real records (goals, projects, tasks, schedules, memory): refresh what shows them.
+      return [
+        inv(qk.notesAll(cid)),
+        inv(qk.goals(cid)),
+        inv(qk.projects(cid)),
+        inv(qk.tasksAll(cid)),
+        inv(qk.schedules(cid)),
+        inv(qk.memoryAll(cid)),
+        inv(qk.cofounderSummary(cid)),
+        inv(qk.activityAll(cid)),
+      ]
+    case 'cofounder.woke':
+      return [inv(qk.cofounder(cid)), inv(qk.tasksAll(cid)), inv(qk.runsAll(cid))]
+    case 'memory.created':
+    case 'memory.updated':
+      return [inv(qk.memoryAll(cid)), inv(qk.activityAll(cid))]
+    case 'alert.raised':
+    case 'alert.resolved':
+      return [inv(qk.alertsAll(cid)), inv(qk.cofounderSummary(cid))]
     default:
       return []
   }
@@ -196,6 +233,11 @@ const RUN_EVENT_TYPES_WITH_TEXT = new Set(['progress', 'decision', 'message', 't
 function taskPanel(p: Record<string, unknown>): Panel | null {
   const id = str(p.task_id) ?? str(obj(p.task)?.id)
   return id ? { kind: 'task', id } : null
+}
+
+function notePanel(p: Record<string, unknown>): Panel | null {
+  const id = str(p.note_id) ?? str(obj(p.note)?.id)
+  return id && ID_RE.test(id) ? { kind: 'note', id } : null
 }
 
 /** One human-readable line per event, or null when the event is not worth showing. */
@@ -253,6 +295,20 @@ export function feedItemForEvent(ev: CompanyEvent, now: string = new Date().toIS
       if (!summary) return null
       const actorType = str(p.actor_type)
       return { ...base, agentId: actorType === 'agent' ? str(p.actor_id) : null, kind: 'activity', tone: 'neutral', text: summary, panel: null }
+    }
+    case 'note.created':
+      return { ...base, agentId: null, kind: 'note', tone: 'neutral', text: 'The Founder wrote a note', panel: notePanel(p) ?? { kind: 'notes' } }
+    case 'note.triaged': {
+      const category = str(p.category) ?? str(obj(p.triage)?.category)
+      return { ...base, kind: 'note', tone: 'success', text: category ? `The AI Co-founder triaged a note as ${category}` : 'The AI Co-founder triaged a note', panel: notePanel(p) ?? { kind: 'notes' } }
+    }
+    case 'note.replied': {
+      const byHuman = str(p.author_type) === 'human'
+      return { ...base, agentId: byHuman ? null : agentId, kind: 'note', tone: 'neutral', text: byHuman ? 'The Founder replied on a note' : 'The AI Co-founder replied to a note', panel: notePanel(p) ?? { kind: 'notes' } }
+    }
+    case 'alert.raised': {
+      const sev = str(p.severity)
+      return { ...base, kind: 'alert', tone: sev === 'critical' ? 'danger' : sev === 'info' ? 'neutral' : 'warning', text: title ? `Alert: ${title}` : 'An alert was raised', panel: null }
     }
     default:
       return null

@@ -3,7 +3,7 @@ import { Field, Input, Select, Textarea } from '@/components/ui'
 import { UNASSIGNED_RUNTIME, managerCandidates, providerOptions, type AgentFormErrors, type AgentFormValues } from './agentForm'
 
 const KIND_LABEL: Record<AgentKind, string> = {
-  founder: 'Founder',
+  founder: 'AI Co-founder',
   lead: 'Lead',
   specialist: 'Specialist',
   reviewer: 'Reviewer',

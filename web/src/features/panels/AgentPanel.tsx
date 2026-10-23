@@ -6,6 +6,7 @@ import type { TaskRun } from '@/api/types'
 import { AgentAvatar } from '@/components/avatar'
 import {
   Boundary,
+  Button,
   Card,
   EmptyState,
   ErrorState,
@@ -37,6 +38,7 @@ import { formatDuration } from '@/lib/dates'
 import { NotAvailable, Badge, Chip } from '@/components/ui'
 import { AgentSkillsTab } from '@/features/skills/AgentSkillsTab'
 import { ROLE_FAMILY_LABEL, inferRoleFamily } from '@/lib/roleFamily'
+import { AI_COFOUNDER_LABEL } from '@/lib/terms'
 
 export function AgentPanel({ agentId }: { agentId: string }) {
   const { companyId, openPanel } = useCanvas()
@@ -93,9 +95,18 @@ export function AgentPanel({ agentId }: { agentId: string }) {
         </span>
       }
       leading={<AgentAvatar agent={agent} size="md" />}
-      subtitle={agent.role_title}
+      subtitle={agent.kind === 'founder' ? `${AI_COFOUNDER_LABEL} · ${agent.role_title}` : agent.role_title}
       onBack={() => openPanel({ kind: 'org' })}
-      actions={<LifecycleActions agent={agent} companyId={companyId} />}
+      actions={
+        <>
+          {agent.kind === 'founder' && (
+            <Button size="sm" onClick={() => openPanel({ kind: 'cofounder' })}>
+              Open co-founder view
+            </Button>
+          )}
+          <LifecycleActions agent={agent} companyId={companyId} />
+        </>
+      }
     >
       {agent.status === 'retired' && (
         <div className="mb-4 rounded-md border border-line bg-surface px-3 py-2 text-[13px] text-fg-2">This agent is retired and read-only. Its history is preserved.</div>

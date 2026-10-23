@@ -24,13 +24,13 @@ function setup(onOpen = vi.fn()) {
 }
 
 describe('OrgTree', () => {
-  it('draws You, the founder and the reporting tree with names, roles and states', () => {
+  it('draws You (the Founder), the AI Co-founder and the reporting tree with names, roles and states', () => {
     setup()
     const tree = screen.getByRole('tree', { name: 'Organization chart' })
-    expect(within(tree).getByText('You')).toBeInTheDocument()
-    expect(within(tree).getByText('Co-founder · Sam')).toBeInTheDocument()
+    expect(within(tree).getByText('You · Founder')).toBeInTheDocument()
+    expect(within(tree).getByText('Sam')).toBeInTheDocument()
     expect(within(tree).getByText('Atlas')).toBeInTheDocument()
-    expect(within(tree).getByText('Founder & CEO')).toBeInTheDocument()
+    expect(within(tree).getByText('AI Co-founder')).toBeInTheDocument()
     expect(within(tree).getByText('Backend Engineer')).toBeInTheDocument()
     // state words for non-idle employees only
     expect(within(tree).getByText('Working')).toBeInTheDocument()
@@ -39,7 +39,7 @@ describe('OrgTree', () => {
 
   it('gives every avatar button an accessible name that includes the live summary', () => {
     setup()
-    expect(screen.getByRole('button', { name: /Atlas, Founder & CEO, Working, Planning Q4/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Atlas, AI Co-founder, Working, Planning Q4/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Iris, Market Researcher, Paused/ })).toBeInTheDocument()
   })
 

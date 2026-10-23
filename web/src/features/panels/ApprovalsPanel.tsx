@@ -21,7 +21,7 @@ export function ApprovalsPanel() {
   }, [q.data])
 
   return (
-    <PanelFrame title="Approvals" subtitle="Decisions that need a human, and the ones the AI Founder makes">
+    <PanelFrame title="Approvals" subtitle="Decisions that need a human, and the ones the AI Co-founder makes">
       <div className="mb-3 flex items-center gap-2">
         <Select aria-label="Filter by status" className="h-7 w-auto text-[12.5px]" value={status} onChange={(e) => setStatus(e.target.value as ApprovalStatus | 'all')}>
           {STATUSES.map((s) => (
@@ -46,7 +46,7 @@ export function ApprovalsPanel() {
               {split.human.length === 0 ? <p className="px-3.5 py-4 text-[13px] text-fg-3">None.</p> : <div className="divide-y divide-line">{split.human.map((a) => <ApprovalCard key={a.id} approval={a} agents={map} companyId={companyId} />)}</div>}
             </Card>
             <Card>
-              <SectionLabel className="border-b border-line bg-raised px-3.5 py-2">AI Founder decides ({split.founder.length})</SectionLabel>
+              <SectionLabel className="border-b border-line bg-raised px-3.5 py-2">AI Co-founder decides ({split.founder.length})</SectionLabel>
               {split.founder.length === 0 ? <p className="px-3.5 py-4 text-[13px] text-fg-3">None.</p> : <div className="divide-y divide-line">{split.founder.map((a) => <ApprovalCard key={a.id} approval={a} agents={map} companyId={companyId} />)}</div>}
             </Card>
           </div>

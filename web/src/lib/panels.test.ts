@@ -13,6 +13,17 @@ describe('parsePanel', () => {
     expect(parsePanel('?panel=skill:5202d89e-12ba-490a-910e-721837f36e70')).toEqual({ kind: 'skill', id: '5202d89e-12ba-490a-910e-721837f36e70' })
   })
 
+  it('parses the M5 panels: notes, memory, cofounder and a note thread', () => {
+    expect(parsePanel('?panel=notes')).toEqual({ kind: 'notes' })
+    expect(parsePanel('?panel=memory')).toEqual({ kind: 'memory' })
+    expect(parsePanel('?panel=cofounder')).toEqual({ kind: 'cofounder' })
+    expect(parsePanel('?panel=note:n-1')).toEqual({ kind: 'note', id: 'n-1' })
+    expect(parsePanel('?panel=note')).toBeNull()
+    expect(parsePanel('?panel=notes:1')).toBeNull()
+    expect(parsePanel('?panel=note:../x')).toBeNull()
+    expect(parsePanel(withPanel('', { kind: 'note', id: 'abc' }))).toEqual({ kind: 'note', id: 'abc' })
+  })
+
   it('reads a run id alongside a task panel only', () => {
     expect(parsePanel('?panel=task:t1&run=r1')).toEqual({ kind: 'task', id: 't1', run: 'r1' })
     expect(parsePanel('?panel=agent:a1&run=r1')).toEqual({ kind: 'agent', id: 'a1' })

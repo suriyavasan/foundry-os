@@ -7,6 +7,7 @@ import { formatRelative } from '@/lib/format'
 import { RING_STYLE, ringStateFor, type RingState } from '@/lib/liveState'
 import { formatCost } from '@/lib/money'
 import { ROLE_FAMILY_LABEL, inferRoleFamily } from '@/lib/roleFamily'
+import { AI_COFOUNDER_LABEL, displayRole, isCofounder } from '@/lib/terms'
 import { useCanvas } from './CanvasContext'
 import { useAgentSpendToday } from './spend'
 import { useCompanyTimezone, useTick } from './hooks'
@@ -48,7 +49,7 @@ export function AgentHoverCardContent({ agent }: { agent: Agent }) {
         <div className="min-w-0 flex-1">
           <div className="truncate text-[14px] font-semibold text-fg">{agent.name}</div>
           <div className="truncate text-[12px] text-fg-3">
-            {agent.role_title} · {ROLE_FAMILY_LABEL[family]}
+            {isCofounder(agent) ? `${AI_COFOUNDER_LABEL} · manages every other agent` : `${displayRole(agent)} · ${ROLE_FAMILY_LABEL[family]}`}
           </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             <StatusBadge status={agent.status} />
@@ -96,6 +97,16 @@ export function AgentHoverCardContent({ agent }: { agent: Agent }) {
           </MetaRow>
         )}
       </div>
+      {isCofounder(agent) && (
+        <button
+          type="button"
+          onClick={() => openPanel({ kind: 'cofounder' })}
+          className="mt-3 inline-flex w-full items-center justify-between gap-1 rounded-md border border-line-strong bg-raised px-2.5 py-1.5 text-[12.5px] font-medium text-fg hover:bg-hover"
+        >
+          Open co-founder view
+          <ArrowUpRight className="size-3.5 shrink-0" aria-hidden />
+        </button>
+      )}
       <p className="mt-2.5 text-[11.5px] text-fg-3">Click the avatar to open the full profile.</p>
     </HoverCardContent>
   )

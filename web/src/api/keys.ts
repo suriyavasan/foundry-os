@@ -49,4 +49,14 @@ export const qk = {
   modelProviders: (cid: string) => ['company', cid, 'model-providers'] as const,
   providerDetect: (cid: string) => ['company', cid, 'model-providers', 'detect'] as const,
   credentials: (cid: string) => ['company', cid, 'credentials'] as const,
+  // M5 autonomous operating model. notes.* / alert.* / memory.* stream events invalidate by prefix.
+  notesAll: (cid: string) => ['company', cid, 'notes'] as const,
+  notes: (cid: string) => ['company', cid, 'notes', 'list'] as const,
+  note: (cid: string, id: string) => ['company', cid, 'notes', 'detail', id] as const,
+  cofounder: (cid: string) => ['company', cid, 'cofounder'] as const,
+  cofounderSummary: (cid: string) => ['company', cid, 'cofounder', 'summary'] as const,
+  memoryAll: (cid: string) => ['company', cid, 'memory'] as const,
+  memory: (cid: string) => ['company', cid, 'memory', 'list'] as const,
+  alertsAll: (cid: string) => ['company', cid, 'alerts'] as const,
+  alerts: (cid: string) => ['company', cid, 'alerts', 'open'] as const,
 }

@@ -34,6 +34,19 @@ describe('buildCommands', () => {
     expect(none.some((c) => c.id === 'act:task')).toBe(false)
     expect(none.some((c) => c.id === 'act:hire')).toBe(true)
   })
+  it('offers the AI Co-founder commands, and hides them while the M5 backend is missing', () => {
+    expect(cmds.find((c) => c.id === 'act:note')).toMatchObject({ label: 'Write a note to the AI Co-founder', action: { type: 'compose-note' } })
+    expect(cmds.find((c) => c.id === 'act:wake')).toMatchObject({ label: 'Wake AI Co-founder', action: { type: 'wake-cofounder' } })
+    const none = buildCommands({ agents: [], tasks: [], companyStatus: 'active', workEngine: true, autonomy: false })
+    expect(none.some((c) => c.id === 'act:note' || c.id === 'act:wake')).toBe(false)
+  })
+  it('opens memory and notes from the palette', () => {
+    expect(labels('open memory')).toContain('Open Memory')
+    expect(labels('open notes')).toContain('Open Notes')
+    expect(cmds.find((c) => c.id === 'panel:cofounder')?.label).toBe('Open AI Co-founder')
+    expect(labels('write note')[0]).toBe('Write a note to the AI Co-founder')
+    expect(labels('wake')[0]).toBe('Wake AI Co-founder')
+  })
   it('has a command for every panel', () => {
     expect(cmds.filter((c) => c.group === 'Panels').length).toBeGreaterThanOrEqual(10)
   })

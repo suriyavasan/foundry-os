@@ -1,5 +1,6 @@
 import type { Agent, Task } from '@/api/types'
 import { PANEL_TITLE, SIMPLE_PANELS, type Panel } from './panels'
+import { AI_COFOUNDER_LABEL } from './terms'
 
 export type CommandGroup = 'Actions' | 'Panels' | 'Agents' | 'Tasks'
 
@@ -8,6 +9,8 @@ export type CommandAction =
   | { type: 'create'; what: 'task' | 'goal' | 'project' | 'hire' }
   | { type: 'company'; do: 'pause' | 'resume' }
   | { type: 'theme' }
+  | { type: 'compose-note' }
+  | { type: 'wake-cofounder' }
 
 export interface PaletteCommand {
   id: string
@@ -22,7 +25,7 @@ export interface PaletteCommand {
 const GROUP_ORDER: CommandGroup[] = ['Actions', 'Panels', 'Agents', 'Tasks']
 
 /** How many rows each group may show when the query is empty (keeps the palette scannable). */
-const EMPTY_QUERY_CAP: Record<CommandGroup, number> = { Actions: 8, Panels: 12, Agents: 6, Tasks: 5 }
+const EMPTY_QUERY_CAP: Record<CommandGroup, number> = { Actions: 9, Panels: 14, Agents: 6, Tasks: 5 }
 
 const tokens = (s: string) => s.toLowerCase().split(/[\s/:_-]+/).filter(Boolean)
 
@@ -80,6 +83,8 @@ export interface CommandContext {
   companyStatus: 'active' | 'paused'
   /** false when the work engine is not deployed: task/goal creation is hidden, not faked. */
   workEngine: boolean
+  /** false when the M5 notes / AI Co-founder endpoints are not deployed: their actions are hidden, not faked. */
+  autonomy?: boolean
 }
 
 export function buildCommands(ctx: CommandContext): PaletteCommand[] {
@@ -90,6 +95,12 @@ export function buildCommands(ctx: CommandContext): PaletteCommand[] {
       { id: 'act:task', group: 'Actions', label: 'Create task', keywords: ['new', 'add', 'todo'], action: { type: 'create', what: 'task' } },
       { id: 'act:goal', group: 'Actions', label: 'Create goal', keywords: ['new', 'add', 'objective'], action: { type: 'create', what: 'goal' } },
       { id: 'act:project', group: 'Actions', label: 'Create project', keywords: ['new', 'add'], action: { type: 'create', what: 'project' } },
+    )
+  }
+  if (ctx.autonomy !== false) {
+    out.push(
+      { id: 'act:note', group: 'Actions', label: `Write a note to the ${AI_COFOUNDER_LABEL}`, hint: 'Founder\u2019s notes', keywords: ['thought', 'idea', 'tell', 'message', 'founder'], action: { type: 'compose-note' } },
+      { id: 'act:wake', group: 'Actions', label: `Wake ${AI_COFOUNDER_LABEL}`, hint: 'Start a planning run', keywords: ['run', 'plan', 'now', 'founder'], action: { type: 'wake-cofounder' } },
     )
   }
   out.push(

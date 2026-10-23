@@ -90,7 +90,7 @@ export function TasksPanel() {
           unavailableTitle="Tasks are not built yet"
           unavailableText="Tasks, dependencies and execution runs come with the work engine."
           isEmpty={() => rows.length === 0}
-          empty={{ title: Object.keys(filters).length || search ? 'No tasks match' : 'No tasks yet', description: Object.keys(filters).length || search ? 'Adjust the filters.' : 'Create a task, or let the AI Founder plan the work.' }}
+          empty={{ title: Object.keys(filters).length || search ? 'No tasks match' : 'No tasks yet', description: Object.keys(filters).length || search ? 'Adjust the filters.' : 'Create a task, or let the AI Co-founder plan the work.' }}
         >
           {() => (
             <Table>

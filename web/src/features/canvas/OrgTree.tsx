@@ -8,6 +8,7 @@ import { RING_STYLE, ringStateFor } from '@/lib/liveState'
 import { HUMAN_ID, edgePath, expandableIds, layoutOrg, type LayoutNode } from '@/lib/orgLayout'
 import { buildOrgTree, pruneInactive, type OrgIssue } from '@/lib/orgTree'
 import { shortRole } from '@/lib/roleFamily'
+import { YOU_FOUNDER_LABEL, displayRole } from '@/lib/terms'
 import { AgentHoverCardContent } from './AgentHoverCard'
 
 const NODE_W = 128
@@ -31,7 +32,7 @@ const STATE_TEXT_CLASS: Partial<Record<string, string>> = {
 }
 
 /**
- * The company as a tree of circular avatars: You -> AI Founder -> reporting lines.
+ * The company as a tree of circular avatars: You (the Founder) -> AI Co-founder -> reporting lines.
  * Layout is computed (lib/orgLayout) and drawn with absolutely positioned nodes over SVG connectors,
  * so it centres when narrow, scrolls when wide, and "Fit" scales it to the available width.
  */
@@ -138,8 +139,8 @@ function HumanNode({ node, ownerName }: { node: LayoutNode; ownerName?: string }
   return (
     <div role="treeitem" aria-level={1} aria-selected={false} style={slot(node)} className="flex flex-col items-center px-1">
       <Avatar family="human" size="xl" />
-      <span className="mt-1.5 max-w-full truncate text-[12.5px] font-semibold text-fg">You</span>
-      <span className="max-w-full truncate text-[11.5px] text-fg-3">{ownerName ? `Co-founder · ${ownerName}` : 'Human co-founder'}</span>
+      <span className="mt-1.5 max-w-full truncate text-[12.5px] font-semibold text-fg">{YOU_FOUNDER_LABEL}</span>
+      <span className="max-w-full truncate text-[11.5px] text-fg-3">{ownerName ?? 'Sets the direction'}</span>
     </div>
   )
 }
@@ -148,7 +149,7 @@ function AgentNode({ node, dim, onOpen, onToggle }: { node: LayoutNode; dim: boo
   const agent = node.agent!
   const ring = ringStateFor(agent)
   const stateWord = ring === 'idle' ? null : RING_STYLE[ring].label
-  const label = [agent.name, agent.role_title, RING_STYLE[ring].label, agent.live?.summary].filter(Boolean).join(', ')
+  const label = [agent.name, displayRole(agent), RING_STYLE[ring].label, agent.live?.summary].filter(Boolean).join(', ')
   return (
     <div role="treeitem" aria-level={node.depth} aria-selected={false} aria-expanded={node.childCount > 0 ? !node.collapsed : undefined} style={slot(node)} className={dim ? 'opacity-35' : undefined}>
       <HoverCard openDelay={120} closeDelay={80}>
@@ -164,7 +165,7 @@ function AgentNode({ node, dim, onOpen, onToggle }: { node: LayoutNode; dim: boo
               <span className="truncate">{agent.name}</span>
               {node.issue && <AlertTriangle className="size-3 shrink-0 text-warning" aria-label={ISSUE_TEXT[node.issue]} />}
             </span>
-            <span className="max-w-full truncate text-[11.5px] leading-4 text-fg-3">{shortRole(agent.role_title, 20)}</span>
+            <span className="max-w-full truncate text-[11.5px] leading-4 text-fg-3">{shortRole(displayRole(agent), 20)}</span>
             {stateWord && <span className={clsx('text-[10.5px] leading-4 font-medium tracking-wide uppercase', STATE_TEXT_CLASS[ring])}>{stateWord}</span>}
           </button>
         </HoverCardTrigger>

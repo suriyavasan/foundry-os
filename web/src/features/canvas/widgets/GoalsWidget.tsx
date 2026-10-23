@@ -1,11 +1,13 @@
-import { Plus } from 'lucide-react'
+import { Plus, Sparkles } from 'lucide-react'
 import { useMemo } from 'react'
-import { isNotDeployed, useAllTasks, useCompany, useGoals, useProjects } from '@/api'
+import { isNotDeployed, useAllTasks, useCofounderSummary, useCompany, useGoals, useProjects } from '@/api'
 import type { Goal, Project, Task } from '@/api/types'
 import { Button, EmptyState, ErrorState, LoadingState, NotAvailable, ProgressBar, SectionLabel, Widget } from '@/components/ui'
 import { GoalStatusBadge, ProjectStatusBadge } from '@/features/shared/badges'
 import { PriorityBadge } from '@/features/shared/badges'
+import { formatRelative } from '@/lib/format'
 import { progressOf } from '@/lib/taskStatus'
+import { AI_COFOUNDER_LABEL } from '@/lib/terms'
 import { useCanvas } from '../CanvasContext'
 
 const GOAL_ORDER: Record<Goal['status'], number> = { active: 0, proposed: 1, achieved: 2, abandoned: 3 }
@@ -20,6 +22,7 @@ export function GoalsWidget({ className }: { className?: string }) {
   const goals = useGoals(companyId)
   const projects = useProjects(companyId)
   const tasks = useAllTasks(companyId)
+  const cofounder = useCofounderSummary(companyId)
 
   const sorted = useMemo(
     () => [...(goals.data ?? [])].sort((a, b) => GOAL_ORDER[a.status] - GOAL_ORDER[b.status] || a.created_at.localeCompare(b.created_at)),
@@ -37,22 +40,42 @@ export function GoalsWidget({ className }: { className?: string }) {
 
   const unavailable = isNotDeployed(goals.error)
   const strategic = company.data?.strategic_goal
+  // The AI Co-founder's own words, only when it has written some (never invented, never shown on an error).
+  const planSummary = cofounder.data?.plan?.summary?.trim() || null
 
   return (
     <Widget
       title="Goals & plan"
       subtitle={goals.data ? `${goals.data.filter((g) => g.status === 'active').length} active` : undefined}
+      tall
       onExpand={() => openPanel({ kind: 'goals' })}
       expandLabel="Open goals and plan"
       className={className}
       actions={
-        !unavailable && (
-          <Button size="sm" variant="ghost" icon={<Plus className="size-3.5" />} onClick={() => create('goal')} disabled={!goals.data}>
-            Goal
+        <>
+          <Button size="sm" variant="ghost" icon={<Sparkles className="size-3.5" />} onClick={() => openPanel({ kind: 'cofounder' })} aria-label={`Open ${AI_COFOUNDER_LABEL} view`}>
+            {AI_COFOUNDER_LABEL}
           </Button>
-        )
+          {!unavailable && (
+            <Button size="sm" variant="ghost" icon={<Plus className="size-3.5" />} onClick={() => create('goal')} disabled={!goals.data}>
+              Goal
+            </Button>
+          )}
+        </>
       }
     >
+      {planSummary && (
+        <div className="border-b border-line bg-accent-subtle px-3.5 py-2" data-testid="cofounder-plan">
+          <SectionLabel>{AI_COFOUNDER_LABEL}&rsquo;s plan</SectionLabel>
+          <p className="mt-0.5 line-clamp-4 text-[12.5px] whitespace-pre-line text-fg">{planSummary}</p>
+          <div className="mt-1 flex items-center gap-2 text-[11.5px] text-fg-3">
+            {cofounder.data?.plan.updated_at && <span>Updated {formatRelative(cofounder.data.plan.updated_at)}</span>}
+            <button type="button" className="text-accent-fg hover:underline" onClick={() => openPanel({ kind: 'cofounder' })}>
+              Open co-founder view
+            </button>
+          </div>
+        </div>
+      )}
       {strategic && (
         <div className="border-b border-line bg-raised px-3.5 py-2">
           <SectionLabel>Strategic goal</SectionLabel>

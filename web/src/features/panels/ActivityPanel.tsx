@@ -102,9 +102,9 @@ function Decisions() {
         query={q}
         compact={false}
         unavailableTitle="Decisions are not built yet"
-        unavailableText="Plans, trade-offs and approvals the AI Founder and you decide on are recorded here with their rationale."
+        unavailableText="Plans, trade-offs and approvals the AI Co-founder and you decide on are recorded here with their rationale."
         isEmpty={(d) => d.items.length === 0}
-        empty={{ title: 'No decisions recorded yet', description: 'When the AI Founder or a manager makes a notable call, the rationale is logged here.' }}
+        empty={{ title: 'No decisions recorded yet', description: 'When the AI Co-founder or a manager makes a notable call, the rationale is logged here.' }}
       >
         {(page) => (
           <ul className="divide-y divide-line">

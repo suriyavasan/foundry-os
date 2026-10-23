@@ -201,7 +201,7 @@ export function GoalDialog({ companyId, onClose }: { companyId: string; onClose:
       onOpenChange={(o) => !o && !create.isPending && onClose()}
       size="md"
       title="Create goal"
-      description="Goals are outcomes the company plans against. The AI Founder breaks them into projects and tasks."
+      description="Goals are outcomes the company plans against. The AI Co-founder breaks them into projects and tasks."
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={create.isPending}>
@@ -230,10 +230,10 @@ export function GoalDialog({ companyId, onClose }: { companyId: string; onClose:
               </Select>
             )}
           </Field>
-          <Field label="Owner" hint="Defaults to the AI Founder.">
+          <Field label="Owner" hint="Defaults to the AI Co-founder.">
             {({ id }) => (
               <Select id={id} value={values.owner_agent_id} onChange={(e) => patch({ owner_agent_id: e.target.value })}>
-                <option value="">AI Founder</option>
+                <option value="">AI Co-founder</option>
                 {assignable(agents.data ?? []).map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name}

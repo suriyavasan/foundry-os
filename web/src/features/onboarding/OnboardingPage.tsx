@@ -74,7 +74,7 @@ export function OnboardingPage() {
           <p className="text-[11px] font-semibold tracking-[0.12em] text-fg-3 uppercase">Company OS</p>
           <h1 className="mt-1 text-[22px] font-semibold tracking-tight text-fg">Create your company</h1>
           <p className="mt-1 max-w-xl text-[13px] text-fg-3">
-            You are the human co-founder. Setting up a company also creates its AI Founder & CEO, who will report to you.
+            You are the Founder. Setting up a company also creates its AI Co-founder, who manages every other agent and reports to you.
           </p>
         </div>
 
@@ -106,7 +106,7 @@ export function OnboardingPage() {
                   <Textarea id={id} rows={2} value={values.vision} invalid={invalid} aria-describedby={describedBy} onChange={(e) => set('vision', e.target.value)} />
                 )}
               </Field>
-              <Field label="Strategic goal" error={errors.strategic_goal} hint="The goal the AI Founder will plan against.">
+              <Field label="Strategic goal" error={errors.strategic_goal} hint="The goal the AI Co-founder will plan against.">
                 {({ id, invalid, describedBy }) => (
                   <Textarea id={id} rows={2} value={values.strategic_goal} invalid={invalid} aria-describedby={describedBy} onChange={(e) => set('strategic_goal', e.target.value)} />
                 )}
@@ -142,12 +142,12 @@ export function OnboardingPage() {
           <Card>
             <CardBody className="space-y-4">
               <div>
-                <h2 className="text-[13px] font-semibold">AI Founder</h2>
+                <h2 className="text-[13px] font-semibold">AI Co-founder</h2>
                 <p className="mt-0.5 text-[12px] text-fg-3">
                   Starts active, with no runtime assigned. You can assign a runtime from its profile later.
                 </p>
               </div>
-              <Field label="Founder name" error={errors.founder_name}>
+              <Field label="AI Co-founder name" error={errors.founder_name}>
                 {({ id, invalid, describedBy }) => (
                   <Input id={id} value={values.founder_name} invalid={invalid} aria-describedby={describedBy} onChange={(e) => set('founder_name', e.target.value)} />
                 )}

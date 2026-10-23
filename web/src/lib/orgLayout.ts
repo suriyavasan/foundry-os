@@ -1,7 +1,7 @@
 import type { Agent } from '@/api/types'
 import type { OrgIssue, OrgNode } from './orgTree'
 
-/** Id of the virtual root that represents the human co-founder ("You"). */
+/** Id of the virtual root that represents the Founder, the human ("You"). */
 export const HUMAN_ID = '__human__'
 
 export interface LayoutNode {

@@ -27,3 +27,22 @@ export function getStoredTheme(): Theme {
 export function storeTheme(theme: Theme) {
   safeSet(THEME_KEY, theme)
 }
+
+/* Founder's notes: which AI Co-founder replies this browser has already opened. */
+const seenKey = (cid: string) => `company-os.notes-seen.${cid}`
+
+export function readSeenReplies(cid: string): Record<string, string> {
+  const raw = safeGet(seenKey(cid))
+  if (!raw) return {}
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    return Object.fromEntries(Object.entries(parsed).filter((e): e is [string, string] => typeof e[1] === 'string'))
+  } catch {
+    return {}
+  }
+}
+
+export function writeSeenReplies(cid: string, seen: Record<string, string>) {
+  safeSet(seenKey(cid), JSON.stringify(seen))
+}

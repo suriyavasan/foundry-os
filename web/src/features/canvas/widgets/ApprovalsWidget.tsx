@@ -42,10 +42,10 @@ export function ApprovalsWidget({ className }: { className?: string }) {
                 </div>
               )}
             </section>
-            <section aria-label="Decided by the founder" className="border-t border-line">
-              <SectionLabel className="border-b border-line bg-raised px-3.5 py-1.5">Founder decides ({split.founder.length})</SectionLabel>
+            <section aria-label="Decided by the AI Co-founder" className="border-t border-line">
+              <SectionLabel className="border-b border-line bg-raised px-3.5 py-1.5">AI Co-founder decides ({split.founder.length})</SectionLabel>
               {split.founder.length === 0 ? (
-                <p className="px-3.5 py-3 text-[12.5px] text-fg-3">No founder approvals pending.</p>
+                <p className="px-3.5 py-3 text-[12.5px] text-fg-3">No AI Co-founder approvals pending.</p>
               ) : (
                 <div className="divide-y divide-line">
                   {split.founder.map((a) => (

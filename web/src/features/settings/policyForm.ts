@@ -29,7 +29,7 @@ export const LIMIT_FIELDS: Array<{ key: LimitKey; label: string; hint: string; m
   { key: 'max_revisions', label: 'Max revisions', hint: 'Review rounds before a task fails.', min: 0 },
   { key: 'max_run_seconds', label: 'Max run time (seconds)', hint: 'A run is stopped after this long.', min: 1 },
   { key: 'max_headcount', label: 'Max headcount', hint: 'Employees the company may have.', min: 1 },
-  { key: 'heartbeat_interval_seconds', label: 'Founder heartbeat (seconds)', hint: 'How often the AI Founder wakes to plan.', min: 1 },
+  { key: 'heartbeat_interval_seconds', label: 'AI Co-founder heartbeat (seconds)', hint: 'How often the AI Co-founder wakes to plan.', min: 1 },
 ]
 
 export interface PolicyFormValues {

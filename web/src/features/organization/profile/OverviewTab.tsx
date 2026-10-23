@@ -4,6 +4,7 @@ import { useCanvas } from '@/features/canvas/CanvasContext'
 import { formatDateTime, formatRelative } from '@/lib/format'
 import { RING_STYLE, ringStateFor } from '@/lib/liveState'
 import { ROLE_FAMILY_LABEL, inferRoleFamily } from '@/lib/roleFamily'
+import { AGENT_KIND_LABEL } from '@/lib/terms'
 
 const dash = <span className="text-fg-3">—</span>
 
@@ -68,13 +69,13 @@ export function OverviewTab({
         <CardBody>
           <DefinitionList
             items={[
-              { label: 'Kind', value: <span className="capitalize">{agent.kind}</span> },
+              { label: 'Kind', value: AGENT_KIND_LABEL[agent.kind] ?? agent.kind },
               { label: 'Employee type', value: ROLE_FAMILY_LABEL[inferRoleFamily(agent)] },
               { label: 'Department', value: dept?.name ?? dash },
               {
                 label: 'Reports to',
                 value: agent.reports_to_human ? (
-                  'You (human co-founder)'
+                  'You (the Founder)'
                 ) : manager ? (
                   <button type="button" onClick={() => openPanel({ kind: 'agent', id: manager.id })} className="text-accent-fg hover:underline">
                     {manager.name}
