@@ -27,6 +27,23 @@ class Settings(BaseSettings):
     auth_mode: Literal["local"] = "local"
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
+    # --- Milestone 2: work engine -------------------------------------------------------
+    # Directory for artifacts, workspaces and the auto-generated secret key. Default: the
+    # SQLite file's directory (../data for the default URL), else <repo>/data.
+    data_dir: Path | None = None
+    # HMAC key for agent run tokens. Unset in local mode -> <data_dir>/secret.key (0600).
+    secret_key: SecretStr | None = None
+    # Registers the deterministic ScriptedRuntime (kind "test_fixture"). Never on by default.
+    enable_test_runtimes: bool = False
+    # Run the worker + scheduler loops inside the API process (one-command local dev).
+    embedded_worker: bool = False
+    max_upload_bytes: int = 25 * 1024 * 1024
+    # Where runtimes reach the agent API (passed to them in ExecutionRequest).
+    agent_api_url: str = "http://127.0.0.1:8700/api/agent/v1"
+    worker_concurrency: int = 4
+    engine_tick_seconds: float = 2.0  # scheduler tick (dispatch, schedules)
+    engine_poll_seconds: float = 0.5  # worker queue poll
+
     # Hermes runtime. These use the plain HERMES_* names (no COMPANY_OS_ prefix).
     hermes_api_url: str | None = Field(
         default=None, validation_alias=AliasChoices("HERMES_API_URL", "COMPANY_OS_HERMES_API_URL")
@@ -40,11 +57,29 @@ class Settings(BaseSettings):
         """Relative SQLite paths are resolved against ``backend/`` (not the CWD)."""
         return resolve_database_url(self.database_url)
 
+    @property
+    def resolved_data_dir(self) -> Path:
+        if self.data_dir is not None:
+            return self.data_dir if self.data_dir.is_absolute() else BACKEND_DIR / self.data_dir
+        db_path = sqlite_file_path(self.resolved_database_url)
+        if db_path is not None:
+            return db_path.parent
+        return BACKEND_DIR.parent / "data"
+
+    @property
+    def artifacts_dir(self) -> Path:
+        return self.resolved_data_dir / "artifacts"
+
+    @property
+    def workspaces_dir(self) -> Path:
+        return self.resolved_data_dir / "workspaces"
+
     def prepare_data_dir(self) -> None:
-        """Create the parent directory of a file-based SQLite database."""
+        """Create the parent directory of a file-based SQLite database and the data dir."""
         path = sqlite_file_path(self.resolved_database_url)
         if path is not None:
             path.parent.mkdir(parents=True, exist_ok=True)
+        self.resolved_data_dir.mkdir(parents=True, exist_ok=True)
 
 
 def resolve_database_url(url: str) -> str:

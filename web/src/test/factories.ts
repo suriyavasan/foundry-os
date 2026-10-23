@@ -1,4 +1,4 @@
-import type { Agent, Company, Overview } from '@/api/types'
+import type { Agent, Company, Overview, Task } from '@/api/types'
 
 export function makeAgent(over: Partial<Agent> = {}): Agent {
   const id = over.id ?? crypto.randomUUID()
@@ -64,3 +64,55 @@ export function makeOverview(over: Partial<Overview> = {}): Overview {
 export function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 }
+
+export function makeTask(over: Partial<Task> = {}): Task {
+  const id = over.id ?? crypto.randomUUID()
+  return {
+    id,
+    company_id: 'c1',
+    project_id: null,
+    parent_task_id: null,
+    title: `Task ${id.slice(0, 4)}`,
+    description: null,
+    acceptance_criteria: null,
+    kind: 'work',
+    status: 'backlog',
+    priority: 'normal',
+    assignee_agent_id: null,
+    reviewer_agent_id: null,
+    required_skills: [],
+    budget_micros: null,
+    attempt_count: 0,
+    revision_count: 0,
+    delegation_depth: 0,
+    due_at: null,
+    started_at: null,
+    completed_at: null,
+    result_summary: null,
+    error: null,
+    input_refs: [],
+    output_refs: [],
+    created_by_type: 'human',
+    created_by_id: null,
+    created_at: '2026-10-23T12:00:00Z',
+    updated_at: '2026-10-23T12:00:00Z',
+    ...over,
+  }
+}
+
+/** Route table for a fake backend: unknown paths 404 like a backend that has not shipped that endpoint. */
+export function mockApi(routes: Record<string, unknown | ((url: URL, init?: RequestInit) => Response)>) {
+  const calls: Array<{ method: string; path: string; body: unknown }> = []
+  const impl = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, 'http://localhost')
+    const path = url.pathname.replace(/^\/api/, '')
+    calls.push({ method: init?.method ?? 'GET', path, body: init?.body ? JSON.parse(String(init.body)) : undefined })
+    const key = `${init?.method ?? 'GET'} ${path}`
+    const hit = routes[key] ?? (init?.method && init.method !== 'GET' ? undefined : routes[path])
+    if (hit === undefined) return jsonResponse({ error: { code: 'not_found', message: 'Not found', details: null } }, 404)
+    return typeof hit === 'function' ? (hit as (u: URL, i?: RequestInit) => Response)(url, init) : jsonResponse(hit)
+  }
+  return { impl, calls }
+}
+
+export const page = <T,>(items: T[]) => ({ items, next_cursor: null })

@@ -12,7 +12,7 @@ def build_engine(url: str, *, enforce_foreign_keys: bool = True) -> Engine:
     is_sqlite = make_url(url).get_backend_name() == "sqlite"
     kwargs: dict = {}
     if is_sqlite:
-        kwargs["connect_args"] = {"check_same_thread": False, "timeout": 15}
+        kwargs["connect_args"] = {"check_same_thread": False, "timeout": 30}
     engine = create_engine(url, **kwargs)
     if is_sqlite:
 
@@ -21,7 +21,7 @@ def build_engine(url: str, *, enforce_foreign_keys: bool = True) -> Engine:
             cur = dbapi_conn.cursor()
             cur.execute("PRAGMA journal_mode=WAL")
             cur.execute("PRAGMA synchronous=NORMAL")
-            cur.execute("PRAGMA busy_timeout=15000")
+            cur.execute("PRAGMA busy_timeout=30000")
             cur.execute(f"PRAGMA foreign_keys={'ON' if enforce_foreign_keys else 'OFF'}")
             cur.close()
 

@@ -24,4 +24,10 @@ class RuntimeRegistry:
 
 
 def build_default_registry(settings: Settings) -> RuntimeRegistry:
-    return RuntimeRegistry([HermesAdapter.from_settings(settings)])
+    registry = RuntimeRegistry([HermesAdapter.from_settings(settings)])
+    if settings.enable_test_runtimes:
+        # Test fixture only; reported with kind "test_fixture" and absent from default config.
+        from app.runtimes.scripted import ScriptedRuntime
+
+        registry.register(ScriptedRuntime())
+    return registry

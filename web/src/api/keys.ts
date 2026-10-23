@@ -1,4 +1,4 @@
-import type { ActivityFilters, AgentFilters } from './types'
+import type { ActivityFilters, AgentFilters, ApprovalFilters, ArtifactFilters, TaskFilters, UsageGroupBy } from './types'
 
 /** Query keys. Everything company-scoped lives under ['company', cid, ...]. */
 export const qk = {
@@ -15,4 +15,26 @@ export const qk = {
   departments: (cid: string) => ['company', cid, 'departments'] as const,
   activity: (cid: string, filters: ActivityFilters = {}) => ['company', cid, 'activity', filters] as const,
   activityAll: (cid: string) => ['company', cid, 'activity'] as const,
+  // M2 work engine. Everything lives under ['company', cid, <area>] so the stream can invalidate by prefix.
+  policy: (cid: string) => ['company', cid, 'policy'] as const,
+  goals: (cid: string) => ['company', cid, 'goals'] as const,
+  projects: (cid: string) => ['company', cid, 'projects'] as const,
+  tasksAll: (cid: string) => ['company', cid, 'tasks'] as const,
+  taskEvery: (cid: string) => ['company', cid, 'tasks', 'all'] as const,
+  taskList: (cid: string, filters: TaskFilters = {}) => ['company', cid, 'tasks', 'list', filters] as const,
+  task: (cid: string, id: string) => ['company', cid, 'tasks', 'detail', id] as const,
+  taskRuns: (cid: string, id: string) => ['company', cid, 'runs', 'of-task', id] as const,
+  run: (cid: string, id: string) => ['company', cid, 'runs', 'detail', id] as const,
+  runEvents: (cid: string, id: string) => ['company', cid, 'runs', 'events', id] as const,
+  runsAll: (cid: string) => ['company', cid, 'runs'] as const,
+  artifactsAll: (cid: string) => ['company', cid, 'artifacts'] as const,
+  artifactList: (cid: string, filters: ArtifactFilters = {}) => ['company', cid, 'artifacts', 'list', filters] as const,
+  artifact: (cid: string, id: string) => ['company', cid, 'artifacts', 'detail', id] as const,
+  approvalsAll: (cid: string) => ['company', cid, 'approvals'] as const,
+  approvalList: (cid: string, filters: ApprovalFilters = {}) => ['company', cid, 'approvals', 'list', filters] as const,
+  decisions: (cid: string) => ['company', cid, 'decisions'] as const,
+  schedules: (cid: string) => ['company', cid, 'schedules'] as const,
+  usage: (cid: string, groupBy: UsageGroupBy, from: string, to: string) =>
+    ['company', cid, 'usage', groupBy, from, to] as const,
+  usageAll: (cid: string) => ['company', cid, 'usage'] as const,
 }

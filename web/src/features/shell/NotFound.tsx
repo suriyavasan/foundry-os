@@ -37,7 +37,7 @@ export function NotFoundPage() {
   const last = getLastCompanyId()
   return (
     <div className="min-h-screen bg-canvas">
-      <NotFound backTo={last ? `/c/${last}/command-center` : '/'} />
+      <NotFound backTo={last ? `/c/${last}` : '/'} />
     </div>
   )
 }

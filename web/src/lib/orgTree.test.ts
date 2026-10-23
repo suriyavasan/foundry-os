@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { makeAgent } from '@/test/factories'
-import { buildOrgTree, flattenOrgTree, type OrgNode } from './orgTree'
+import { buildOrgTree, flattenOrgTree, pruneInactive, type OrgNode } from './orgTree'
 
 const names = (nodes: OrgNode[]) => nodes.map((n) => n.agent.name)
 
@@ -64,5 +64,25 @@ describe('buildOrgTree', () => {
     const s = makeAgent({ id: 's', name: 'Zzz', kind: 'specialist', manager_agent_id: 'f' })
     const l = makeAgent({ id: 'l', name: 'Mmm', kind: 'lead', manager_agent_id: 'f' })
     expect(names(buildOrgTree([r, s, l, f])[0]!.children)).toEqual(['Mmm', 'Zzz', 'Aaa'])
+  })
+})
+
+describe('pruneInactive', () => {
+  it('hides retired and rejected agents but keeps their reports under the nearest live ancestor', () => {
+    const f = makeAgent({ id: 'f', name: 'Atlas', kind: 'founder', reports_to_human: true })
+    const gone = makeAgent({ id: 'g', name: 'Gone', manager_agent_id: 'f', status: 'retired' })
+    const kid = makeAgent({ id: 'k', name: 'Kid', manager_agent_id: 'g' })
+    const rej = makeAgent({ id: 'r', name: 'Rej', manager_agent_id: 'f', status: 'rejected' })
+    const pruned = pruneInactive(buildOrgTree([f, gone, kid, rej]))
+    expect(names(pruned)).toEqual(['Atlas'])
+    expect(names(pruned[0]!.children)).toEqual(['Kid'])
+    expect(pruned[0]!.children[0]!.depth).toBe(1)
+  })
+  it('lifts reports of a retired root', () => {
+    const f = makeAgent({ id: 'f', name: 'Atlas', kind: 'founder', reports_to_human: true, status: 'retired' })
+    const kid = makeAgent({ id: 'k', name: 'Kid', manager_agent_id: 'f' })
+    const pruned = pruneInactive(buildOrgTree([f, kid]))
+    expect(names(pruned)).toEqual(['Kid'])
+    expect(pruned[0]!.depth).toBe(0)
   })
 })

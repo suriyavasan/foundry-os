@@ -14,6 +14,7 @@ from app.core.errors import (
     Conflict,
     Forbidden,
     InvalidTransition,
+    LimitExceeded,
     NotFound,
     ValidationFailed,
 )
@@ -23,7 +24,7 @@ from app.models.agent import Agent
 from app.models.department import Department
 from app.models.enums import LIVE_AGENT_STATUSES, AgentKind, AgentStatus
 from app.schemas.agent import AgentCreate, AgentUpdate, LifecycleAction
-from app.services import audit
+from app.services import audit, events, policy, tasks
 from app.services.pagination import paginate
 
 # Fields that gate what an agent may do or spend. Agents can never change these on
@@ -256,6 +257,18 @@ def create_agent(db: Session, ctx: CompanyContext, data: AgentCreate) -> Agent:
         raise Forbidden("Only company owners and admins can create agents")
 
     validate_runtime_config(data.runtime_config)
+    if ctx.principal.is_agent:  # an autonomous hire may not exceed the company's headcount cap
+        limits = policy.load_policy(db, ctx.company_id)
+        headcount = db.scalar(
+            select(func.count(Agent.id)).where(
+                Agent.company_id == ctx.company_id, Agent.status.in_(LIVE_AGENT_STATUSES)
+            )
+        )
+        if (headcount or 0) >= limits.max_headcount:
+            raise LimitExceeded(
+                f"Headcount limit of {limits.max_headcount} reached",
+                details={"limit": "max_headcount", "max": limits.max_headcount},
+            )
     if data.kind == AgentKind.FOUNDER and _live_founder_exists(db, ctx):
         raise Conflict("This company already has a founder")
     if data.department_id:
@@ -295,6 +308,7 @@ def create_agent(db: Session, ctx: CompanyContext, data: AgentCreate) -> Agent:
         summary=f"Proposed {agent.kind} agent {agent.name} ({agent.role_title})",
         data={"kind": agent.kind, "status": agent.status},
     )
+    events.emit(db, ctx.company_id, "agent.updated", {"agent_id": agent.id, "status": agent.status})
     _commit(db)
     return agent
 
@@ -350,6 +364,15 @@ def update_agent(db: Session, ctx: CompanyContext, agent_id: str, data: AgentUpd
             summary=f"Updated agent {agent.name}: {', '.join(changed)}",
             data={"changed": changed},  # names only: never values (may be large / sensitive)
         )
+        events.emit(
+            db, ctx.company_id, "agent.updated", {"agent_id": agent.id, "status": agent.status}
+        )
+        if {"monthly_budget_micros", "daily_budget_micros"} & set(changed):
+            tasks.release_budget_blocked(db, ctx.company_id, principal)
+        if "model_provider" in changed:
+            tasks.release_budget_blocked(
+                db, ctx.company_id, principal, codes=("provider_not_allowed",)
+            )
         _commit(db)
     return agent
 
@@ -413,5 +436,8 @@ def transition_agent(
         summary=f"{verb} agent {agent.name}" + (f": {body.reason}" if body and body.reason else ""),
         data=data,
     )
+    events.emit(db, ctx.company_id, "agent.updated", {"agent_id": agent.id, "status": target.value})
+    # Readiness depends on the assignee being active: pausing/retiring/activating re-evaluates.
+    tasks.recompute_readiness(db, ctx.company_id, agent_id=agent.id, principal=principal)
     _commit(db)
     return agent

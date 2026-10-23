@@ -1,19 +1,19 @@
-import { Link } from 'react-router'
 import type { Agent, Department } from '@/api/types'
+import { AgentAvatar } from '@/components/avatar'
 import { Chip, StatusBadge, TBody, TD, TH, THead, TR, Table } from '@/components/ui'
+import { useCanvas } from '@/features/canvas/CanvasContext'
 import { formatUsd } from '@/lib/money'
 
 export function AgentsTable({
   agents,
   departments,
   allAgents,
-  base,
 }: {
   agents: Agent[]
   departments: Department[]
   allAgents: Agent[]
-  base: string
 }) {
+  const { openPanel } = useCanvas()
   const dept = new Map(departments.map((d) => [d.id, d.name]))
   const names = new Map(allAgents.map((a) => [a.id, a.name]))
   return (
@@ -34,9 +34,10 @@ export function AgentsTable({
         {agents.map((a) => (
           <TR key={a.id} interactive>
             <TD>
-              <Link to={`${base}/organization/agents/${a.id}`} className="font-medium text-fg hover:underline">
+              <button type="button" onClick={() => openPanel({ kind: 'agent', id: a.id })} className="flex items-center gap-2 text-left font-medium text-fg hover:underline">
+                <AgentAvatar agent={a} size="sm" />
                 {a.name}
-              </Link>
+              </button>
             </TD>
             <TD className="text-fg-2">{a.role_title}</TD>
             <TD className="text-fg-2">{(a.department_id && dept.get(a.department_id)) || <span className="text-fg-3">—</span>}</TD>

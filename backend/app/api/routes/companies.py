@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
-from app.api.deps import CompanyCtx, CurrentPrincipal, DbSession
+from app.api.deps import CompanyCtx, CurrentPrincipal, DbSession, get_runtime_registry
+from app.runtimes.registry import RuntimeRegistry
 from app.schemas.common import Page
 from app.schemas.company import Company, CompanyCreate, CompanyUpdate
 from app.schemas.system import Overview
@@ -43,5 +44,7 @@ def update_company(body: CompanyUpdate, ctx: CompanyCtx, db: DbSession):
 
 
 @router.get("/{company_id}/overview", response_model=Overview)
-def get_overview(ctx: CompanyCtx, db: DbSession):
-    return overview.build_overview(db, ctx)
+def get_overview(
+    ctx: CompanyCtx, db: DbSession, registry: RuntimeRegistry = Depends(get_runtime_registry)
+):
+    return overview.build_overview(db, ctx, registry)

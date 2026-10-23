@@ -16,8 +16,8 @@ Set `API_PROXY_TARGET` to point the dev proxy at a different backend URL.
 ## Layout
 
 - `src/api/` fetch client (`apiFetch`, typed `ApiError`), hand-written `types.ts` mirroring `docs/api.md`, query/mutation hooks per resource.
-- `src/components/ui/` design-system primitives; `src/components/layout/` app shell, sidebar, page header.
-- `src/features/<area>/` one folder per navigation area.
+- `src/components/ui/` design-system primitives; `src/components/layout/` theme provider and company switcher; `src/components/avatar/` employee avatars.
+- `src/features/<area>/` one folder per canvas area (widgets in `features/canvas/widgets`, drawer panels in `features/panels`).
 - `src/lib/` pure helpers (money, org tree, lifecycle actions, formatting) with unit tests.
 
 ## Rules

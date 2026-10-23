@@ -7,10 +7,9 @@ from fastapi.testclient import TestClient
 from app.core.config import Settings
 from app.main import create_app
 from app.runtimes.base import (
+    CancelToken,
     Capability,
     CostKind,
-    ExecutionHandle,
-    ExecutionRequest,
     HealthStatus,
     RuntimeAdapter,
 )
@@ -130,16 +129,11 @@ def test_key_never_in_repr_or_settings_dump():
     assert SECRET not in repr(settings) and SECRET not in str(settings.model_dump())
 
 
-def test_execution_methods_are_milestone_4():
+def test_hermes_cannot_execute_yet_and_is_never_dispatched():
     adapter = HermesAdapter(URL, SECRET)
-    handle = ExecutionHandle("hermes", "x")
-    with pytest.raises(NotImplementedError, match="Milestone 4"):
-        adapter.start(ExecutionRequest("c", "a", "r", "do it", "idem-1"))
-    for call in (adapter.get_status, adapter.cancel, adapter.get_result, adapter.get_usage):
-        with pytest.raises(NotImplementedError, match="Milestone 4"):
-            call(handle)
-    with pytest.raises(NotImplementedError, match="Milestone 4"):
-        adapter.stream_events(handle)
+    assert adapter.supports_execution is False
+    with pytest.raises(NotImplementedError, match="not implemented"):
+        adapter.execute(None, None, CancelToken())  # type: ignore[arg-type]
 
 
 def test_registry_and_interface():

@@ -1,8 +1,8 @@
 import { useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router'
 import { ApiError, errorMessage, useCreateAgent, useRuntimes } from '@/api'
 import type { Agent, Department } from '@/api/types'
 import { Button, Dialog, Field, FormError, Input, useToast } from '@/components/ui'
+import { useCanvas } from '@/features/canvas/CanvasContext'
 import {
   emptyAgentForm,
   mapAgentServerErrors,
@@ -33,7 +33,7 @@ export function HireDialog({
   const create = useCreateAgent(companyId)
   const runtimes = useRuntimes()
   const toast = useToast()
-  const navigate = useNavigate()
+  const { openPanel } = useCanvas()
 
   const patch = (p: Partial<AgentFormValues>) => {
     setValues((v) => ({ ...v, ...p }))
@@ -54,7 +54,7 @@ export function HireDialog({
       const agent = await create.mutateAsync(toCreateAgentBody(values))
       toast.success(`${agent.name} proposed. Activate them from their profile.`)
       onOpenChange(false)
-      navigate(`/c/${companyId}/organization/agents/${agent.id}`)
+      openPanel({ kind: 'agent', id: agent.id })
     } catch (err) {
       if (err instanceof ApiError && err.status === 422) {
         const mapped = mapAgentServerErrors(err.fieldErrors)

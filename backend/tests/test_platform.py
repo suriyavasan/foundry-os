@@ -100,3 +100,14 @@ def test_db_unique_founder_index_backstop(app, client, company):
         )
         with pytest.raises(IntegrityError):
             db.commit()
+
+
+def test_startup_refuses_a_database_behind_the_latest_migration(tmp_path):
+    from alembic import command
+    from tests.conftest import alembic_config
+
+    url = f"sqlite:///{tmp_path / 'm1.db'}"
+    command.upgrade(alembic_config(url), "0001")  # the Milestone 1 schema
+    app = create_app(Settings(_env_file=None, database_url=url))
+    with pytest.raises(RuntimeError, match="out of date.*alembic upgrade head"), TestClient(app):
+        pass

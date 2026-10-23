@@ -28,11 +28,20 @@ interface StateShellProps {
   tone?: 'neutral' | 'danger' | 'info'
   className?: string
   role?: 'alert' | 'status'
+  /** Tighter padding for use inside a widget. */
+  compact?: boolean
 }
 
-function StateShell({ icon: Icon, title, description, action, tone = 'neutral', className, role }: StateShellProps) {
+function StateShell({ icon: Icon, title, description, action, tone = 'neutral', className, role, compact }: StateShellProps) {
   return (
-    <div role={role} className={clsx('flex flex-col items-center justify-center gap-1 px-6 py-10 text-center', className)}>
+    <div
+      role={role}
+      className={clsx(
+        'flex flex-col items-center justify-center gap-1 text-center',
+        compact ? 'px-4 py-6' : 'px-6 py-10',
+        className,
+      )}
+    >
       <div
         className={clsx(
           'mb-2 flex size-9 items-center justify-center rounded-md',
@@ -60,16 +69,19 @@ export function ErrorState({
   onRetry,
   retrying,
   className,
+  compact,
 }: {
   error?: unknown
   title?: string
   onRetry?: () => void
   retrying?: boolean
   className?: string
+  compact?: boolean
 }) {
   return (
     <StateShell
       role="alert"
+      compact={compact}
       icon={AlertTriangle}
       tone="danger"
       title={title}

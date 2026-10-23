@@ -6,9 +6,3 @@ export function useCompanyId(): string {
   if (!companyId) throw new Error('useCompanyId used outside /c/:companyId')
   return companyId
 }
-
-export function useAgentId(): string {
-  const { agentId } = useParams()
-  if (!agentId) throw new Error('useAgentId used outside .../agents/:agentId')
-  return agentId
-}

@@ -65,3 +65,34 @@ export function parseBudgetInput(input: string): BudgetParse {
   if (micros === null) return { value: null, error: 'Enter a USD amount like 25 or 25.50 (up to 6 decimals)' }
   return { value: micros }
 }
+
+/* ------------------------------ cost provenance ------------------------------ */
+
+export type CostKindLike = 'verified' | 'estimated' | 'unknown'
+
+export const COST_KIND_LABEL: Record<CostKindLike, string> = {
+  verified: 'Verified',
+  estimated: 'Estimated',
+  unknown: 'Unpriced',
+}
+
+export const COST_KIND_HELP: Record<CostKindLike, string> = {
+  verified: 'Reported by the provider or runtime. This is an actual charge.',
+  estimated: 'Computed from token counts and list prices. Not a charge; the real bill may differ.',
+  unknown: 'The runtime did not report a cost. Nothing is claimed.',
+}
+
+/**
+ * Display a cost with its provenance. Only `verified` reads as a charge; an estimate always carries
+ * "≈" and "est."; an unknown cost never shows a number (it would read as $0).
+ */
+export function formatCost(micros: number | null | undefined, kind: CostKindLike): string {
+  if (kind === 'unknown') return 'Unpriced'
+  if (micros === null || micros === undefined) return '—'
+  return kind === 'estimated' ? `≈ ${formatUsd(micros)} est.` : formatUsd(micros)
+}
+
+/** Total that may be called "spent": verified costs only. */
+export function chargedMicros(byKind: Record<CostKindLike, number>): number {
+  return byKind.verified
+}

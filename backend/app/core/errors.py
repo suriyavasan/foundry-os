@@ -59,6 +59,24 @@ class InvalidTransition(Conflict):
     default_message = "Invalid state transition"
 
 
+class LimitExceeded(Conflict):
+    """A configured hard limit (delegation depth, tasks per cycle, ...) would be exceeded."""
+
+    code = "limit_exceeded"
+    default_message = "A configured limit would be exceeded"
+
+
+class BudgetExceeded(Conflict):
+    code = "budget_exceeded"
+    default_message = "The budget does not allow this"
+
+
+class PayloadTooLarge(AppError):
+    status_code = 413
+    code = "payload_too_large"
+    default_message = "Payload too large"
+
+
 class ValidationFailed(AppError):
     """Business-rule validation failure raised from services (422)."""
 
@@ -82,6 +100,7 @@ _HTTP_CODES = {
     404: "not_found",
     405: "method_not_allowed",
     409: "conflict",
+    413: "payload_too_large",
 }
 
 

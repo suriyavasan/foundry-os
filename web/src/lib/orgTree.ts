@@ -83,3 +83,18 @@ export function flattenOrgTree(nodes: OrgNode[]): OrgNode[] {
   nodes.forEach(walk)
   return out
 }
+
+const INACTIVE = new Set(['retired', 'rejected'])
+
+/**
+ * Drop retired/rejected agents from a built tree for display. Their reports are lifted to the nearest
+ * remaining ancestor (so a retired manager never orphans a live team), and depths are recomputed.
+ */
+export function pruneInactive(roots: OrgNode[]): OrgNode[] {
+  const walk = (n: OrgNode, depth: number): OrgNode[] => {
+    const kids = n.children.flatMap((c) => walk(c, INACTIVE.has(n.agent.status) ? depth : depth + 1))
+    if (INACTIVE.has(n.agent.status)) return kids
+    return [{ ...n, depth, children: kids }]
+  }
+  return roots.flatMap((r) => walk(r, 0))
+}

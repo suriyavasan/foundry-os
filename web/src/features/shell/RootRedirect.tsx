@@ -25,5 +25,5 @@ export function RootRedirect() {
   if (list.length === 0) return <Navigate to="/onboarding" replace />
   const last = getLastCompanyId()
   const target = list.find((c) => c.id === last) ?? list[0]!
-  return <Navigate to={`/c/${target.id}/command-center`} replace />
+  return <Navigate to={`/c/${target.id}`} replace />
 }

@@ -55,7 +55,7 @@ export function OnboardingPage() {
       const company = await create.mutateAsync(toCreateCompanyBody(values))
       setLastCompanyId(company.id)
       toast.success(`Created ${company.name}`)
-      navigate(`/c/${company.id}/command-center`, { replace: true })
+      navigate(`/c/${company.id}`, { replace: true })
     } catch (err) {
       if (err instanceof ApiError && err.code === 'validation_error') {
         const mapped = mapServerFieldErrors(err.fieldErrors)

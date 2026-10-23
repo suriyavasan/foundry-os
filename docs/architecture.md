@@ -17,25 +17,29 @@ adapter interface (§6).
 ## 2. System overview
 
 ```
-┌──────────────────────────── Company OS (this repo) ────────────────────────────┐
-│                                                                                │
-│  web/  React SPA ──HTTP/JSON──▶  backend/  FastAPI API (control plane)         │
-│                                   │  services (authz, policy, budget ledger)   │
-│                                   │  SQLAlchemy ──▶ SQLite (dev) / Postgres    │
-│                                   │                                            │
-│                                   └─ worker + scheduler (same codebase,        │
-│                                      separate process, DB-backed job queue)    │
-│                                          │                                     │
-│                                          ▼  RuntimeAdapter interface           │
-└──────────────────────────────────────────┼─────────────────────────────────────┘
-                                           │ HTTP (Bearer key from secret store)
-                     ┌─────────────────────┴───────────────────────┐
-                     ▼                                             ▼
-          Hermes gateway API server                     future adapters (OpenHands,
-          (/v1/runs, SSE events, /stop,                  Codex/Claude Code CLIs,
-           /approval) per isolated HERMES_HOME           direct model APIs, local LLMs)
-          terminal backend: docker, no network
+                 companyos CLI ─┐          ┌─ web/  single-canvas React UI (SSE live updates)
+                                ▼          ▼
+┌──────────────────────── backend/  Company OS control plane ────────────────────────┐
+│  FastAPI API  (/api: owner API, /api/agent/v1: agent API with scoped run tokens)    │
+│  services: tenancy/authz, policy & autonomy limits, budget ledger, tasks, skills    │
+│  SQLAlchemy ──▶ SQLite (dev) / Postgres (prod)      company_events outbox ──▶ SSE   │
+│                                                                                     │
+│  worker process: leases jobs ─▶ dispatches TaskRuns through RuntimeAdapter          │
+│  scheduler loop: founder heartbeats, routines, dispatch of ready tasks, recovery    │
+└───────────────────────────────┬─────────────────────────────────────────────────────┘
+                                │ spawn per run: python -m company_agent.run --spec …
+                                │ env: run token, HERMES_HOME (per employee), model creds
+                                ▼
+            runtime/  company-agent  (lean fork of Hermes Agent, MIT)
+            agent loop + tools + skills (only the employee's own) + company toolset
+            stdout: JSONL run events  ──▶ worker persists, settles usage, updates task
+            company toolset ──HTTP──▶ /api/agent/v1 (create subtasks, artifacts, hires…)
 ```
+
+Two processes own state changes: the API (human + agent requests) and the worker/scheduler
+(dispatch, run lifecycle). Both go through the same services, so policy and tenancy checks
+are identical. In local dev both can run inside the API process
+(`COMPANY_OS_EMBEDDED_WORKER=1`).
 
 ## 3. Technology choices
 
@@ -130,7 +134,40 @@ Model providers (OpenRouter, Anthropic, OpenAI, local OpenAI-compatible endpoint
 sandbox. A future "direct model" runtime may wrap one, but it must declare its limited
 capabilities honestly.
 
-### 6.1 Hermes adapter (findings from source inspection, hermes-agent @ db1fa15, 2026-10-23)
+### 6.1 Company agent runtime — our Hermes fork (decision D7, supersedes D2)
+
+The owner wants the agent layer reshaped for a company, not Hermes used as a generic
+assistant. We therefore fork Hermes Agent (MIT, upstream commit `db1fa15`) into
+`runtime/` and keep only what an AI employee needs:
+
+- **Kept:** the agent loop (`AIAgent`), tool registry and core tools (file, terminal,
+  web, code execution, todo, skills), the skills system, model provider plugins, terminal
+  backends (local, docker), skills guard.
+- **Dropped:** messaging gateways, TUI, desktop/web dashboard, website, apps, locales, cron,
+  kanban, voice/media extras. Removals are recorded in `runtime/FORK.md`.
+- **Added (`runtime/company_agent/`):**
+  - `run.py` entrypoint: reads a run spec (task, agent identity, instructions, model,
+    allowed toolsets, limits), builds `AIAgent`, streams **JSONL events on stdout**
+    (`run.started`, `message`, `tool.started`, `tool.completed`, `usage`, `artifact`,
+    `run.completed|failed|cancelled`), exits with a defined code. SIGTERM → interrupt.
+  - `company` toolset: tools that call the Company OS agent API with the run token
+    (read company context, create/delegate subtasks, submit artifacts, report progress,
+    complete/review tasks, record decisions, request hires/approvals, search skills).
+  - Policy approval callback: dangerous commands are decided by Company OS policy, never
+    auto-approved by Hermes defaults.
+- **Per-employee isolation:** each agent gets its own `HERMES_HOME`
+  (`data/agents/<agent_id>/home`) containing a generated `config.yaml` and **only that
+  employee's skills**; each run gets a workspace directory that is the write root.
+  Memory/session DB/curator/background review are off — company memory lives in Company OS.
+- **Process boundary:** the runtime runs in its own virtualenv (Python 3.14, Hermes' exact
+  pins), spawned by the worker. Company OS never imports it.
+
+The control plane talks to it through `app/runtimes/company_agent.py`, a `RuntimeAdapter`
+like any other. The upstream-Hermes gateway adapter (§6.2) stays available for users who
+run stock Hermes.
+
+### 6.2 Upstream Hermes gateway adapter (findings, hermes-agent @ db1fa15, 2026-10-23)
+
 
 - **Integration surface:** the Hermes gateway's OpenAI-compatible API server
   (`gateway/platforms/api_server.py`), started with `hermes gateway run` and enabled by
@@ -157,6 +194,38 @@ capabilities honestly.
   per-agent tool permissions require per-agent homes/gateways. Profiles are not a security
   boundary — the OS/container is. Deployment topology (gateway per agent vs. pooled) is
   decided in M4.
+
+## 6.3 Autonomy engine (M5)
+
+- **Company heartbeat:** a schedule per company wakes the Founder (default every 15 min, and
+  immediately on key events: goal changed, task finished, run failed). The Founder's run
+  sees live company state through the agent API and acts through tools: plan, create
+  projects/tasks, assign, request hires, review deliverables, record decisions.
+- **Delegation:** managers create subtasks for their reports (depth-limited). Tasks and
+  artifacts are the only collaboration channel — no free-form agent chat.
+- **Dispatch:** the scheduler moves tasks to `ready` when dependencies are done and an
+  active assignee exists, then dispatches runs within concurrency and budget limits.
+- **Review loop:** tasks with acceptance criteria go to `in_review`; the reviewer (manager
+  by default) accepts or requests a revision (bounded by `max_revisions`).
+- **Hiring loop:** when no active employee has the skills a task requires, a hiring task
+  goes to the HR agent, which picks a role template, attaches/installs/authors skills, and
+  hires. Under the default autonomy policy the hire is activated automatically within
+  `max_headcount` and budget.
+- **Human role:** sets goal and limits, can pause the company (kill switch: cancels runs,
+  stops dispatch) and answers the few approvals policy reserves for humans.
+
+## 6.4 Skills (M4)
+
+- Skills use the SKILL.md format (Hermes / Agent Skills). The **library** lives on disk
+  (`data/skills/<slug>/`), metadata in the DB (`Skill`: source, license, version, sha256,
+  trust level, tags). Sources: Hermes' bundled/optional skills (MIT), GitHub repositories
+  (license-checked, pinned to a commit), and company-authored skills (written by HR).
+- Every imported or authored skill passes the runtime's skills guard scan; failures are
+  quarantined and never materialized.
+- **Role templates** (founder, HR, engineering, design, marketing, sales, customer success,
+  research, QA, operations) define default instructions, toolsets and skills.
+- Agents only ever see their assigned skills: they are materialized into the agent's
+  `HERMES_HOME/skills` before each run.
 
 ## 7. Security model
 
@@ -208,3 +277,8 @@ capabilities honestly.
 | D4 | 2026-10-23 | SQLite for dev, Postgres for production; DB-backed job queue instead of Redis. |
 | D5 | 2026-10-23 | Tenancy enforced in services via `CompanyContext`; non-members get 404. |
 | D6 | 2026-10-23 | No fake data in production paths. Unbuilt subsystems report `available:false`; any future demo mode must be explicitly labelled in UI and API. |
+| D7 | 2026-10-23 | Owner direction: fork Hermes into `runtime/` as a company-employee runtime (spawned per run, JSONL events, company toolset). Supersedes D2 as the primary runtime; the gateway adapter stays as an option. |
+| D8 | 2026-10-23 | Autonomy by default. Human approval only for categories in `policy.human_approval_required_for` (default: external purchases, budget increases). Limits remain code-enforced. |
+| D9 | 2026-10-23 | Budget reservations are serialized per company by a write to the company's policy row at the start of the transaction (portable lock on SQLite and Postgres). |
+| D10 | 2026-10-23 | Live updates via a `company_events` outbox table polled by the SSE endpoint (works across API and worker processes; resumable with Last-Event-ID). |
+| D11 | 2026-10-23 | UI moves to a single sidebar-less canvas (owner direction); org chart of avatars with live hover is the primary widget. |

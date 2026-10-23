@@ -1,8 +1,7 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { Check, ChevronsUpDown, Plus } from 'lucide-react'
-import { useLocation, useNavigate } from 'react-router'
+import { useNavigate } from 'react-router'
 import { useCompanies } from '@/api'
-import { AREA_SEGMENTS } from './nav'
 
 export function CompanyAvatar({ name }: { name: string }) {
   return (
@@ -17,16 +16,12 @@ export function CompanyAvatar({ name }: { name: string }) {
 
 export function CompanySwitcher({ companyId, companyName, onNavigate }: { companyId: string; companyName: string; onNavigate?: () => void }) {
   const navigate = useNavigate()
-  const { pathname } = useLocation()
   const companies = useCompanies()
-
-  const area = pathname.split('/')[3]
-  const targetArea = area && AREA_SEGMENTS.includes(area) ? area : 'command-center'
 
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger
-        className="flex w-full items-center gap-2 rounded-md border border-line bg-raised px-2 py-1.5 text-left hover:bg-hover"
+        className="flex h-8 max-w-[220px] items-center gap-2 rounded-md border border-line bg-raised px-2 text-left transition-colors hover:bg-hover"
         aria-label="Switch company"
       >
         <CompanyAvatar name={companyName} />
@@ -39,7 +34,7 @@ export function CompanySwitcher({ companyId, companyName, onNavigate }: { compan
         <DropdownMenu.Content
           align="start"
           sideOffset={4}
-          className="z-[60] max-h-80 w-(--radix-dropdown-menu-trigger-width) min-w-52 overflow-y-auto rounded-md bg-surface p-1 shadow-pop"
+          className="z-[60] max-h-80 min-w-60 overflow-y-auto rounded-md bg-surface p-1 shadow-pop"
         >
           <DropdownMenu.Label className="px-2 py-1 text-[11px] font-medium tracking-wide text-fg-3 uppercase">
             Companies
@@ -50,7 +45,7 @@ export function CompanySwitcher({ companyId, companyName, onNavigate }: { compan
             <DropdownMenu.Item
               key={c.id}
               onSelect={() => {
-                if (c.id !== companyId) navigate(`/c/${c.id}/${targetArea}`)
+                if (c.id !== companyId) navigate(`/c/${c.id}`)
                 onNavigate?.()
               }}
               className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] text-fg outline-none data-[highlighted]:bg-hover"

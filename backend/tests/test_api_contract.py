@@ -90,6 +90,27 @@ def test_openapi_and_docs_served(client):
         "/api/companies/{company_id}/agents/{agent_id}/{action}",
         "/api/companies/{company_id}/activity",
         "/api/runtimes",
+        "/api/companies/{company_id}/policy",
+        "/api/companies/{company_id}/goals",
+        "/api/companies/{company_id}/projects",
+        "/api/companies/{company_id}/tasks",
+        "/api/companies/{company_id}/tasks/{task_id}",
+        "/api/companies/{company_id}/tasks/{task_id}/runs",
+        "/api/companies/{company_id}/runs/{run_id}",
+        "/api/companies/{company_id}/runs/{run_id}/events",
+        "/api/companies/{company_id}/artifacts",
+        "/api/companies/{company_id}/approvals",
+        "/api/companies/{company_id}/decisions",
+        "/api/companies/{company_id}/schedules",
+        "/api/companies/{company_id}/usage",
+        "/api/companies/{company_id}/pause",
+        "/api/companies/{company_id}/resume",
+        "/api/companies/{company_id}/stream",
+        "/api/companies/{company_id}/agents/{agent_id}/activity-now",
+        "/api/agent/v1/context",
+        "/api/agent/v1/tasks",
+        "/api/agent/v1/artifacts",
+        "/api/agent/v1/approvals",
     ]:
         assert p in paths, p
     assert client.get("/api/docs").status_code == 200
@@ -158,20 +179,22 @@ def test_activity_filters_and_bad_cursor(client, company):
 # ------------------------------------------------------------------ overview
 
 
-UNAVAILABLE = {
-    "tasks": "M3",
-    "spending": "M6",
-    "approvals": "M6",
-    "artifacts": "M7",
-    "routines": "M5",
-}
-
-
-def test_overview_reports_unbuilt_subsystems_honestly(client, company):
+def test_overview_aggregates_are_real_and_empty_for_a_new_company(client, company):
     cid = company["id"]
     ov = client.get(f"/api/companies/{cid}/overview").json()
-    for key, milestone in UNAVAILABLE.items():
-        assert ov[key] == {"available": False, "milestone": milestone}
+    # M2: no block is "not available" any more; an empty company reports honest zeros.
+    for key in ("tasks", "spending", "approvals", "artifacts", "routines"):
+        assert ov[key]["available"] is True, key
+    assert ov["tasks"]["total"] == 0 and ov["tasks"]["by_status"]["ready"] == 0
+    assert ov["spending"]["today"]["spent_micros"] == 0
+    assert ov["spending"]["today"]["budget_micros"] is None
+    assert ov["approvals"] == {
+        "available": True,
+        "pending_total": 0,
+        "pending_by_approver": {"human": 0, "founder": 0},
+    }
+    assert ov["artifacts"] == {"available": True, "total": 0, "latest": []}
+    assert ov["routines"] == {"available": True, "total": 0, "enabled": 0, "upcoming": []}
     assert ov["company"]["id"] == cid
     assert ov["founder"]["kind"] == "founder" and ov["founder"]["status"] == "active"
     assert ov["agents"] == {

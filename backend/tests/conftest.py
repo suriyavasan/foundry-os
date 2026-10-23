@@ -17,6 +17,8 @@ from app.main import create_app
 from app.models.company import CompanyMember
 from app.models.user import User
 from app.runtimes.registry import RuntimeRegistry
+from app.runtimes.scripted import ScriptedRuntime
+from tests.helpers import FakeClock
 
 
 def alembic_config(db_url: str) -> Config:
@@ -29,7 +31,15 @@ def alembic_config(db_url: str) -> Config:
 
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    for name in ("HERMES_API_URL", "HERMES_API_KEY", "COMPANY_OS_DATABASE_URL"):
+    for name in (
+        "HERMES_API_URL",
+        "HERMES_API_KEY",
+        "COMPANY_OS_DATABASE_URL",
+        "COMPANY_OS_ENABLE_TEST_RUNTIMES",
+        "COMPANY_OS_EMBEDDED_WORKER",
+        "COMPANY_OS_SECRET_KEY",
+        "COMPANY_OS_DATA_DIR",
+    ):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -57,8 +67,13 @@ def make_settings(db_url: str) -> Callable[..., Settings]:
 
 
 @pytest.fixture
-def app(make_settings: Callable[..., Settings]) -> FastAPI:
-    return create_app(make_settings(), runtime_registry=RuntimeRegistry())
+def scripted() -> ScriptedRuntime:
+    return ScriptedRuntime()
+
+
+@pytest.fixture
+def app(make_settings: Callable[..., Settings], scripted: ScriptedRuntime) -> FastAPI:
+    return create_app(make_settings(), runtime_registry=RuntimeRegistry([scripted]))
 
 
 @pytest.fixture
@@ -130,3 +145,39 @@ def new_agent(client: TestClient, cid: str, **overrides) -> dict:
     resp = client.post(agents_url(cid), json=body)
     assert resp.status_code == 201, resp.text
     return resp.json()
+
+
+# ------------------------------------------------------------------ work engine fixtures
+
+
+@pytest.fixture
+def clock() -> FakeClock:
+    return FakeClock()
+
+
+@pytest.fixture
+def engine(app: FastAPI, make_settings: Callable[..., Settings], clock: FakeClock):
+    from app.engine.context import build_context
+
+    return build_context(
+        make_settings(),
+        session_factory=app.state.session_factory,
+        registry=app.state.runtimes,
+        keys=app.state.keys,
+        storage=app.state.storage,
+        clock=clock,
+    )
+
+
+@pytest.fixture
+def scheduler(engine):
+    from app.engine.scheduler import Scheduler
+
+    return Scheduler(engine)
+
+
+@pytest.fixture
+def worker(engine):
+    from app.engine.worker import Worker
+
+    return Worker(engine, worker_id="test-worker", monitor_interval=0.01)

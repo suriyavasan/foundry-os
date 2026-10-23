@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatUsd, microsToUsdString, parseBudgetInput, usdToMicros } from './money'
+import { COST_KIND_LABEL, chargedMicros, formatCost, formatUsd, microsToUsdString, parseBudgetInput, usdToMicros } from './money'
 
 describe('usdToMicros', () => {
   it.each([
@@ -68,5 +68,30 @@ describe('parseBudgetInput', () => {
   it('parses valid amounts and flags invalid ones', () => {
     expect(parseBudgetInput('25.5')).toEqual({ value: 25_500_000 })
     expect(parseBudgetInput('abc').error).toBeTruthy()
+  })
+})
+
+describe('formatCost (cost_kind provenance)', () => {
+  it('shows a verified cost as a plain charge', () => {
+    expect(formatCost(1_250_000, 'verified')).toBe('$1.25')
+  })
+  it('never presents an estimate as a charge', () => {
+    const s = formatCost(1_250_000, 'estimated')
+    expect(s).toBe('≈ $1.25 est.')
+    expect(s).not.toBe(formatCost(1_250_000, 'verified'))
+  })
+  it('shows no number for an unknown cost', () => {
+    expect(formatCost(0, 'unknown')).toBe('Unpriced')
+    expect(formatCost(5_000_000, 'unknown')).toBe('Unpriced')
+  })
+  it('handles a missing amount', () => {
+    expect(formatCost(null, 'verified')).toBe('—')
+  })
+  it('labels each kind distinctly', () => {
+    expect(new Set(Object.values(COST_KIND_LABEL)).size).toBe(3)
+    expect(COST_KIND_LABEL.estimated).toBe('Estimated')
+  })
+  it('counts only verified spend as charged', () => {
+    expect(chargedMicros({ verified: 2_000_000, estimated: 9_000_000, unknown: 1_000_000 })).toBe(2_000_000)
   })
 })

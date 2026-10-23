@@ -14,11 +14,14 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.errors import NotFound, Unauthenticated
+from app.core.keys import SecretKeyProvider
 from app.core.principal import CompanyContext, Principal, Role
+from app.core.tokens import TOKEN_PREFIX
 from app.models.agent import Agent
 from app.models.company import CompanyMember
 from app.runtimes.registry import RuntimeRegistry
-from app.services import users
+from app.services import agent_auth, users
+from app.storage.base import ArtifactStorage
 
 
 def get_settings_dep(request: Request) -> Settings:
@@ -27,6 +30,14 @@ def get_settings_dep(request: Request) -> Settings:
 
 def get_runtime_registry(request: Request) -> RuntimeRegistry:
     return request.app.state.runtimes
+
+
+def get_keys(request: Request) -> SecretKeyProvider:
+    return request.app.state.keys
+
+
+def get_storage(request: Request) -> ArtifactStorage:
+    return request.app.state.storage
 
 
 def get_db(request: Request) -> Iterator[Session]:
@@ -40,9 +51,20 @@ def get_db(request: Request) -> Iterator[Session]:
 DbSession = Annotated[Session, Depends(get_db)]
 
 
+def bearer_token(request: Request) -> str | None:
+    header = request.headers.get("authorization", "")
+    scheme, _, value = header.partition(" ")
+    return value.strip() if scheme.lower() == "bearer" and value.strip() else None
+
+
 def get_principal(request: Request, db: DbSession) -> Principal:
-    """Local auth mode: every request is the single local owner (localhost only!)."""
+    """A valid agent run token makes the caller that agent (bound to its company), so the
+    owner API's authorization rules apply to it. Otherwise, in local auth mode every request
+    is the single local owner (localhost only!)."""
     settings: Settings = request.app.state.settings
+    token = bearer_token(request)
+    if token and token.startswith(TOKEN_PREFIX):
+        return agent_auth.authenticate(db, request.app.state.keys, token).ctx.principal
     if settings.auth_mode == "local":
         owner = users.get_local_owner(db)
         if owner is None:
@@ -78,3 +100,14 @@ def get_company_context(
 
 
 CompanyCtx = Annotated[CompanyContext, Depends(get_company_context)]
+
+
+def get_agent_run_context(request: Request, db: DbSession) -> agent_auth.AgentRunContext:
+    """Agent API auth: ``Authorization: Bearer <run token>``; valid only for a live run."""
+    token = bearer_token(request)
+    if not token:
+        raise Unauthenticated("Run token required")
+    return agent_auth.authenticate(db, request.app.state.keys, token)
+
+
+RunCtx = Annotated[agent_auth.AgentRunContext, Depends(get_agent_run_context)]

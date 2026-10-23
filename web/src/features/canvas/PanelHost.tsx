@@ -1,0 +1,50 @@
+import { ActivityPanel } from '@/features/panels/ActivityPanel'
+import { AgentPanel } from '@/features/panels/AgentPanel'
+import { ApprovalsPanel } from '@/features/panels/ApprovalsPanel'
+import { ArtifactPanel } from '@/features/panels/ArtifactPanel'
+import { ArtifactsPanel } from '@/features/panels/ArtifactsPanel'
+import { FinancePanel } from '@/features/panels/FinancePanel'
+import { GoalsPanel } from '@/features/panels/GoalsPanel'
+import { OrgPanel } from '@/features/panels/OrgPanel'
+import { RoutinesPanel } from '@/features/panels/RoutinesPanel'
+import { TaskPanel } from '@/features/panels/TaskPanel'
+import { TasksPanel } from '@/features/panels/TasksPanel'
+import { IntegrationsPanel } from '@/features/integrations/IntegrationsPanel'
+import { SettingsPanel } from '@/features/settings/SettingsPanel'
+import { serializePanel } from '@/lib/panels'
+import { useCanvas } from './CanvasContext'
+
+/** Renders the drawer for the panel named in the URL. Remounts when the panel changes. */
+export function PanelHost() {
+  const { panel } = useCanvas()
+  if (!panel) return null
+  const key = serializePanel(panel) + (panel.kind === 'task' ? `|${panel.run ?? ''}` : '')
+  switch (panel.kind) {
+    case 'org':
+      return <OrgPanel key={key} />
+    case 'tasks':
+      return <TasksPanel key={key} />
+    case 'activity':
+      return <ActivityPanel key={key} />
+    case 'artifacts':
+      return <ArtifactsPanel key={key} />
+    case 'approvals':
+      return <ApprovalsPanel key={key} />
+    case 'finance':
+      return <FinancePanel key={key} />
+    case 'settings':
+      return <SettingsPanel key={key} />
+    case 'integrations':
+      return <IntegrationsPanel key={key} />
+    case 'goals':
+      return <GoalsPanel key={key} />
+    case 'routines':
+      return <RoutinesPanel key={key} />
+    case 'agent':
+      return <AgentPanel key={key} agentId={panel.id} />
+    case 'task':
+      return <TaskPanel key={key} taskId={panel.id} runId={panel.run} />
+    case 'artifact':
+      return <ArtifactPanel key={key} artifactId={panel.id} />
+  }
+}

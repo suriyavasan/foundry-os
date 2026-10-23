@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import type { Agent } from '@/api/types'
-import { Button, Card, CardBody, CardHeader, Field, FormError, Input, NotAvailable } from '@/components/ui'
+import { Button, Card, CardBody, CardHeader, Field, FormError, Input } from '@/components/ui'
+import { AgentUsageCard } from './AgentUsageCard'
 import { formatUsd, microsToUsdString, parseBudgetInput } from '@/lib/money'
 import { useAgentSave } from './useAgentSave'
 
@@ -49,10 +50,7 @@ export function BudgetTab({ agent }: { agent: Agent }) {
           </CardBody>
         </form>
       </Card>
-      <Card>
-        <CardHeader title="Usage" />
-        <NotAvailable compact className="p-4" milestone="M6" description="Verified and estimated spend against these limits. Limits are stored now but not enforced until the budget ledger ships." />
-      </Card>
+      <AgentUsageCard agent={agent} />
     </div>
   )
 }

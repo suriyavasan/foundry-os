@@ -43,3 +43,8 @@ export function formatAction(action: string): string {
   const t = action.replace(/[._]+/g, ' ').trim()
   return t.charAt(0).toUpperCase() + t.slice(1)
 }
+
+/** Token counts are null until a runtime reports usage. */
+export function formatTokens(n: number | null | undefined): string {
+  return n == null ? '—' : n.toLocaleString()
+}

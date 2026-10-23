@@ -13,7 +13,7 @@ from app.models.agent import Agent
 from app.models.company import Company, CompanyMember
 from app.models.enums import AgentKind, AgentStatus, CompanyStatus, MemberRole
 from app.schemas.company import CompanyCreate, CompanyUpdate
-from app.services import audit
+from app.services import audit, policy
 from app.services.pagination import paginate
 
 UPDATABLE = ("name", "mission", "vision", "strategic_goal", "constraints", "timezone", "status")
@@ -52,6 +52,7 @@ def create_company(db: Session, principal: Principal, data: CompanyCreate) -> Co
     db.add(company)
     db.flush()
     db.add(CompanyMember(company_id=company.id, user_id=principal.id, role=MemberRole.OWNER))
+    policy.create_default_policy(db, company.id)
     founder = Agent(
         company_id=company.id,
         name=data.founder.name,
@@ -118,6 +119,10 @@ def update_company(db: Session, ctx: CompanyContext, data: CompanyUpdate) -> Com
         if getattr(company, field) != new:
             setattr(company, field, new)
             changed.append(field)
+    if "status" in changed:
+        from app.services import control  # local import: control depends on this module
+
+        control.apply_status_effects(db, ctx, company)
     if changed:
         audit.record(
             db,

@@ -12,6 +12,32 @@ AgentStatusLiteral = Literal["proposed", "active", "paused", "retiring", "retire
 MAX_BUDGET_MICROS = 10**15  # $1B; guards against absurd values / overflow
 
 
+AgentStateLiteral = Literal["idle", "working", "blocked", "paused", "offline"]
+
+
+class LiveTask(ApiModel):
+    id: str
+    title: str
+
+
+class LiveRun(ApiModel):
+    id: str
+    status: Literal[
+        "queued", "starting", "running", "succeeded", "failed", "cancelled", "timed_out"
+    ]
+    started_at: Timestamp | None
+
+
+class AgentLive(ApiModel):
+    """What the agent is doing right now (derived from runs/tasks; never stored)."""
+
+    state: AgentStateLiteral
+    current_task: LiveTask | None
+    current_run: LiveRun | None
+    summary: str | None
+    since: Timestamp | None
+
+
 class Agent(ApiModel):
     id: str
     company_id: str
@@ -34,6 +60,7 @@ class Agent(ApiModel):
     created_at: Timestamp
     updated_at: Timestamp
     status_changed_at: Timestamp
+    live: AgentLive | None = None  # activity-now; filled by services.live.serialize_agents
 
 
 def _clean_tools(value: list[str]) -> list[str]:

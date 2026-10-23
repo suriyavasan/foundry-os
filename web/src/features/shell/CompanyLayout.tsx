@@ -1,13 +1,21 @@
 import { useEffect } from 'react'
 import { Outlet } from 'react-router'
 import { ApiError, useCompany } from '@/api'
-import { AppShell } from '@/components/layout/AppShell'
+import { StreamProvider } from '@/api/stream'
 import { ErrorState, LoadingState } from '@/components/ui'
+import { CanvasProvider } from '@/features/canvas/CanvasContext'
+import { CommandPalette } from '@/features/canvas/CommandPalette'
+import { CreateHost } from '@/features/canvas/CreateHost'
+import { PanelHost } from '@/features/canvas/PanelHost'
+import { TopBar } from '@/features/canvas/TopBar'
 import { setLastCompanyId } from '@/lib/storage'
 import { NotFound } from './NotFound'
 import { useCompanyId } from './useCompanyId'
 
-/** Resolves the company in the URL, remembers it, and renders the persistent shell. */
+/**
+ * Resolves the company in the URL and renders the one persistent shell: top bar, the routed page
+ * (the canvas), the URL-driven detail drawer, create dialogs and the command palette. No sidebar.
+ */
 export function CompanyLayout() {
   const companyId = useCompanyId()
   const company = useCompany(companyId)
@@ -19,15 +27,10 @@ export function CompanyLayout() {
   if (company.isError && company.error instanceof ApiError && company.error.status === 404) {
     return (
       <div className="min-h-screen bg-canvas">
-        <NotFound
-          title="Company not found"
-          description="This company does not exist, or you are not a member of it."
-          backLabel="Choose another company"
-        />
+        <NotFound title="Company not found" description="This company does not exist, or you are not a member of it." backLabel="Choose another company" />
       </div>
     )
   }
-
   if (company.isPending) {
     return (
       <div className="mx-auto max-w-md pt-24">
@@ -44,8 +47,17 @@ export function CompanyLayout() {
   }
 
   return (
-    <AppShell companyId={companyId} companyName={company.data.name}>
-      <Outlet />
-    </AppShell>
+    <StreamProvider key={companyId} companyId={companyId}>
+      <CanvasProvider companyId={companyId}>
+        <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[80] focus:rounded-md focus:bg-surface focus:px-3 focus:py-1.5">
+          Skip to canvas
+        </a>
+        <TopBar company={company.data} />
+        <Outlet />
+        <PanelHost />
+        <CreateHost />
+        <CommandPalette company={company.data} />
+      </CanvasProvider>
+    </StreamProvider>
   )
 }

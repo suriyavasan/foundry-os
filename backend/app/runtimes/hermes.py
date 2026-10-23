@@ -1,7 +1,7 @@
 """Hermes Agent adapter (gateway OpenAI-compatible API server).
 
-Milestone 1 implements configuration validation and health checks only. Execution methods
-raise NotImplementedError until Milestone 4.
+Configuration validation and health checks only. ``execute`` raises NotImplementedError and
+``supports_execution`` is False, so the dispatcher never hands it work.
 
 Findings from vendor/hermes-agent (commit db1fa15), gateway/platforms/api_server.py:
   * ``GET /health`` (route table line ~1569, handler ``_handle_health`` ~2280) is NOT
@@ -16,7 +16,6 @@ Findings from vendor/hermes-agent (commit db1fa15), gateway/platforms/api_server
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from typing import Any
 from urllib.parse import urlparse
 
@@ -24,27 +23,27 @@ import httpx
 
 from app.core.config import Settings
 from app.runtimes.base import (
+    CancelToken,
     Capability,
     ConfigIssue,
-    ExecutionEvent,
-    ExecutionHandle,
+    EventSink,
     ExecutionRequest,
     ExecutionResult,
-    ExecutionState,
     HealthStatus,
     RuntimeAdapter,
     RuntimeHealth,
-    UsageReport,
 )
 
 HEALTH_TIMEOUT_SECONDS = 2.0
-_M4 = "Hermes execution is not implemented until Milestone 4"
+_NOT_IMPLEMENTED = "Hermes gateway execution is not implemented yet (see docs/roadmap.md)"
 
 
 class HermesAdapter(RuntimeAdapter):
     id = "hermes"
     display_name = "Hermes Agent"
     kind = "agent_runtime"
+    # Health/config only: tasks assigned to this runtime wait until execution is built.
+    supports_execution = False
     config_hint = (
         "Set HERMES_API_URL (e.g. http://127.0.0.1:8642) and HERMES_API_KEY to the gateway's "
         "API_SERVER_KEY, then restart the backend. Start Hermes with `hermes gateway run`."
@@ -148,22 +147,7 @@ class HermesAdapter(RuntimeAdapter):
                 HealthStatus.UNAVAILABLE, f"Could not reach Hermes ({type(exc).__name__})"
             )
 
-    def start(self, request: ExecutionRequest) -> ExecutionHandle:
-        raise NotImplementedError(_M4)
-
-    def get_status(self, handle: ExecutionHandle) -> ExecutionState:
-        raise NotImplementedError(_M4)
-
-    def stream_events(
-        self, handle: ExecutionHandle, after_seq: int = 0
-    ) -> Iterator[ExecutionEvent]:
-        raise NotImplementedError(_M4)
-
-    def cancel(self, handle: ExecutionHandle) -> None:
-        raise NotImplementedError(_M4)
-
-    def get_result(self, handle: ExecutionHandle) -> ExecutionResult:
-        raise NotImplementedError(_M4)
-
-    def get_usage(self, handle: ExecutionHandle) -> UsageReport:
-        raise NotImplementedError(_M4)
+    def execute(
+        self, request: ExecutionRequest, sink: EventSink, cancel: CancelToken
+    ) -> ExecutionResult:
+        raise NotImplementedError(_NOT_IMPLEMENTED)
