@@ -8,6 +8,7 @@ import { ApprovalStatusBadge } from '@/features/shared/badges'
 import { formatRelative, titleCase } from '@/lib/format'
 import { formatUsd } from '@/lib/money'
 import { OutboundReview } from './OutboundReview'
+import { ScopeReview } from './ScopeReview'
 
 const DECISION_LABEL: Record<ApprovalDecision, string> = {
   approve: 'Approve',
@@ -49,6 +50,7 @@ export function ApprovalCard({ approval, agents, companyId, dense = false, showT
       </div>
       {approval.reason && <p className={dense ? 'mt-1.5 line-clamp-2 text-[12.5px] text-fg-2' : 'mt-1.5 text-[12.5px] whitespace-pre-wrap text-fg-2'}>{approval.reason}</p>}
       <OutboundReview approval={approval} dense={dense} />
+      <ScopeReview approval={approval} dense={dense} />
       {approval.decision_note && (
         <p className="mt-1.5 text-[12px] text-fg-3">
           Decision note: <span className="text-fg-2">{approval.decision_note}</span>

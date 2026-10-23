@@ -1,5 +1,6 @@
 import { createContext, use, useCallback, useMemo, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router'
+import type { ConnectedProvider } from '@/api/types'
 import { parsePanel, samePanel, withPanel, type Panel } from '@/lib/panels'
 
 export type CreateKind = 'task' | 'goal' | 'project' | 'hire' | 'department'
@@ -28,6 +29,10 @@ interface CanvasApi {
   /** The emergency-stop confirmation, shared by the Guardrails panel and the command palette. */
   stopOpen: boolean
   setStopOpen: (open: boolean) => void
+  /** The "Connect an account" dialog (M8), opened from the palette, the checklist and the Integrations panel. */
+  connectAccount: { provider?: ConnectedProvider } | null
+  openConnectAccount: (provider?: ConnectedProvider) => void
+  closeConnectAccount: () => void
 }
 
 const CanvasContext = createContext<CanvasApi | null>(null)
@@ -72,6 +77,7 @@ export function CanvasProvider({ companyId, children }: { companyId: string; chi
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [pauseOpen, setPauseOpen] = useState(false)
   const [stopOpen, setStopOpen] = useState(false)
+  const [connectAccount, setConnectAccount] = useState<CanvasApi['connectAccount']>(null)
 
   const value = useMemo<CanvasApi>(
     () => ({
@@ -88,8 +94,11 @@ export function CanvasProvider({ companyId, children }: { companyId: string; chi
       setPauseOpen,
       stopOpen,
       setStopOpen,
+      connectAccount,
+      openConnectAccount: (provider) => setConnectAccount({ provider }),
+      closeConnectAccount: () => setConnectAccount(null),
     }),
-    [companyId, panel, openPanel, closePanel, creating, paletteOpen, pauseOpen, stopOpen],
+    [companyId, panel, openPanel, closePanel, creating, paletteOpen, pauseOpen, stopOpen, connectAccount],
   )
   return <CanvasContext value={value}>{children}</CanvasContext>
 }

@@ -83,6 +83,13 @@ export const KNOWN_EVENT_TYPES = [
   'notification.updated',
   'member.updated',
   'invitation.updated',
+  // M8 reachability & identity (assumed names; invalidate-only)
+  'reachability.updated',
+  'tunnel.updated',
+  'connected_account.updated',
+  'domain.updated',
+  'mailbox.updated',
+  'hosted_ui.updated',
 ] as const
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null)
@@ -217,6 +224,17 @@ export function effectsForEvent(cid: string, ev: CompanyEvent): CacheEffect[] {
     case 'member.updated':
     case 'invitation.updated':
       return [inv(qk.membersAll(cid)), inv(qk.agents(cid)), inv(qk.activityAll(cid))]
+    case 'reachability.updated':
+    case 'tunnel.updated':
+      return [inv(qk.reachability), inv(qk.hostedUi(cid))]
+    case 'connected_account.updated':
+      return [inv(qk.connectedAccounts(cid)), inv(qk.reachability), inv(qk.emailAll(cid)), inv(qk.activityAll(cid))]
+    case 'domain.updated':
+      return [inv(qk.domainAll(cid)), inv(qk.reachability), inv(qk.approvalsAll(cid)), inv(qk.activityAll(cid))]
+    case 'mailbox.updated':
+      return [inv(qk.emailAll(cid)), inv(qk.approvalsAll(cid)), inv(qk.activityAll(cid))]
+    case 'hosted_ui.updated':
+      return [inv(qk.hostedUi(cid)), inv(qk.approvalsAll(cid)), inv(qk.activityAll(cid))]
     default:
       return []
   }

@@ -7,6 +7,7 @@ import { CanvasProvider } from '@/features/canvas/CanvasContext'
 import { CommandPalette } from '@/features/canvas/CommandPalette'
 import { CreateHost } from '@/features/canvas/CreateHost'
 import { PanelHost } from '@/features/canvas/PanelHost'
+import { ConnectAccountHost } from '@/features/integrations/ConnectAccountHost'
 import { EmergencyStopDialog } from '@/features/guardrails/EmergencyStop'
 import { TopBar } from '@/features/canvas/TopBar'
 import { setLastCompanyId } from '@/lib/storage'
@@ -59,6 +60,7 @@ export function CompanyLayout() {
         <CreateHost />
         <CommandPalette company={company.data} />
         <EmergencyStopDialog />
+        <ConnectAccountHost />
       </CanvasProvider>
     </StreamProvider>
   )

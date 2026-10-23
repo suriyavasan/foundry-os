@@ -153,3 +153,29 @@ check<WhenInSchema<'Invitation', Same<T.InvitationStatus, M<'Invitation'>['statu
 check<WhenInSchema<'ApiToken', Same<T.TokenScope, M<'ApiToken'>['scope']>>>()
 check<WhenInSchema<'AuthSession', Same<T.AuthState, M<'AuthSession'>['state']>>>()
 check<WhenInSchema<'InvitationCreated', Same<T.InvitationDelivery, M<'InvitationCreated'>['delivery']>>>()
+
+// ---- Milestone 8 (reachability & identity) ----
+// The M8 backend does not exist yet; types.ts "Milestone 8" documents the assumed paths and shapes. The schema names below
+// are the expected ones (docs/specs/m8-reachability-and-identity.md). Each check switches itself on when a schema with that
+// name appears after `pnpm gen:api`, and then fails typecheck on any drift.
+check<WhenInSchema<'ReachabilityStatus', Accepts<T.ReachabilityStatus, M<'ReachabilityStatus'>>>>()
+check<WhenInSchema<'LanAddress', Accepts<T.LanAddress, M<'LanAddress'>>>>()
+check<WhenInSchema<'TunnelStatus', Accepts<T.TunnelStatus, M<'TunnelStatus'>>>>()
+check<WhenInSchema<'TunnelConfig', Accepts<M<'TunnelConfig'>, T.TunnelConfig>>>()
+check<WhenInSchema<'DomainPlan', Accepts<T.DomainPlan, M<'DomainPlan'>>>>()
+check<WhenInSchema<'DomainRegistration', Accepts<T.DomainRegistration, M<'DomainRegistration'>>>>()
+check<WhenInSchema<'DomainRegistrationCreate', Accepts<M<'DomainRegistrationCreate'>, T.DomainRegistrationCreate>>>()
+check<WhenInSchema<'DomainRegistrationPreview', Accepts<T.DomainRegistrationPreview, M<'DomainRegistrationPreview'>>>>()
+check<WhenInSchema<'ConnectedAccount', Accepts<T.ConnectedAccount, M<'ConnectedAccount'>>>>()
+check<WhenInSchema<'ConnectedAccountCreate', Accepts<M<'ConnectedAccountCreate'>, T.ConnectedAccountCreate>>>()
+check<WhenInSchema<'ProviderCheck', Accepts<T.ProviderCheck, M<'ProviderCheck'>>>>()
+check<WhenInSchema<'Mailbox', Accepts<T.Mailbox, M<'Mailbox'>>>>()
+check<WhenInSchema<'MailboxCreate', Accepts<M<'MailboxCreate'>, T.MailboxCreate>>>()
+check<WhenInSchema<'HostedUiDeployment', Accepts<T.HostedUiDeployment, M<'HostedUiDeployment'>>>>()
+check<WhenInSchema<'EmailIdentity', Accepts<T.EmailIdentity, M<'EmailIdentity'>>>>()
+// The enums the UI switches on must be exactly the server's, once the schema carries them.
+check<WhenInSchema<'TunnelStatus', Same<T.TunnelState, M<'TunnelStatus'>['state']>>>()
+check<WhenInSchema<'ConnectedAccount', Same<T.ConnectedAccountStatus, M<'ConnectedAccount'>['status']>>>()
+check<WhenInSchema<'Mailbox', Same<T.MailboxStatus, M<'Mailbox'>['status']>>>()
+check<WhenInSchema<'HostedUiDeployment', Same<T.HostedUiStatus, M<'HostedUiDeployment'>['status']>>>()
+check<WhenInSchema<'DomainPlan', Same<T.DomainStatus, M<'DomainPlan'>['status']>>>()

@@ -48,3 +48,17 @@ export function formatAction(action: string): string {
 export function formatTokens(n: number | null | undefined): string {
   return n == null ? '—' : n.toLocaleString()
 }
+
+/** "12.4 MB". Decimal units, one decimal place from KB up. */
+export function formatBytes(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n) || n < 0) return '—'
+  if (n < 1000) return `${n} B`
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let v = n
+  let i = -1
+  do {
+    v /= 1000
+    i++
+  } while (v >= 1000 && i < units.length - 1)
+  return `${v.toFixed(1)} ${units[i]}`
+}

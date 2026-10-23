@@ -80,6 +80,18 @@ export const qk = {
   membersAll: (cid: string) => ['company', cid, 'members'] as const,
   members: (cid: string) => ['company', cid, 'members', 'list'] as const,
   invitations: (cid: string) => ['company', cid, 'members', 'invitations'] as const,
+  // M8 reachability & identity. The device-level status is install-wide; the rest is company scoped.
+  reachability: ['reachability'] as const,
+  connectedAccounts: (cid: string) => ['company', cid, 'connected-accounts'] as const,
+  domainAll: (cid: string) => ['company', cid, 'domain'] as const,
+  domain: (cid: string) => ['company', cid, 'domain', 'plan'] as const,
+  domainRegistries: (cid: string) => ['company', cid, 'domain', 'registries'] as const,
+  freeDomainProviders: (cid: string) => ['company', cid, 'domain', 'free-providers'] as const,
+  domainSearch: (cid: string, q: string) => ['company', cid, 'domain', 'search', q] as const,
+  hostedUi: (cid: string) => ['company', cid, 'hosted-ui'] as const,
+  emailAll: (cid: string) => ['company', cid, 'email'] as const,
+  email: (cid: string) => ['company', cid, 'email', 'identity'] as const,
+  mailboxes: (cid: string) => ['company', cid, 'email', 'mailboxes'] as const,
   // The emergency stop is global (all companies).
   systemStatus: ['system', 'status'] as const,
 }

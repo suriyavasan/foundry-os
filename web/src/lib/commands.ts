@@ -12,6 +12,8 @@ export type CommandAction =
   | { type: 'compose-note' }
   | { type: 'wake-cofounder' }
   | { type: 'emergency-stop' }
+  | { type: 'copy-public-url' }
+  | { type: 'connect-account' }
 
 export interface PaletteCommand {
   id: string
@@ -88,6 +90,8 @@ export interface CommandContext {
   autonomy?: boolean
   /** false when the M6 system endpoints are not deployed: the emergency stop is hidden, not faked. */
   guardrails?: boolean
+  /** false when the M8 reachability endpoints are not deployed: its actions are hidden, not faked. */
+  reachability?: boolean
 }
 
 export function buildCommands(ctx: CommandContext): PaletteCommand[] {
@@ -112,6 +116,12 @@ export function buildCommands(ctx: CommandContext): PaletteCommand[] {
       : { id: 'act:resume', group: 'Actions', label: 'Resume company', hint: 'Restart dispatch', keywords: ['start', 'unpause'], action: { type: 'company', do: 'resume' } },
     ...(ctx.guardrails !== false
       ? [{ id: 'act:emergency-stop', group: 'Actions' as const, label: 'Emergency stop\u2026', hint: 'Halts every company', keywords: ['kill', 'halt', 'panic', 'stop all', 'guardrails'], action: { type: 'emergency-stop' as const } }]
+      : []),
+    ...(ctx.reachability !== false
+      ? [
+          { id: 'act:copy-public-url', group: 'Actions' as const, label: 'Copy public URL', hint: 'Reachability', keywords: ['link', 'share', 'tunnel', 'domain', 'address'], action: { type: 'copy-public-url' as const } },
+          { id: 'act:connect-account', group: 'Actions' as const, label: 'Connect an account\u2026', hint: 'Cloudflare, GitHub, Vercel, email', keywords: ['provider', 'token', 'cloudflare', 'github', 'vercel', 'agentmail', 'resend', 'integration'], action: { type: 'connect-account' as const } },
+        ]
       : []),
     { id: 'act:theme', group: 'Actions', label: 'Toggle theme', hint: 'Dark / light', keywords: ['dark', 'light', 'appearance'], action: { type: 'theme' } },
   )

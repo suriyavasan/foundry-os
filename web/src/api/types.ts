@@ -1666,3 +1666,334 @@ export interface CompleteTaskRequest {
   comment?: string | null
   artifact_ids?: Uuid[]
 }
+
+/* ======================================================================== *
+ * Milestone 8 (docs/specs/m8-reachability-and-identity.md): reachability and identity.
+ * ASSUMPTION: the M8 backend does not exist yet. Paths follow the spec's sections; the shapes below fill its gaps
+ * conservatively. Each type is re-checked against schema.d.ts in contract.check.ts (WhenInSchema) as soon as a
+ * generated schema carries the expected name, so drift fails `pnpm typecheck`. Every M8 surface says "Arrives in M8"
+ * when its endpoint answers 404/405.
+ *
+ * Device level (install-wide, owner only; not company scoped):
+ *   GET   /reachability                     ReachabilityStatus (LAN + tunnel + public-exposure gate in one poll)
+ *   PATCH /reachability/lan                 {enabled}              -> ReachabilityStatus  (rebinds 127.0.0.1 <-> 0.0.0.0)
+ *   POST  /reachability/tunnel/start        TunnelConfig           -> TunnelStatus
+ *   POST  /reachability/tunnel/stop                                -> TunnelStatus
+ *   POST  /reachability/tunnel/install      {confirm: true}        -> TunnelStatus  (verified download; only when offered)
+ * Company scoped (`/companies/{cid}`):
+ *   GET   /connected-accounts               ConnectedAccount[]     POST ConnectedAccountCreate -> ConnectedAccount
+ *   POST  /connected-accounts/{id}/test     -> ProviderCheck       DELETE /connected-accounts/{id}  (revoke)
+ *   POST  /connected-accounts/oauth/start   {provider}             -> {authorize_url}   (gmail / outlook only)
+ *   GET   /domain                           DomainPlan             (the company's current domain, DNS/TLS state)
+ *   GET   /domain/registries                DomainRegistry[]       (free-subdomain GitHub-PR registries)
+ *   GET   /domain/free-providers            FreeDomainProvider[]   (free domains with a dashboard)
+ *   GET   /domain/search?q=                 DomainAvailability[]   (registrar availability + price)
+ *   POST  /domain/registrations/preview     DomainRegistrationPreview request -> DomainRegistrationPreview
+ *   POST  /domain/registrations             DomainRegistrationCreate -> DomainRegistration (creates the approval)
+ *   POST  /domain/verify                    -> DomainPlan          (DNS check after the Founder did the dashboard steps)
+ *   GET   /hosted-ui                        HostedUiDeployment | null     POST /hosted-ui/deploy -> HostedUiDeployment
+ *   GET   /email                            EmailIdentity          PATCH EmailIdentityUpdate -> EmailIdentity
+ *   GET   /mailboxes                        Mailbox[]              POST MailboxCreate -> Mailbox
+ * Approvals created by M8 carry an `action` (see lib/reachabilityApprovals.ts): domain.register_pr, domain.purchase,
+ * dns.change, mailbox.create, hosted_ui.deploy; the exact scope is in `approval.scope`.
+ * Stream events (invalidate-only): reachability.updated, tunnel.updated, connected_account.updated, domain.updated,
+ * mailbox.updated, hosted_ui.updated.
+ * Secrets: provider tokens go once to POST /credentials (M3b store); a connected account only references the
+ * credential id. No M8 response carries a secret.
+ * ======================================================================== */
+
+export type ReachabilityMode = 'local' | 'lan' | 'public'
+
+export interface LanAddress {
+  address: string
+  family: 'ipv4' | 'ipv6'
+  /** Network interface name, e.g. en0. */
+  interface: string | null
+  /** Full URL for this address, e.g. http://192.168.1.20:8700 */
+  url: string
+}
+
+export interface LanStatus {
+  /** The server is bound to all interfaces. */
+  enabled: boolean
+  /** `<host>.local` mDNS name, when announced. */
+  mdns_name: string | null
+  mdns_url: string | null
+  addresses: LanAddress[]
+}
+
+export type TunnelProviderKind = 'cloudflare_quick' | 'cloudflare_named' | 'tailscale_funnel'
+export type TunnelState = 'stopped' | 'starting' | 'running' | 'error'
+
+/** The tunnel binary (`cloudflared` / `tailscale`) on this machine. */
+export interface TunnelBinary {
+  name: string
+  found: boolean
+  version: string | null
+  path: string | null
+  /** Plain-text install steps shown when `found` is false. */
+  install_instructions: string[]
+  /** The server offers a one-click, checksum-verified download (only after the owner confirms). */
+  download_offered: boolean
+  download_url: string | null
+  download_sha256: string | null
+  download_size_bytes: number | null
+}
+
+export interface TunnelProviderOption {
+  kind: TunnelProviderKind
+  /** The connected account provider this needs (`cloudflare`, `tailscale`), or null (quick tunnel needs none). */
+  requires_account: string | null
+  /** The server can start this provider right now. */
+  available: boolean
+  unavailable_reason: string | null
+}
+
+export interface TunnelStatus {
+  provider: TunnelProviderKind | null
+  state: TunnelState
+  url: string | null
+  hostname: string | null
+  last_health_check_at: string | null
+  healthy: boolean | null
+  restarts: number
+  started_at: string | null
+  error: string | null
+  binary: TunnelBinary | null
+  providers: TunnelProviderOption[]
+}
+
+export interface TunnelConfig {
+  provider: TunnelProviderKind
+  /** Named tunnel / Funnel: the public hostname to serve (must be on a domain the connected account controls). */
+  hostname?: string | null
+}
+
+/** The current domain, flattened for the landing screen (details in DomainPlan). */
+export interface DomainSummary {
+  domain: string | null
+  dns_status: 'unknown' | 'pending' | 'ok' | 'error'
+  tls_status: 'unknown' | 'pending' | 'ok' | 'error'
+}
+
+export type PublicExposureBlockCode = 'auth_local' | 'weak_password' | 'no_password' | 'two_factor_recommended' | (string & {})
+
+export interface ReachabilityStatus {
+  /** What is reachable right now (the server derives it; the UI re-derives it defensively). */
+  mode: ReachabilityMode
+  device_name: string
+  hostname: string
+  auth_mode: string
+  /** `http://127.0.0.1:<port>` and friends. */
+  local_urls: string[]
+  lan: LanStatus
+  tunnel: TunnelStatus
+  /** The URL to share: the public URL if any, else the best LAN URL, else the local one. */
+  active_url: string | null
+  /** Set while LAN or public exposure may not be switched on (auth_mode=local or a weak owner password). Null = allowed. */
+  public_exposure_blocked_reason: string | null
+  public_exposure_blocked_code?: PublicExposureBlockCode | null
+  /** The company-level domain, when one exists. */
+  domain?: DomainSummary | null
+}
+
+export type DomainPath = 'github_registry' | 'free_provider' | 'paid_registrar'
+export type DomainStatus = 'none' | 'awaiting_approval' | 'pr_open' | 'awaiting_founder' | 'pending_dns' | 'active' | 'error'
+
+export interface DnsRecord {
+  type: 'A' | 'AAAA' | 'CNAME' | 'TXT' | 'NS' | 'MX'
+  name: string
+  value: string
+  ttl?: number | null
+  /** Result of the last verification. */
+  status?: 'ok' | 'missing' | 'mismatch' | 'pending' | null
+}
+
+export type DomainRegistrationStatus = 'awaiting_approval' | 'submitted' | 'pr_open' | 'merged' | 'awaiting_founder' | 'purchased' | 'rejected' | 'failed' | 'cancelled'
+
+export interface DomainRegistration {
+  id: Uuid
+  company_id: Uuid
+  path: DomainPath
+  domain: string
+  registry_id: string | null
+  provider_id: string | null
+  registrar: string | null
+  status: DomainRegistrationStatus
+  /** The human approval this registration waits for (shown in Approvals). */
+  approval_id: Uuid | null
+  pr_url: string | null
+  price_micros: number | null
+  error: string | null
+  created_at: Timestamp
+  updated_at: Timestamp
+}
+
+export interface DomainPlan {
+  domain: string | null
+  path: DomainPath | null
+  status: DomainStatus
+  dns_status: 'unknown' | 'pending' | 'ok' | 'error'
+  tls_status: 'unknown' | 'pending' | 'ok' | 'error'
+  /** Records the Founder (assisted path) or the control plane (connected DNS provider) creates. */
+  dns_records: DnsRecord[]
+  /** Exact human steps for the assisted path. */
+  steps: string[]
+  registration: DomainRegistration | null
+  last_checked_at: Timestamp | null
+  error: string | null
+}
+
+/** A free-subdomain registry that takes a registration file by pull request (`is-a.dev` style). */
+export interface DomainRegistry {
+  id: string
+  name: string
+  /** The shared suffix, e.g. `is-a.dev`. */
+  suffix: string
+  repo: string
+  rules_url: string | null
+  /** Plain-language eligibility rules, as the registry documents them. */
+  eligibility: string[]
+  review: 'human' | 'automatic'
+  /** Allowed label: length and pattern (regex source), enforced again by the server. */
+  name_min_length: number
+  name_max_length: number
+  name_pattern: string
+}
+
+export interface FreeDomainProvider {
+  id: string
+  name: string
+  dashboard_url: string
+  suffixes: string[]
+  eligibility: string[]
+  steps: string[]
+}
+
+export interface DomainAvailability {
+  domain: string
+  available: boolean
+  registrar: string
+  /** First-year price in micro-USD as quoted by the registrar; null when the registrar did not quote one. */
+  price_micros: number | null
+  renewal_price_micros: number | null
+  cost_kind?: CostKind | null
+}
+
+export interface DomainRegistrationPreviewRequest {
+  registry_id: string
+  /** The label, without the suffix. */
+  name: string
+}
+
+/** Exactly what the AI Co-founder will submit if the Founder approves. */
+export interface DomainRegistrationPreview {
+  fqdn: string
+  repo: string
+  branch: string | null
+  file_path: string
+  file_content: string
+  pr_title: string
+  pr_body: string
+  /** The GitHub login the PR is published under (the connected account), when known. */
+  publishes_as: string | null
+  eligible: boolean
+  ineligible_reason: string | null
+  warnings: string[]
+}
+
+export type DomainRegistrationCreate =
+  | { path: 'github_registry'; registry_id: string; name: string }
+  | { path: 'free_provider'; provider_id: string; domain: string }
+  /** `max_price_micros` binds the approval: a higher price at purchase time fails instead of charging. */
+  | { path: 'paid_registrar'; registrar: string; domain: string; years: number; max_price_micros: number | null }
+
+export type HostedUiStatus = 'none' | 'deploying' | 'ready' | 'error'
+
+export interface HostedUiDeployment {
+  status: HostedUiStatus
+  provider: 'vercel'
+  project_name: string | null
+  url: string | null
+  /** The public URL the hosted UI proxies `/api/*` to. */
+  proxy_target: string | null
+  last_deployed_at: Timestamp | null
+  error: string | null
+  /** Set when the deploy waits for an approval. */
+  approval_id?: Uuid | null
+}
+
+export type EmailProviderKind = 'agentmail' | 'cloudflare_resend' | 'gmail' | 'outlook'
+export type EmailStatus = 'not_connected' | 'connected' | 'error'
+
+export interface EmailIdentity {
+  provider: EmailProviderKind | null
+  status: EmailStatus
+  domain: string | null
+  error: string | null
+  /** The footer that tells recipients a message was written by an AI (M6; default on). */
+  ai_disclosure_footer: boolean
+}
+export interface EmailIdentityUpdate {
+  provider?: EmailProviderKind | null
+  ai_disclosure_footer?: boolean
+}
+
+export type MailboxStatus = 'active' | 'pending' | 'error' | 'disabled'
+
+export interface Mailbox {
+  id: Uuid
+  company_id: Uuid
+  address: string
+  display_name: string | null
+  owner_agent_id: Uuid | null
+  provider: EmailProviderKind | (string & {})
+  status: MailboxStatus
+  inbound_count: number
+  outbound_count: number
+  last_inbound_at: Timestamp | null
+  last_outbound_at: Timestamp | null
+  created_at: Timestamp
+}
+export interface MailboxCreate {
+  /** The part before the @. */
+  local_part: string
+  owner_agent_id: Uuid
+  display_name?: string | null
+}
+
+export type ConnectedProvider = 'cloudflare' | 'vercel' | 'github' | 'agentmail' | 'resend' | 'tailscale' | 'porkbun' | 'namecheap' | 'gmail' | 'outlook'
+export type ConnectedAccountStatus = 'connected' | 'invalid' | 'revoked'
+
+/** Metadata only: no response ever carries a token. */
+export interface ConnectedAccount {
+  id: Uuid
+  company_id: Uuid
+  provider: ConnectedProvider | (string & {})
+  label: string
+  credential_id: Uuid | null
+  scopes: string[]
+  status: ConnectedAccountStatus
+  last_checked_at: Timestamp | null
+  /** Non-secret facts the provider reported: account name, account id, team. */
+  metadata: Record<string, string>
+  created_at: Timestamp
+}
+export interface ConnectedAccountCreate {
+  provider: ConnectedProvider
+  label: string
+  /** The main secret, stored in the M3b credential store first. */
+  credential_id: Uuid
+  /** More secrets by field key (e.g. Porkbun's secret API key). */
+  extra_credential_ids?: Record<string, Uuid>
+  /** Non-secret fields (account id, team id, tailnet). */
+  metadata?: Record<string, string>
+}
+
+export interface ProviderCheck {
+  ok: boolean
+  message: string | null
+  checked_at: Timestamp | null
+  account_label: string | null
+  scopes: string[]
+}

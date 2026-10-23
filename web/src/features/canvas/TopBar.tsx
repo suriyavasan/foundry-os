@@ -5,6 +5,7 @@ import { CompanySwitcher } from '@/components/layout/CompanySwitcher'
 import { Badge, Dot, IconButton, Tooltip } from '@/components/ui'
 import { EmergencyBanner } from '@/features/guardrails/EmergencyStop'
 import { NotificationBell } from '@/features/notifications/NotificationBell'
+import { ReachabilityIndicator } from '@/features/reachability/ReachabilityIndicator'
 import { ConnectionIndicator } from './ConnectionIndicator'
 import { useCanvas } from './CanvasContext'
 import { OwnerMenu } from './OwnerMenu'
@@ -41,6 +42,7 @@ export function TopBar({ company }: { company: Company }) {
         </button>
         <div className="flex-1 md:hidden" />
 
+        <ReachabilityIndicator />
         <ConnectionIndicator />
 
         <button

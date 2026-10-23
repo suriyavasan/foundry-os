@@ -2,6 +2,7 @@ import { Pause } from 'lucide-react'
 import { useCompany } from '@/api'
 import { ErrorState, LoadingState } from '@/components/ui'
 import { AlertsStrip } from '@/features/alerts/AlertsStrip'
+import { ReachabilityCard } from '@/features/reachability/ReachabilityCard'
 import { useCanvas } from './CanvasContext'
 import { ApprovalsWidget } from './widgets/ApprovalsWidget'
 import { ArtifactsWidget } from './widgets/ArtifactsWidget'
@@ -28,6 +29,7 @@ export function CanvasPage() {
     <main id="main" className="mx-auto w-full max-w-[1760px] p-3 md:p-4">
       <h1 className="sr-only">{company.data?.name ?? 'Company'} canvas</h1>
       <AlertsStrip />
+      <ReachabilityCard />
       {company.data?.status === 'paused' && (
         <div role="status" className="mb-3 flex items-center gap-2 rounded-md border border-warning/40 bg-warning-subtle px-3 py-2 text-[13px] text-fg">
           <Pause className="size-3.5 shrink-0 text-warning" aria-hidden />

@@ -20,6 +20,7 @@ import { GuardrailsPanel } from '@/features/guardrails/GuardrailsPanel'
 import { IntegrationsPanel } from '@/features/integrations/IntegrationsPanel'
 import { SkillDetailPanel } from '@/features/skills/SkillDetailPanel'
 import { SkillsPanel } from '@/features/skills/SkillsPanel'
+import { ReachabilityPanel } from '@/features/reachability/ReachabilityPanel'
 import { SettingsPanel } from '@/features/settings/SettingsPanel'
 import { serializePanel } from '@/lib/panels'
 import { useCanvas } from './CanvasContext'
@@ -66,6 +67,8 @@ export function PanelHost() {
       return <TeamPanel key={key} />
     case 'my-work':
       return <MyWorkPanel key={key} />
+    case 'reachability':
+      return <ReachabilityPanel key={key} />
     case 'note':
       return <NoteThreadPanel key={key} noteId={panel.id} />
     case 'skill':

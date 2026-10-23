@@ -43,3 +43,13 @@ describe('guardrail stream events', () => {
     expect(feedItemForEvent(ev('guardrail.event', {}))).toBeNull()
   })
 })
+
+describe('M8 stream events', () => {
+  it('refreshes reachability, accounts, domains and mailboxes', () => {
+    for (const t of ['reachability.updated', 'tunnel.updated', 'connected_account.updated', 'domain.updated', 'mailbox.updated', 'hosted_ui.updated']) expect(KNOWN_EVENT_TYPES).toContain(t)
+    expect(keys('tunnel.updated')).toContain(JSON.stringify(qk.reachability))
+    expect(keys('connected_account.updated')).toContain(JSON.stringify(qk.connectedAccounts('c1')))
+    expect(keys('domain.updated')).toContain(JSON.stringify(qk.domainAll('c1')))
+    expect(keys('mailbox.updated')).toContain(JSON.stringify(qk.emailAll('c1')))
+  })
+})

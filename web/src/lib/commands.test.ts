@@ -96,3 +96,17 @@ describe('filterCommands', () => {
     expect(labels('qqqqq')).toEqual([])
   })
 })
+
+describe('M8 reachability commands', () => {
+  const ctx = { agents: [], tasks: [], companyStatus: 'active' as const, workEngine: true }
+  it('offers Open reachability, Copy public URL and Connect an account', () => {
+    const labels = buildCommands(ctx).map((c) => c.label)
+    expect(labels).toEqual(expect.arrayContaining(['Open Reachability', 'Copy public URL', 'Connect an account…']))
+    expect(filterCommands(buildCommands(ctx), 'open reachability')[0]!.action).toEqual({ type: 'panel', panel: { kind: 'reachability' } })
+  })
+  it('hides the actions (not the panel entry) while the backend is missing', () => {
+    const labels = buildCommands({ ...ctx, reachability: false }).map((c) => c.label)
+    expect(labels).not.toContain('Copy public URL')
+    expect(labels).not.toContain('Connect an account…')
+  })
+})

@@ -20,6 +20,7 @@ import {
 import { formatRelative, formatDateTime } from '@/lib/format'
 import { COMPANY_AGENT_RUNTIME } from '@/lib/runtimes'
 import { useCanvas } from '@/features/canvas/CanvasContext'
+import { ConnectedAccountsSection } from './ConnectedAccountsSection'
 import { CredentialsSection } from './CredentialsSection'
 import { ProvidersSection } from './ProvidersSection'
 import { RuntimeHealthCard } from './RuntimeHealthCard'
@@ -39,6 +40,7 @@ export function IntegrationsPanel() {
           refreshing={q.isFetching && !q.isPending}
         />
         <ProvidersSection companyId={companyId} />
+        <ConnectedAccountsSection companyId={companyId} />
         <CredentialsSection companyId={companyId} />
         <Card>
           <CardHeader
