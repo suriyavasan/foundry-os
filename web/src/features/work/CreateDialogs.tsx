@@ -1,11 +1,14 @@
 import { useState, type FormEvent } from 'react'
-import { ApiError, errorMessage, useAgents, useCreateGoal, useCreateProject, useCreateTask, useGoals, useProjects } from '@/api'
+import { ApiError, errorMessage, useAgents, useCreateGoal, useCreateProject, useCreateTask, useGoals, useMemberDirectory, useProjects } from '@/api'
 import type { Agent, Priority } from '@/api/types'
 import { Button, Dialog, Field, FormError, Input, Select, Textarea, useToast } from '@/components/ui'
 import { useCanvas, type CreatePreset } from '@/features/canvas/CanvasContext'
+import { AssigneeSelect } from '@/features/shared/AssigneeSelect'
 import { PRIORITIES, PRIORITY_LABEL } from '@/lib/taskStatus'
 import {
   LIMITS,
+  assigneePatch,
+  assigneePickerValue,
   emptyGoalForm,
   emptyProjectForm,
   emptyTaskForm,
@@ -40,6 +43,7 @@ function PrioritySelect({ id, value, onChange }: { id: string; value: Priority; 
 
 export function CreateTaskDialog({ companyId, preset, onClose }: { companyId: string; preset?: CreatePreset; onClose: () => void }) {
   const agents = useAgents(companyId)
+  const directory = useMemberDirectory(companyId)
   const projects = useProjects(companyId)
   const create = useCreateTask(companyId)
   const toast = useToast()
@@ -125,14 +129,7 @@ export function CreateTaskDialog({ companyId, preset, onClose }: { companyId: st
           </Field>
           <Field label="Assignee" error={errors.assignee_agent_id}>
             {({ id, invalid }) => (
-              <Select id={id} value={values.assignee_agent_id} invalid={invalid} onChange={(e) => patch({ assignee_agent_id: e.target.value })}>
-                <option value="">Unassigned</option>
-                {list.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name} · {a.role_title}
-                  </option>
-                ))}
-              </Select>
+              <AssigneeSelect id={id} invalid={invalid} value={assigneePickerValue(values)} agents={list} members={directory.members} onChange={(value) => patch(assigneePatch(value))} />
             )}
           </Field>
           <Field label="Reviewer" error={errors.reviewer_agent_id}>

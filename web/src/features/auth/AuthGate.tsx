@@ -1,14 +1,56 @@
-import type { ReactNode } from 'react'
-import { isUnauthenticated, useMe } from '@/api'
-import { LoadingState } from '@/components/ui'
+import { useState, type ReactNode } from 'react'
+import { isUnauthenticated, useAuthSession, useMe } from '@/api'
+import { authStatusOf } from '@/lib/auth'
+import { ErrorState, LoadingState } from '@/components/ui'
 import { LoginGate } from './LoginGate'
+import { LoginPage } from './LoginPage'
+import { SetupWizard } from './SetupWizard'
 
 /**
- * Holds the whole app behind a successful `/api/me`. A 401 shows the login screen and nothing else is
- * mounted, so no widget fires requests that would each fail with 401. Other errors (backend down)
- * fall through to the pages' own error states.
+ * Holds the whole app behind a session. `GET /auth/session` decides:
+ *   setup_required  -> the first-run wizard (stays up until the person finishes it, even though step 1 signs them in)
+ *   unauthenticated -> the login page
+ *   authenticated   -> the app
+ * A backend that predates M7 answers 404 there; the gate then behaves exactly as it did under M3b-sec
+ * (`LegacyGate`: a 401 from /me shows the "open the login link from your terminal" screen).
  */
 export function AuthGate({ children }: { children: ReactNode }) {
+  const session = useAuthSession()
+  const status = authStatusOf({ isPending: session.isPending, data: session.data, error: session.error })
+  const [setup, setSetup] = useState<{ tokenRequired: boolean } | null>(null)
+
+  // Entering setup is remembered, so signing in as the new owner in step 1 does not unmount the wizard mid-way.
+  if (status.kind === 'setup_required' && !setup) setSetup({ tokenRequired: status.setupTokenRequired })
+  if (setup) return <SetupWizard setupTokenRequired={setup.tokenRequired} onDone={() => setSetup(null)} />
+
+  switch (status.kind) {
+    case 'loading':
+      return <FullPage><LoadingState label="Starting Company OS" rows={3} /></FullPage>
+    case 'error':
+      return (
+        <FullPage>
+          <ErrorState error={status.error} title="Could not reach Company OS" onRetry={() => void session.refetch()} retrying={session.isFetching} />
+        </FullPage>
+      )
+    case 'legacy':
+      return <LegacyGate>{children}</LegacyGate>
+    case 'unauthenticated':
+      return <LoginPage />
+    default:
+      return <>{children}</>
+  }
+}
+
+function FullPage({ children }: { children: ReactNode }) {
+  return <div className="mx-auto max-w-md pt-24">{children}</div>
+}
+
+/**
+ * M3b-sec: the local single-owner mode. The app is held behind a successful `/api/me`; a 401 shows the login-link
+ * screen and nothing else is mounted, so no widget fires requests that would each fail with 401. Other errors
+ * (backend down) fall through to the pages' own error states.
+ */
+function LegacyGate({ children }: { children: ReactNode }) {
   const me = useMe()
   if (isUnauthenticated(me.error)) return <LoginGate onRetry={() => void me.refetch()} retrying={me.isFetching} />
   if (me.isPending) {

@@ -240,6 +240,26 @@
   --ring: var(--accent);
 }
 
+/* human members (M7): initials, a double ring, a small human badge */
+.cos-avatar[data-family='member'] {
+  --av: var(--av-human);
+  --ring: var(--av-human);
+  outline: 1.5px solid var(--accent-subtle);
+  outline-offset: 2px;
+}
+.cos-avatar-badge {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  color: var(--av-human);
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--line-strong);
+}
+
 /* org tree edges follow the theme */
 .cos-edge {
   fill: none;

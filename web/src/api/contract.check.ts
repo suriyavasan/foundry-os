@@ -126,3 +126,30 @@ check<WhenInSchema<'GuardrailRule', Same<T.GuardrailScopeType, M<'GuardrailRule'
 // The M6 policy fields (the existing `Policy` schema gains them with the backend).
 type PolicySchema = S['Policy']
 check<'max_agent_monthly_budget_micros' extends keyof PolicySchema ? Accepts<Pick<T.CompanyPolicy, 'max_agent_monthly_budget_micros' | 'hire_default_monthly_budget_micros' | 'budget_alert_thresholds' | 'model_routing' | 'allow_paid_fallback' | 'auto_spend_limit_micros' | 'stall_seconds'>, Pick<PolicySchema, Extract<keyof PolicySchema, 'max_agent_monthly_budget_micros' | 'hire_default_monthly_budget_micros' | 'budget_alert_thresholds' | 'model_routing' | 'allow_paid_fallback' | 'auto_spend_limit_micros' | 'stall_seconds'>>> : true>()
+
+// ---- Milestone 7 (accounts, login, team, notifications) ----
+// The M7 backend does not exist yet; types.ts "Milestone 7" documents the assumed paths and shapes. The schema names
+// below are the expected ones (docs/specs/m7-accounts-and-team.md §6). Each check switches itself on when a schema with
+// that name appears after `pnpm gen:api`, and then fails typecheck on any drift.
+check<WhenInSchema<'AuthSession', Accepts<T.AuthSession, M<'AuthSession'>>>>()
+check<WhenInSchema<'SetupRequest', Accepts<M<'SetupRequest'>, T.SetupRequest>>>()
+check<WhenInSchema<'LoginRequest', Accepts<M<'LoginRequest'>, T.LoginRequest>>>()
+check<WhenInSchema<'PasswordChange', Accepts<M<'PasswordChange'>, T.PasswordChange>>>()
+check<WhenInSchema<'SessionInfo', Accepts<T.SessionInfo, M<'SessionInfo'>>>>()
+check<WhenInSchema<'ApiToken', Accepts<T.ApiToken, M<'ApiToken'>>>>()
+check<WhenInSchema<'ApiTokenCreate', Accepts<M<'ApiTokenCreate'>, T.ApiTokenCreate>>>()
+check<WhenInSchema<'ApiTokenCreated', Accepts<T.ApiTokenCreated, M<'ApiTokenCreated'>>>>()
+check<WhenInSchema<'TwoFactorEnroll', Accepts<T.TwoFactorEnroll, M<'TwoFactorEnroll'>>>>()
+check<WhenInSchema<'Invitation', Accepts<T.Invitation, M<'Invitation'>>>>()
+check<WhenInSchema<'InvitationCreate', Accepts<M<'InvitationCreate'>, T.InvitationCreate>>>()
+check<WhenInSchema<'InvitationAccept', Accepts<M<'InvitationAccept'>, T.InvitationAccept>>>()
+check<WhenInSchema<'Member', Accepts<T.Member, M<'Member'>>>>()
+check<WhenInSchema<'MemberUpdate', Accepts<M<'MemberUpdate'>, T.MemberUpdate>>>()
+check<WhenInSchema<'Notification', Accepts<T.Notification, M<'Notification'>>>>()
+// The enums the UI switches on must be exactly the server's, once the schema carries them.
+check<WhenInSchema<'Member', Same<T.MemberRole, M<'Member'>['role']>>>()
+check<WhenInSchema<'Member', Same<T.MemberStatus, M<'Member'>['status']>>>()
+check<WhenInSchema<'Invitation', Same<T.InvitationStatus, M<'Invitation'>['status']>>>()
+check<WhenInSchema<'ApiToken', Same<T.TokenScope, M<'ApiToken'>['scope']>>>()
+check<WhenInSchema<'AuthSession', Same<T.AuthState, M<'AuthSession'>['state']>>>()
+check<WhenInSchema<'InvitationCreated', Same<T.InvitationDelivery, M<'InvitationCreated'>['delivery']>>>()

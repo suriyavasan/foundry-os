@@ -44,6 +44,7 @@ import { useCanvas } from '@/features/canvas/CanvasContext'
 import { useAgentMap } from '@/features/canvas/hooks'
 import { PanelFrame } from '@/features/canvas/PanelFrame'
 import { AgentChip } from '@/features/shared/AgentChip'
+import { AssigneeChip, useMemberMap } from '@/features/shared/AssigneeChip'
 import { ArtifactStatusBadge, PriorityBadge, RunStatusBadge, TaskStatusBadge } from '@/features/shared/badges'
 import { formatDuration } from '@/lib/dates'
 import { formatDateTime, formatRelative } from '@/lib/format'
@@ -102,6 +103,7 @@ export function TaskPanel({ taskId, runId }: { taskId: string; runId?: string })
 function TaskBody({ companyId, task }: { companyId: string; task: Task }) {
   const { openPanel } = useCanvas()
   const { map } = useAgentMap(companyId)
+  const members = useMemberMap(companyId)
   const projects = useProjects(companyId)
   const project = projects.data?.find((p) => p.id === task.project_id)
   const parent = useAllTasks(companyId).data?.find((t) => t.id === task.parent_task_id)
@@ -135,7 +137,7 @@ function TaskBody({ companyId, task }: { companyId: string; task: Task }) {
               items={[
                 { label: 'Priority', value: <PriorityBadge priority={task.priority} /> },
                 { label: 'Kind', value: <span className="capitalize">{task.kind}</span> },
-                { label: 'Assignee', value: <AgentChip agentId={task.assignee_agent_id} agents={map} size="sm" /> },
+                { label: 'Assignee', value: <AssigneeChip task={task} agents={map} members={members} size="sm" /> },
                 { label: 'Reviewer', value: task.reviewer_agent_id ? <AgentChip agentId={task.reviewer_agent_id} agents={map} size="sm" /> : <span className="text-fg-3">Assignee&apos;s manager</span> },
                 { label: 'Project', value: project?.name ?? dash },
                 { label: 'Parent', value: parent ? <button type="button" className="text-left text-accent-fg hover:underline" onClick={() => openPanel({ kind: 'task', id: parent.id })}>{parent.title}</button> : dash },
@@ -359,6 +361,7 @@ function Subtasks({ companyId, task }: { companyId: string; task: Task }) {
   const { openPanel, create } = useCanvas()
   const q = useTasks(companyId, { parent_task_id: task.id })
   const { map } = useAgentMap(companyId)
+  const members = useMemberMap(companyId)
   return (
     <Card>
       <CardHeader
@@ -378,7 +381,7 @@ function Subtasks({ companyId, task }: { companyId: string; task: Task }) {
               <li key={t.id}>
                 <button type="button" onClick={() => openPanel({ kind: 'task', id: t.id })} className="flex w-full items-center gap-3 px-4 py-2 text-left hover:bg-hover">
                   <span className="min-w-0 flex-1 truncate text-[13px]">{t.title}</span>
-                  <AgentChip agentId={t.assignee_agent_id} agents={map} />
+                  <AssigneeChip task={t} agents={map} members={members} />
                   <TaskStatusBadge status={t.status} />
                 </button>
               </li>

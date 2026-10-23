@@ -44,6 +44,10 @@
   --neutral-subtle: rgb(138 142 153 / 0.14);
 
   --focus-ring: #5b7cfa;
+
+  /* QR codes must stay dark-on-light in both themes to scan */
+  --qr-fg: #0c0d10;
+  --qr-bg: #ffffff;
   --cos-shadow-pop: 0 8px 24px rgb(0 0 0 / 0.45), 0 0 0 1px var(--line-strong);
 
   /* employee types: glyph colour of the avatar (the ring shows live state, not type) */
@@ -106,6 +110,9 @@
   --neutral-subtle: rgb(107 112 124 / 0.12);
 
   --focus-ring: #3b5bdb;
+
+  --qr-fg: #0c0d10;
+  --qr-bg: #ffffff;
   --cos-shadow-pop: 0 8px 24px rgb(15 17 21 / 0.14), 0 0 0 1px var(--line-strong);
 
   --av-founder: #1c1f26;

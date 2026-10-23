@@ -48,6 +48,7 @@ export function errorMessage(err: unknown, fallback = 'Something went wrong'): s
 
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE'
+  /** JSON-encoded, except `FormData`, which is sent as multipart (the browser sets the boundary). */
   body?: unknown
   query?: Record<string, string | number | boolean | null | undefined>
   signal?: AbortSignal
@@ -69,18 +70,76 @@ function isEnvelope(x: unknown): x is { error: { code?: unknown; message?: unkno
   return typeof x === 'object' && x !== null && 'error' in x && typeof (x as { error: unknown }).error === 'object'
 }
 
-/** Fetch JSON from the Company OS API. Non-2xx responses throw a typed `ApiError`. */
-export async function apiFetch<T>(path: string, opts: RequestOptions = {}): Promise<T> {
+/* ------------------------------------ CSRF ----------------------------------- */
+
+/** Double-submit CSRF (docs/specs/m7 §2): the server sets this cookie next to the session cookie. */
+export const CSRF_COOKIE = 'cos_csrf'
+export const CSRF_HEADER = 'X-CSRF-Token'
+const STATE_CHANGING = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
+
+/** Value of one cookie, or null. The CSRF cookie is deliberately readable by script (it is not HttpOnly). */
+export function readCookie(name: string, cookies: string = typeof document === 'undefined' ? '' : document.cookie): string | null {
+  for (const part of cookies.split(';')) {
+    const eq = part.indexOf('=')
+    if (eq === -1) continue
+    if (part.slice(0, eq).trim() !== name) continue
+    const raw = part.slice(eq + 1).trim()
+    try {
+      return decodeURIComponent(raw) || null
+    } catch {
+      return raw || null
+    }
+  }
+  return null
+}
+
+/**
+ * The token to send with a request, or null. Only state-changing requests carry it, and only while the cookie
+ * exists, i.e. only while cookie sessions are in use: bearer tokens and the legacy owner-token gate send nothing.
+ */
+export function csrfTokenFor(method: string, cookies?: string): string | null {
+  if (!STATE_CHANGING.has(method.toUpperCase())) return null
+  return readCookie(CSRF_COOKIE, cookies)
+}
+
+/** A 403 that says the CSRF token was missing or stale (as opposed to "you may not do this"). */
+export function isCsrfFailure(err: unknown): boolean {
+  if (!(err instanceof ApiError) || err.status !== 403) return false
+  if (/^csrf/i.test(err.code)) return true
+  const d = err.details
+  if (d && typeof d === 'object' && 'reason' in d && typeof (d as { reason: unknown }).reason === 'string' && /csrf/i.test((d as { reason: string }).reason)) return true
+  return /csrf/i.test(err.message)
+}
+
+let csrfRefresh: Promise<void> | null = null
+
+/** Re-reading the session makes the server (re)issue the CSRF cookie. One refresh at a time. */
+function refreshCsrfToken(): Promise<void> {
+  csrfRefresh ??= fetch(buildUrl('/auth/session'), { headers: { Accept: 'application/json' } })
+    .then(() => undefined)
+    .catch(() => undefined)
+    .finally(() => {
+      csrfRefresh = null
+    })
+  return csrfRefresh
+}
+
+/* ----------------------------------- request ---------------------------------- */
+
+async function attempt<T>(path: string, opts: RequestOptions): Promise<T> {
   const { method = 'GET', body, query, signal } = opts
   const headers: Record<string, string> = { Accept: 'application/json' }
-  if (body !== undefined) headers['Content-Type'] = 'application/json'
+  const isForm = typeof FormData !== 'undefined' && body instanceof FormData
+  if (body !== undefined && !isForm) headers['Content-Type'] = 'application/json'
+  const csrf = csrfTokenFor(method)
+  if (csrf) headers[CSRF_HEADER] = csrf
 
   let res: Response
   try {
     res = await fetch(buildUrl(path, query), {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : isForm ? (body as FormData) : JSON.stringify(body),
       signal,
     })
   } catch (e) {
@@ -121,6 +180,21 @@ export async function apiFetch<T>(path: string, opts: RequestOptions = {}): Prom
     throw new ApiError(res.status, 'invalid_response', 'The server returned a response that was not valid JSON.')
   }
   return parsed as T
+}
+
+/**
+ * Fetch JSON from the Company OS API. Non-2xx responses throw a typed `ApiError`.
+ * With cookie sessions, state-changing requests carry `X-CSRF-Token`; a CSRF 403 refreshes the session once
+ * and retries the request once (the body is rebuilt from `opts`, so JSON and multipart are both safe to resend).
+ */
+export async function apiFetch<T>(path: string, opts: RequestOptions = {}): Promise<T> {
+  try {
+    return await attempt<T>(path, opts)
+  } catch (err) {
+    if (!isCsrfFailure(err) || !STATE_CHANGING.has(opts.method ?? 'GET')) throw err
+    await refreshCsrfToken()
+    return attempt<T>(path, opts)
+  }
 }
 
 /** Follow `next_cursor` until exhausted (bounded) and return every item. */

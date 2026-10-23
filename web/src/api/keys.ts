@@ -71,6 +71,15 @@ export const qk = {
   financeTrend: (cid: string, from: string, to: string) => ['company', cid, 'finance', 'trend', from, to] as const,
   financeRuns: (cid: string, from: string, to: string) => ['company', cid, 'finance', 'runs', from, to] as const,
   expenses: (cid: string, from: string, to: string) => ['company', cid, 'finance', 'expenses', from, to] as const,
+  // M7 accounts & team. Auth and notifications are per user, not per company.
+  authSession: ['auth', 'session'] as const,
+  authSessions: ['auth', 'sessions'] as const,
+  authTokens: ['auth', 'tokens'] as const,
+  notificationsAll: ['notifications'] as const,
+  notifications: ['notifications', 'list'] as const,
+  membersAll: (cid: string) => ['company', cid, 'members'] as const,
+  members: (cid: string) => ['company', cid, 'members', 'list'] as const,
+  invitations: (cid: string) => ['company', cid, 'members', 'invitations'] as const,
   // The emergency stop is global (all companies).
   systemStatus: ['system', 'status'] as const,
 }

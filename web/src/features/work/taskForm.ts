@@ -1,5 +1,6 @@
 import type { CreateGoalRequest, CreateProjectRequest, CreateTaskRequest, GoalStatus, Priority } from '@/api/types'
 import { parseBudgetInput } from '@/lib/money'
+import { memberRef } from '@/lib/people'
 
 export const LIMITS = { taskTitle: 300, goalTitle: 200, projectName: 200 } as const
 
@@ -9,6 +10,8 @@ export interface TaskFormValues {
   acceptance_criteria: string
   project_id: string
   assignee_agent_id: string
+  /** M7: a human assignee. Exclusive with `assignee_agent_id`. */
+  assignee_member_id: string
   reviewer_agent_id: string
   priority: Priority
   budget: string
@@ -21,6 +24,7 @@ export const emptyTaskForm = (over: Partial<TaskFormValues> = {}): TaskFormValue
   acceptance_criteria: '',
   project_id: '',
   assignee_agent_id: '',
+  assignee_member_id: '',
   reviewer_agent_id: '',
   priority: 'normal',
   budget: '',
@@ -38,6 +42,14 @@ export function validateTaskForm(v: TaskFormValues): TaskFormErrors {
   return e
 }
 
+/** The value of the assignee picker: an agent id, `member:<id>` for a human, or '' for nobody. */
+export const assigneePickerValue = (v: Pick<TaskFormValues, 'assignee_agent_id' | 'assignee_member_id'>): string => (v.assignee_member_id ? memberRef(v.assignee_member_id) : v.assignee_agent_id)
+
+/** Form patch for a picker choice (see `assigneePickerValue`). */
+export function assigneePatch(value: string): Pick<TaskFormValues, 'assignee_agent_id' | 'assignee_member_id'> {
+  return value.startsWith('member:') ? { assignee_agent_id: '', assignee_member_id: value.slice('member:'.length) } : { assignee_agent_id: value, assignee_member_id: '' }
+}
+
 const opt = (s: string): string | null => (s.trim() === '' ? null : s.trim())
 
 export function toCreateTaskBody(v: TaskFormValues, extra: { parent_task_id?: string } = {}): CreateTaskRequest {
@@ -46,7 +58,8 @@ export function toCreateTaskBody(v: TaskFormValues, extra: { parent_task_id?: st
     description: opt(v.description),
     acceptance_criteria: opt(v.acceptance_criteria),
     project_id: v.project_id || null,
-    assignee_agent_id: v.assignee_agent_id || null,
+    assignee_agent_id: v.assignee_member_id ? null : v.assignee_agent_id || null,
+    ...(v.assignee_member_id ? { assignee_ref: memberRef(v.assignee_member_id) } : null),
     reviewer_agent_id: v.reviewer_agent_id || null,
     priority: v.priority,
     budget_micros: parseBudgetInput(v.budget).value,
@@ -56,7 +69,7 @@ export function toCreateTaskBody(v: TaskFormValues, extra: { parent_task_id?: st
 
 /** Server field names -> form fields. */
 export function mapTaskServerErrors(fields: Record<string, string>): TaskFormErrors {
-  const alias: Record<string, keyof TaskFormValues> = { budget_micros: 'budget' }
+  const alias: Record<string, keyof TaskFormValues> = { budget_micros: 'budget', assignee_ref: 'assignee_agent_id' }
   const known = new Set<string>(Object.keys(emptyTaskForm()))
   const out: TaskFormErrors = {}
   for (const [k, msg] of Object.entries(fields)) {

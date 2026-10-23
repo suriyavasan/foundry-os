@@ -1,13 +1,15 @@
-import type { Agent } from '@/api/types'
-import type { OrgIssue, OrgNode } from './orgTree'
+import type { Agent, Member } from '@/api/types'
+import type { OrgIssue, OrgPerson } from './orgTree'
 
 /** Id of the virtual root that represents the Founder, the human ("You"). */
 export const HUMAN_ID = '__human__'
 
 export interface LayoutNode {
   id: string
-  /** null for the human root. */
+  /** null for the human root and for human members. */
   agent: Agent | null
+  /** M7: set for a human member of the company (an agent node has `agent`; the You root has neither). */
+  member?: Member | null
   parentId: string | null
   depth: number
   /** Centre x and top y, in px, in tree coordinates (before any scale). */
@@ -51,6 +53,7 @@ export interface LayoutOptions {
 interface Prepared {
   id: string
   agent: Agent | null
+  member: Member | null
   issue?: OrgIssue
   children: Prepared[]
   childCount: number
@@ -60,7 +63,7 @@ interface Prepared {
   w: number
 }
 
-function countDescendants(n: OrgNode): number {
+function countDescendants(n: OrgPerson): number {
   let c = 0
   for (const k of n.children) c += 1 + countDescendants(k)
   return c
@@ -72,7 +75,7 @@ function countDescendants(n: OrgNode): number {
  * Input is the already-sanitised tree from `buildOrgTree` (cycles/missing managers become flagged
  * roots there), so every agent appears exactly once.
  */
-export function layoutOrg(roots: OrgNode[], opts: LayoutOptions = {}): OrgLayout {
+export function layoutOrg(roots: OrgPerson[], opts: LayoutOptions = {}): OrgLayout {
   const {
     collapsed = new Set<string>(),
     nodeWidth = 124,
@@ -83,12 +86,13 @@ export function layoutOrg(roots: OrgNode[], opts: LayoutOptions = {}): OrgLayout
     withHuman = true,
   } = opts
 
-  const prepare = (n: OrgNode): Prepared => {
-    const isCollapsed = collapsed.has(n.agent.id) && n.children.length > 0
+  const prepare = (n: OrgPerson): Prepared => {
+    const isCollapsed = collapsed.has(n.id) && n.children.length > 0
     const kids = isCollapsed ? [] : n.children.map(prepare)
     return {
-      id: n.agent.id,
+      id: n.id,
       agent: n.agent,
+      member: n.member ?? null,
       issue: n.issue,
       children: kids,
       childCount: n.children.length,
@@ -114,6 +118,7 @@ export function layoutOrg(roots: OrgNode[], opts: LayoutOptions = {}): OrgLayout
     const human: Prepared = {
       id: HUMAN_ID,
       agent: null,
+      member: null,
       children: prepared,
       childCount: prepared.length,
       hiddenCount: 0,
@@ -149,6 +154,7 @@ export function layoutOrg(roots: OrgNode[], opts: LayoutOptions = {}): OrgLayout
     nodes.push({
       id: p.id,
       agent: p.agent,
+      member: p.member,
       parentId,
       depth,
       x,
@@ -206,10 +212,10 @@ export function edgePath(parent: LayoutNode, child: LayoutNode, nodeHeight: numb
 }
 
 /** Ids of every node that has reports (used for "collapse all"). */
-export function expandableIds(roots: OrgNode[]): string[] {
+export function expandableIds(roots: OrgPerson[]): string[] {
   const out: string[] = []
-  const walk = (n: OrgNode) => {
-    if (n.children.length > 0) out.push(n.agent.id)
+  const walk = (n: OrgPerson) => {
+    if (n.children.length > 0) out.push(n.id)
     n.children.forEach(walk)
   }
   roots.forEach(walk)

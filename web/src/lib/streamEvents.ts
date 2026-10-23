@@ -78,6 +78,11 @@ export const KNOWN_EVENT_TYPES = [
   'system.emergency_stop',
   'system.resumed',
   'expense.created',
+  // M7 accounts & team (docs/specs/m7 §5). Notifications are per user: the event only tells the client to look again.
+  'notification.created',
+  'notification.updated',
+  'member.updated',
+  'invitation.updated',
 ] as const
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null)
@@ -206,6 +211,12 @@ export function effectsForEvent(cid: string, ev: CompanyEvent): CacheEffect[] {
       return [inv(qk.systemStatus), inv(qk.companyDetail(cid)), inv(qk.companies), inv(qk.runsAll(cid)), inv(qk.tasksAll(cid)), inv(qk.agents(cid))]
     case 'expense.created':
       return [inv(qk.financeAll(cid)), inv(qk.activityAll(cid))]
+    case 'notification.created':
+    case 'notification.updated':
+      return [inv(qk.notificationsAll)]
+    case 'member.updated':
+    case 'invitation.updated':
+      return [inv(qk.membersAll(cid)), inv(qk.agents(cid)), inv(qk.activityAll(cid))]
     default:
       return []
   }

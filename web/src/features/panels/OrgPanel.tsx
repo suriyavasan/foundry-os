@@ -1,6 +1,6 @@
 import { FolderPlus, LayoutList, Network, Pencil, UserPlus } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { useAgents, useDepartments, useMe } from '@/api'
+import { useAgents, useDepartments, useMe, useMemberDirectory } from '@/api'
 import type { Agent, AgentStatus, Department } from '@/api/types'
 import { Button, EmptyState, ErrorState, LoadingState, Select, agentStatusLabel } from '@/components/ui'
 import { useCanvas } from '@/features/canvas/CanvasContext'
@@ -26,6 +26,7 @@ export function OrgPanel() {
   const agents = useAgents(companyId)
   const departments = useDepartments(companyId)
   const me = useMe()
+  const directory = useMemberDirectory(companyId)
   const [view, setView] = useState<View>('chart')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('current')
   const [deptFilter, setDeptFilter] = useState('all')
@@ -134,7 +135,16 @@ export function OrgPanel() {
           <EmptyState title="No agents yet" description="Propose a hire to add the first employee." />
         ) : view === 'chart' ? (
           <div className="h-[min(640px,70vh)]">
-            <OrgTree agents={agents.data} matches={matches} showInactive={statusFilter !== 'current'} ownerName={me.data?.user.display_name} onOpenAgent={(id) => openPanel({ kind: 'agent', id })} />
+            <OrgTree
+              agents={agents.data}
+              matches={matches}
+              showInactive={statusFilter !== 'current'}
+              ownerName={me.data?.user.display_name}
+              onOpenAgent={(id) => openPanel({ kind: 'agent', id })}
+              members={directory.available ? directory.members : undefined}
+              selfUserId={me.data?.user.id}
+              onOpenMember={() => openPanel({ kind: 'team' })}
+            />
           </div>
         ) : tableRows.length === 0 ? (
           <EmptyState title="No agents match" description="Adjust the status or department filter." />

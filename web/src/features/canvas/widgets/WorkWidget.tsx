@@ -3,7 +3,7 @@ import { useMemo } from 'react'
 import { isNotDeployed, useAllTasks } from '@/api'
 import type { Task, TaskStatus } from '@/api/types'
 import { Button, EmptyState, ErrorState, LoadingState, NotAvailable, Widget } from '@/components/ui'
-import { AgentChip } from '@/features/shared/AgentChip'
+import { AssigneeChip, assigneeName, useMemberMap } from '@/features/shared/AssigneeChip'
 import { PriorityBadge, TaskStatusBadge } from '@/features/shared/badges'
 import { ACTIVE_WORK, TASK_STATUS_LABEL } from '@/lib/taskStatus'
 import { useCanvas } from '../CanvasContext'
@@ -24,6 +24,7 @@ export function WorkWidget({ className }: { className?: string }) {
   const { companyId, openPanel, create } = useCanvas()
   const tasks = useAllTasks(companyId)
   const { map } = useAgentMap(companyId)
+  const members = useMemberMap(companyId)
 
   const counts = useMemo(() => countByStatus(tasks.data ?? []), [tasks.data])
   const active = useMemo(
@@ -83,10 +84,10 @@ export function WorkWidget({ className }: { className?: string }) {
               {active.slice(0, 8).map((t) => (
                 <li key={t.id}>
                   <button type="button" onClick={() => openPanel({ kind: 'task', id: t.id })} className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left transition-colors hover:bg-hover">
-                    <AgentChip agentId={t.assignee_agent_id} agents={map} size="sm" hideName emptyLabel="–" />
+                    <AssigneeChip task={t} agents={map} members={members} size="sm" hideName emptyLabel="–" />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[12.5px] text-fg">{t.title}</span>
-                      <span className="block truncate text-[11.5px] text-fg-3">{t.assignee_agent_id ? (map.get(t.assignee_agent_id)?.name ?? 'Unknown agent') : 'Unassigned'}</span>
+                      <span className="block truncate text-[11.5px] text-fg-3">{assigneeName(t, map, members)}</span>
                     </span>
                     {(t.priority === 'urgent' || t.priority === 'high') && <PriorityBadge priority={t.priority} />}
                     <TaskStatusBadge status={t.status} />

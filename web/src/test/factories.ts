@@ -1,4 +1,4 @@
-import type { Agent, Alert, Approval, ClientNote, CofounderSummary, Company, FinanceSummary, GuardrailEvent, GuardrailRule, MemoryEntry, NoteReply, Overview, RateLimitStatus, RoleTemplate, Skill, SkillDetail, Task } from '@/api/types'
+import type { Agent, Alert, Member, Notification, Approval, ClientNote, CofounderSummary, Company, FinanceSummary, GuardrailEvent, GuardrailRule, MemoryEntry, NoteReply, Overview, RateLimitStatus, RoleTemplate, Skill, SkillDetail, Task } from '@/api/types'
 
 export function makeAgent(over: Partial<Agent> = {}): Agent {
   const id = over.id ?? crypto.randomUUID()
@@ -328,6 +328,41 @@ export function makeFinanceSummary(over: Partial<FinanceSummary> = {}): FinanceS
     wasted: { verified_micros: 250_000, estimated_micros: 0, unknown_micros: 0, runs: 2 },
     external_expenses_micros: 12_000_000,
     budgets: [],
+    ...over,
+  }
+}
+
+/* ---------------------------------- M7 ---------------------------------- */
+
+export function makeMember(over: Partial<Member> = {}): Member {
+  const id = over.id ?? crypto.randomUUID()
+  return {
+    id,
+    company_id: 'c1',
+    user_id: `u-${id}`,
+    username: `user-${id.slice(0, 4)}`,
+    display_name: `Member ${id.slice(0, 4)}`,
+    email: null,
+    role: 'member',
+    title: null,
+    manager_ref: null,
+    status: 'active',
+    created_at: '2026-10-24T09:00:00Z',
+    ...over,
+  }
+}
+
+export function makeNotification(over: Partial<Notification> = {}): Notification {
+  return {
+    id: crypto.randomUUID(),
+    company_id: 'c1',
+    kind: 'task_assigned',
+    title: 'You were assigned a task',
+    body: null,
+    related_type: 'task',
+    related_id: 't1',
+    created_at: '2026-10-24T09:00:00Z',
+    read_at: null,
     ...over,
   }
 }

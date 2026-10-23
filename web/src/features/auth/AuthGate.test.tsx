@@ -21,9 +21,9 @@ describe('AuthGate', () => {
     expect(screen.getByText(/uv run uvicorn app.main:app --port 8700/)).toBeInTheDocument()
     expect(screen.getByText(/companyos up/)).toBeInTheDocument()
     expect(screen.queryByText('the app')).not.toBeInTheDocument()
-    // Exactly one request: /me, not retried.
+    // A backend without accounts answers 404 on the session probe; then exactly one /me, not retried (M3b-sec flow).
     await new Promise((r) => setTimeout(r, 50))
-    expect(api.calls.map((c) => c.path)).toEqual(['/me'])
+    expect(api.calls.map((c) => c.path)).toEqual(['/auth/session', '/me'])
   })
 
   it('retries /me when asked and lets the app through once signed in', async () => {

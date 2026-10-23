@@ -4,6 +4,7 @@ import { useTheme } from '@/components/layout/ThemeProvider'
 import { CompanySwitcher } from '@/components/layout/CompanySwitcher'
 import { Badge, Dot, IconButton, Tooltip } from '@/components/ui'
 import { EmergencyBanner } from '@/features/guardrails/EmergencyStop'
+import { NotificationBell } from '@/features/notifications/NotificationBell'
 import { ConnectionIndicator } from './ConnectionIndicator'
 import { useCanvas } from './CanvasContext'
 import { OwnerMenu } from './OwnerMenu'
@@ -61,6 +62,7 @@ export function TopBar({ company }: { company: Company }) {
             {theme === 'dark' ? <Sun className="size-4" aria-hidden /> : <Moon className="size-4" aria-hidden />}
           </IconButton>
         </Tooltip>
+        <NotificationBell />
         <OwnerMenu companyId={company.id} />
       </div>
     </header>

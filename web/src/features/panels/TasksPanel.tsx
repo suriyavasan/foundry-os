@@ -1,14 +1,15 @@
 import { Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { useProjects, useTasks } from '@/api'
+import { useMemberDirectory, useProjects, useTasks } from '@/api'
 import type { TaskKind, TaskStatus } from '@/api/types'
 import { Boundary, Button, Card, Input, Select, TBody, TD, TH, THead, TR, Table } from '@/components/ui'
 import { useCanvas } from '@/features/canvas/CanvasContext'
 import { useAgentMap } from '@/features/canvas/hooks'
 import { PanelFrame } from '@/features/canvas/PanelFrame'
-import { AgentChip } from '@/features/shared/AgentChip'
+import { AssigneeChip, useMemberMap } from '@/features/shared/AssigneeChip'
 import { PriorityBadge, TaskStatusBadge } from '@/features/shared/badges'
 import { formatRelative } from '@/lib/format'
+import { isWorkingMember, memberRef } from '@/lib/people'
 import { PRIORITY_LABEL, TASK_STATUSES, TASK_STATUS_LABEL } from '@/lib/taskStatus'
 
 const KINDS: TaskKind[] = ['work', 'review', 'planning', 'hiring', 'routine']
@@ -22,12 +23,14 @@ export function TasksPanel() {
   const [kind, setKind] = useState<TaskKind | ''>('')
   const [search, setSearch] = useState('')
   const filters = useMemo(
-    () => ({ ...(status ? { status } : null), ...(assignee ? { assignee_agent_id: assignee } : null), ...(project ? { project_id: project } : null), ...(kind ? { kind } : null) }),
+    () => ({ ...(status ? { status } : null), ...(assignee ? (assignee.startsWith('member:') ? { assignee_ref: assignee } : { assignee_agent_id: assignee }) : null), ...(project ? { project_id: project } : null), ...(kind ? { kind } : null) }),
     [status, assignee, project, kind],
   )
   const q = useTasks(companyId, filters)
   const projects = useProjects(companyId)
   const { agents, map } = useAgentMap(companyId)
+  const directory = useMemberDirectory(companyId)
+  const members = useMemberMap(companyId)
   const projectName = useMemo(() => new Map((projects.data ?? []).map((p) => [p.id, p.name])), [projects.data])
 
   const rows = useMemo(() => {
@@ -62,6 +65,11 @@ export function TasksPanel() {
           {agents.map((a) => (
             <option key={a.id} value={a.id}>
               {a.name}
+            </option>
+          ))}
+          {directory.members.filter(isWorkingMember).map((m) => (
+            <option key={m.id} value={memberRef(m.id)}>
+              {m.display_name} (human)
             </option>
           ))}
         </Select>
@@ -120,7 +128,7 @@ export function TasksPanel() {
                       <span className="sr-only">{PRIORITY_LABEL[t.priority]}</span>
                     </TD>
                     <TD>
-                      <AgentChip agentId={t.assignee_agent_id} agents={map} />
+                      <AssigneeChip task={t} agents={map} members={members} />
                     </TD>
                     <TD className="text-fg-2">{(t.project_id && projectName.get(t.project_id)) || <span className="text-fg-3">—</span>}</TD>
                     <TD className="text-fg-3">{formatRelative(t.updated_at)}</TD>

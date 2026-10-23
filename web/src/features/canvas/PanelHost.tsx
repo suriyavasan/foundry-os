@@ -1,3 +1,6 @@
+import { AccountPanel } from '@/features/account/AccountPanel'
+import { MyWorkPanel } from '@/features/mywork/MyWorkPanel'
+import { TeamPanel } from '@/features/team/TeamPanel'
 import { ActivityPanel } from '@/features/panels/ActivityPanel'
 import { AgentPanel } from '@/features/panels/AgentPanel'
 import { ApprovalsPanel } from '@/features/panels/ApprovalsPanel'
@@ -57,6 +60,12 @@ export function PanelHost() {
       return <CofounderPanel key={key} />
     case 'guardrails':
       return <GuardrailsPanel key={key} />
+    case 'account':
+      return <AccountPanel key={key} />
+    case 'team':
+      return <TeamPanel key={key} />
+    case 'my-work':
+      return <MyWorkPanel key={key} />
     case 'note':
       return <NoteThreadPanel key={key} noteId={panel.id} />
     case 'skill':

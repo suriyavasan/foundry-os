@@ -1,13 +1,25 @@
-import type { Agent, AgentKind } from '@/api/types'
+import type { Agent, AgentKind, Member } from '@/api/types'
 
 export type OrgIssue = 'no_manager' | 'missing_manager' | 'cycle'
 
-export interface OrgNode {
-  agent: Agent
-  children: OrgNode[]
+/**
+ * One person in the chart: an AI agent, or (M7) a human member. `id` is the agent's id, or `member:<id>` for a
+ * human so the two namespaces never collide. Exactly one of `agent` / `member` is set.
+ */
+export interface OrgPerson {
+  id: string
+  agent: Agent | null
+  member?: Member | null
+  children: OrgPerson[]
   depth: number
   /** Set when the structure around this node is inconsistent; the node is still shown. */
   issue?: OrgIssue
+}
+
+/** A node of the agents-only chart (the shape before M7, still used when there are no human members). */
+export interface OrgNode extends OrgPerson {
+  agent: Agent
+  children: OrgNode[]
 }
 
 const KIND_ORDER: Record<AgentKind, number> = { founder: 0, lead: 1, specialist: 2, reviewer: 3 }
@@ -52,7 +64,7 @@ export function buildOrgTree(agents: Agent[]): OrgNode[] {
   const build = (agent: Agent, depth: number, issue?: OrgIssue): OrgNode => {
     visited.add(agent.id)
     const kids = (childrenOf.get(agent.id) ?? []).filter((c) => !visited.has(c.id)).sort(compareAgents)
-    const node: OrgNode = { agent, depth, children: [], issue }
+    const node: OrgNode = { id: agent.id, agent, depth, children: [], issue }
     for (const kid of kids) {
       if (visited.has(kid.id)) continue
       node.children.push(build(kid, depth + 1))
@@ -74,11 +86,11 @@ export function buildOrgTree(agents: Agent[]): OrgNode[] {
   return result
 }
 
-export function flattenOrgTree(nodes: OrgNode[]): OrgNode[] {
-  const out: OrgNode[] = []
-  const walk = (n: OrgNode) => {
+export function flattenOrgTree<N extends OrgPerson>(nodes: N[]): N[] {
+  const out: N[] = []
+  const walk = (n: N) => {
     out.push(n)
-    n.children.forEach(walk)
+    ;(n.children as N[]).forEach(walk)
   }
   nodes.forEach(walk)
   return out
@@ -90,10 +102,11 @@ const INACTIVE = new Set(['retired', 'rejected'])
  * Drop retired/rejected agents from a built tree for display. Their reports are lifted to the nearest
  * remaining ancestor (so a retired manager never orphans a live team), and depths are recomputed.
  */
-export function pruneInactive(roots: OrgNode[]): OrgNode[] {
-  const walk = (n: OrgNode, depth: number): OrgNode[] => {
-    const kids = n.children.flatMap((c) => walk(c, INACTIVE.has(n.agent.status) ? depth : depth + 1))
-    if (INACTIVE.has(n.agent.status)) return kids
+export function pruneInactive<N extends OrgPerson>(roots: N[]): N[] {
+  const walk = (n: N, depth: number): N[] => {
+    const inactive = !!n.agent && INACTIVE.has(n.agent.status)
+    const kids = (n.children as N[]).flatMap((c) => walk(c, inactive ? depth : depth + 1))
+    if (inactive) return kids
     return [{ ...n, depth, children: kids }]
   }
   return roots.flatMap((r) => walk(r, 0))

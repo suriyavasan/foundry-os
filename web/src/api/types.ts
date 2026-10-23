@@ -49,12 +49,16 @@ export interface User {
   id: Uuid
   email: string
   display_name: string
+  /** M7 (assumed): the login name. Absent on a local-owner backend. */
+  username?: string
 }
 
 export interface Membership {
   company_id: Uuid
   company_name: string
-  role: 'owner' | 'admin' | 'viewer' | (string & {})
+  role: 'owner' | 'admin' | 'member' | 'viewer' | (string & {})
+  /** M7 (assumed): the caller's member record in this company (`member:<id>` is the ref other records use). */
+  member_id?: Uuid
 }
 
 export interface Me {
@@ -135,6 +139,8 @@ export interface Agent {
   role_template?: string | null
   /** M2: what the agent is doing right now. Absent on an M1 backend. */
   live?: AgentLive | null
+  /** M7 (assumed): `agent:<id>` | `member:<id>`; supersedes `manager_agent_id` once agents can report to humans. */
+  manager_ref?: string | null
 }
 
 export interface CreateAgentRequest {
@@ -492,6 +498,8 @@ export interface Task {
    * The UI reads `depends_on` (ids) from the task when present and degrades to "not reported".
    */
   depends_on?: Uuid[]
+  /** M7 (assumed): `agent:<id>` | `member:<id>`. A human assignee has `assignee_agent_id: null`. */
+  assignee_ref?: string | null
 }
 
 export interface CreateTaskRequest {
@@ -503,6 +511,8 @@ export interface CreateTaskRequest {
   project_id?: Uuid | null
   parent_task_id?: Uuid | null
   assignee_agent_id?: Uuid | null
+  /** M7 (assumed): set to `member:<id>` to assign a human; leave out for agents. */
+  assignee_ref?: string | null
   reviewer_agent_id?: Uuid | null
   budget_micros?: number | null
   idempotency_key?: string | null
@@ -516,6 +526,7 @@ export type UpdateTaskRequest = Partial<
     | 'priority'
     | 'project_id'
     | 'assignee_agent_id'
+    | 'assignee_ref'
     | 'reviewer_agent_id'
     | 'budget_micros'
   >
@@ -527,6 +538,8 @@ export interface TaskFilters {
   status?: TaskStatus
   project_id?: Uuid
   assignee_agent_id?: Uuid
+  /** M7 (assumed): `agent:<id>` | `member:<id>`. */
+  assignee_ref?: string
   parent_task_id?: Uuid
   kind?: TaskKind
 }
@@ -650,6 +663,8 @@ export interface Approval {
   /** M6 (assumed): the exact outbound content under review and the DLP scan result. Read via lib/approvalsM6. */
   outbound?: ApprovalOutbound | null
   dlp_findings?: DlpFinding[] | null
+  /** M7 (assumed): `member:<id>` when the approval is scoped to one human; null/absent = any owner/admin. */
+  approver_ref?: string | null
 }
 
 export interface ApprovalFilters {
@@ -1442,4 +1457,212 @@ export interface ExternalExpenseCreate {
   recurrence: ExpenseRecurrence
   project_id?: Uuid | null
   incurred_on: string
+}
+
+
+/* ======================================================================== *
+ * Milestone 7 (docs/specs/m7-accounts-and-team.md): accounts, login, team, notifications.
+ * ASSUMPTION: the M7 backend does not exist yet. Paths follow the spec literally; the shapes below fill its
+ * gaps conservatively. Each type is re-checked against schema.d.ts in contract.check.ts (WhenInSchema) as soon
+ * as a generated schema carries the expected name, so drift fails `pnpm typecheck`. When `GET /auth/session`
+ * answers 404 the UI keeps the M3b-sec owner-token gate and every M7 surface says "Arrives in M7".
+ *
+ * Auth (not company scoped, cookie `cos_session` + CSRF `cos_csrf`/`X-CSRF-Token`):
+ *   GET  /auth/session                    AuthSession   (public: state setup_required | unauthenticated | authenticated)
+ *   POST /auth/setup                      SetupRequest -> AuthSession          (first run only)
+ *   POST /auth/login                      LoginRequest -> AuthSession          (or two_factor_required)
+ *   POST /auth/logout
+ *   POST /auth/password                   PasswordChange
+ *   GET  /auth/sessions                   SessionInfo[]   DELETE /auth/sessions[/{id}]   (all / one)
+ *   GET/POST /auth/tokens                 ApiToken[] / ApiTokenCreate -> ApiTokenCreated (secret shown once)
+ *   DELETE /auth/tokens/{id}
+ *   POST /auth/2fa/enroll                 -> TwoFactorEnroll    POST /auth/2fa/verify {code}    POST /auth/2fa/disable
+ * Team (`/companies/{cid}`):
+ *   GET/POST /invitations   DELETE /invitations/{id}        POST /invitations/{token}/accept (global path)
+ *   GET /members            PATCH/DELETE /members/{id}
+ * Notifications (global, per user): GET /notifications   POST /notifications/read {ids?, all?}
+ * Stream event: notification.created
+ * Humans on tasks: `assignee_ref` (`member:<id>`), completed with POST /tasks/{id}/complete {comment?, artifact_ids?}.
+ * ======================================================================== */
+
+export type AuthState = 'setup_required' | 'unauthenticated' | 'authenticated'
+
+export interface AuthUser {
+  id: Uuid
+  username: string
+  display_name: string
+  email: string | null
+  two_factor_enabled?: boolean
+}
+
+export interface AuthSession {
+  state: AuthState
+  user: AuthUser | null
+  /** `setup_required` only: the request is not from loopback, so the setup token printed by the server is needed. */
+  setup_token_required?: boolean
+  /** Login answered "password ok, now the authenticator code". */
+  two_factor_required?: boolean
+  expires_at?: Timestamp | null
+}
+
+export interface SetupRequest {
+  username: string
+  display_name: string
+  password: string
+  email?: string | null
+  setup_token?: string | null
+}
+
+export interface LoginRequest {
+  username: string
+  password: string
+  totp_code?: string
+}
+
+export interface PasswordChange {
+  current_password: string
+  new_password: string
+}
+
+export interface SessionInfo {
+  id: Uuid
+  created_at: Timestamp
+  last_seen_at: Timestamp | null
+  expires_at: Timestamp
+  ip: string | null
+  user_agent: string | null
+  current: boolean
+}
+
+export type TokenScope = 'read' | 'write' | 'admin'
+
+export interface ApiToken {
+  id: Uuid
+  name: string
+  scope: TokenScope
+  /** First characters of the token, to recognise it in a list. Never the secret. */
+  prefix?: string | null
+  created_at: Timestamp
+  last_used_at: Timestamp | null
+  expires_at?: Timestamp | null
+  revoked_at?: Timestamp | null
+}
+
+export interface ApiTokenCreate {
+  name: string
+  scope: TokenScope
+}
+
+/** The only response that ever carries the secret. */
+export interface ApiTokenCreated extends ApiToken {
+  token: string
+}
+
+export interface TwoFactorEnroll {
+  /** Base32 secret, for manual entry. */
+  secret: string
+  /** `otpauth://totp/...`, rendered as a QR code in the browser. */
+  otpauth_uri: string
+}
+
+export interface TwoFactorVerifyResult {
+  enabled: boolean
+  /** Shown once, when the server issues them. */
+  recovery_codes?: string[]
+}
+
+export type MemberRole = 'owner' | 'admin' | 'member' | 'viewer'
+export type MemberStatus = 'active' | 'disabled' | 'removed'
+
+export interface Member {
+  id: Uuid
+  company_id: Uuid
+  user_id: Uuid
+  username: string
+  display_name: string
+  email: string | null
+  role: MemberRole
+  title: string | null
+  /** `agent:<id>` | `member:<id>` | null (reports to the Founder). */
+  manager_ref: string | null
+  status: MemberStatus
+  created_at: Timestamp
+}
+
+export interface MemberUpdate {
+  role?: MemberRole
+  title?: string | null
+  manager_ref?: string | null
+}
+
+export type InvitationStatus = 'pending' | 'accepted' | 'expired' | 'revoked'
+
+export interface Invitation {
+  id: Uuid
+  company_id: Uuid
+  email: string
+  role: MemberRole
+  title: string | null
+  manager_ref: string | null
+  status: InvitationStatus
+  expires_at: Timestamp
+  created_at: Timestamp
+  accepted_at?: Timestamp | null
+}
+
+export interface InvitationCreate {
+  email: string
+  role: MemberRole
+  title?: string | null
+  manager_ref?: string | null
+}
+
+/** `link`: no email provider is connected, so nothing was sent and the link must be shared by hand. */
+export type InvitationDelivery = 'email' | 'link'
+
+/** Returned once, at creation: the token is hashed at rest and cannot be shown again. */
+export interface InvitationCreated extends Invitation {
+  delivery: InvitationDelivery
+  invite_url?: string | null
+  token?: string | null
+}
+
+/** Empty when the caller is signed in; otherwise the new account's credentials. */
+export interface InvitationAccept {
+  username?: string
+  display_name?: string
+  password?: string
+}
+
+export interface InvitationAccepted {
+  company_id: Uuid
+  company_name?: string | null
+  role?: MemberRole
+  member_id?: Uuid
+}
+
+export type NotificationKind = 'task_assigned' | 'review_requested' | 'approval_needed' | 'note_replied' | 'alert' | (string & {})
+
+export interface Notification {
+  id: Uuid
+  company_id: Uuid | null
+  kind: NotificationKind
+  title: string
+  body: string | null
+  /** The record it is about (`task`, `approval`, `note`, `alert`, ...), for the deep link. */
+  related_type: string | null
+  related_id: string | null
+  created_at: Timestamp
+  read_at: Timestamp | null
+}
+
+/** `GET /notifications` as the UI holds it. `unread_count` is the server's when it reports one. */
+export interface NotificationList {
+  items: Notification[]
+  unread_count: number
+}
+
+export interface CompleteTaskRequest {
+  comment?: string | null
+  artifact_ids?: Uuid[]
 }

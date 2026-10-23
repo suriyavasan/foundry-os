@@ -19,8 +19,10 @@ export function createQueryClient(): QueryClient {
   const onUnauthenticated = (error: unknown, key?: readonly unknown[]) => {
     if (!isUnauthenticated(error)) return
     // `/me` itself failing with 401 is already what the gate reads.
-    if (key && key[0] === qk.me[0]) return
+    if (key && (key[0] === qk.me[0] || (key[0] === qk.authSession[0] && key[1] === qk.authSession[1]))) return
     void client.invalidateQueries({ queryKey: qk.me })
+    // M7: the cookie session may have expired or been revoked; the session state decides between app and login page.
+    void client.invalidateQueries({ queryKey: qk.authSession })
   }
   const client: QueryClient = new QueryClient({
     queryCache: new QueryCache({ onError: (error, query) => onUnauthenticated(error, query.queryKey) }),

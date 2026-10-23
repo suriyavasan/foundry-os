@@ -50,3 +50,23 @@ describe('goal and project forms', () => {
     expect(toCreateProjectBody(emptyProjectForm({ name: 'P', goal_id: 'g1', budget: '100' }))).toMatchObject({ goal_id: 'g1', budget_micros: 100_000_000 })
   })
 })
+
+describe('human assignees (M7)', () => {
+  it('maps picker choices to the form and back', async () => {
+    const { assigneePatch, assigneePickerValue } = await import('./taskForm')
+    expect(assigneePatch('member:m1')).toEqual({ assignee_agent_id: '', assignee_member_id: 'm1' })
+    expect(assigneePatch('a1')).toEqual({ assignee_agent_id: 'a1', assignee_member_id: '' })
+    expect(assigneePatch('')).toEqual({ assignee_agent_id: '', assignee_member_id: '' })
+    expect(assigneePickerValue(emptyTaskForm({ assignee_member_id: 'm1' }))).toBe('member:m1')
+    expect(assigneePickerValue(emptyTaskForm({ assignee_agent_id: 'a1' }))).toBe('a1')
+  })
+  it('sends assignee_ref for a human and no ref for an agent', () => {
+    expect(toCreateTaskBody(emptyTaskForm({ title: 't', assignee_member_id: 'm1' }))).toMatchObject({ assignee_ref: 'member:m1', assignee_agent_id: null })
+    const agentBody = toCreateTaskBody(emptyTaskForm({ title: 't', assignee_agent_id: 'a1' }))
+    expect(agentBody.assignee_agent_id).toBe('a1')
+    expect('assignee_ref' in agentBody).toBe(false)
+  })
+  it('maps a server error on assignee_ref to the assignee field', () => {
+    expect(mapTaskServerErrors({ assignee_ref: 'not a member' })).toEqual({ assignee_agent_id: 'not a member' })
+  })
+})
