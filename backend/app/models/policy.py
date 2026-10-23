@@ -49,6 +49,13 @@ class CompanyPolicy(Base):
         Boolean, default=True, server_default=true(), nullable=False
     )
     hire_default_monthly_budget_micros: Mapped[int | None] = mapped_column(BigInteger)
+    # M3b: company default model (a ModelProvider id + model name) for agents without their own,
+    # and the execution sandbox for code-running tools: auto | none | docker.
+    default_model_provider_id: Mapped[str | None] = mapped_column(String(36))
+    default_model_name: Mapped[str | None] = mapped_column(String(160))
+    sandbox_backend: Mapped[str] = mapped_column(
+        String(16), default="auto", server_default="auto", nullable=False
+    )
     budget_lock_version: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)

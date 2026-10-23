@@ -10,7 +10,7 @@ from app.main import create_app
 from app.runtimes.registry import RuntimeRegistry
 from app.storage.local import LocalFileStorage
 from tests.conftest import human
-from tests.helpers import api, new_agent, new_task
+from tests.helpers import api, login, new_agent, new_task
 
 
 def upload(
@@ -179,6 +179,7 @@ def test_size_limit_returns_413_and_stores_nothing(make_settings, tmp_path):
     settings = make_settings(max_upload_bytes=100)
     app = create_app(settings, runtime_registry=RuntimeRegistry())
     with TestClient(app) as c:
+        login(c)
         cid = c.post("/api/companies", json={"name": "Tiny"}).json()["id"]
         ok = c.post(
             api(cid, "/artifacts"),

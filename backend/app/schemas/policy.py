@@ -8,6 +8,7 @@ from app.schemas.agent import MAX_BUDGET_MICROS
 from app.schemas.common import ApiModel, RequestModel, Timestamp
 
 AutonomyModeLiteral = Literal["autonomous", "supervised"]
+SandboxBackendLiteral = Literal["auto", "none", "docker"]
 ApprovalKindLiteral = Literal[
     "external_purchase",
     "budget_increase",
@@ -38,6 +39,10 @@ class Policy(ApiModel):
     allowed_model_providers: list[str]
     auto_activate_hires: bool = True
     hire_default_monthly_budget_micros: int | None = None
+    # M3b: the company default model (ModelProvider id + model name) and the sandbox for code tools.
+    default_model_provider_id: str | None = None
+    default_model_name: str | None = None
+    sandbox_backend: SandboxBackendLiteral = "auto"
     created_at: Timestamp
     updated_at: Timestamp
 
@@ -59,6 +64,9 @@ class PolicyUpdate(RequestModel):
     allowed_model_providers: list[str] | None = None
     auto_activate_hires: bool | None = None
     hire_default_monthly_budget_micros: int | None = Field(default=None, ge=0, le=MAX_BUDGET_MICROS)
+    default_model_provider_id: str | None = Field(default=None, max_length=36)
+    default_model_name: str | None = Field(default=None, min_length=1, max_length=160)
+    sandbox_backend: SandboxBackendLiteral | None = None
 
     @field_validator(
         "autonomy_mode",
@@ -74,6 +82,7 @@ class PolicyUpdate(RequestModel):
         "default_run_reservation_micros",
         "allowed_model_providers",
         "auto_activate_hires",
+        "sandbox_backend",
     )
     @classmethod
     def _not_null(cls, v):  # only the two budget caps are nullable (null = no limit)

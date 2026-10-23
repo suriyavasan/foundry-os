@@ -387,7 +387,9 @@ def tool_result_is_error(name: str, text: str) -> bool:
     except (TypeError, ValueError):
         return text.lstrip().lower().startswith(("error", "tool execution failed"))
     if isinstance(data, dict):
-        if data.get("error"):
+        err = data.get("error")
+        # Company API bodies (a Task) carry their own `error` object/null; only a string code is a failure.
+        if err and not (name.startswith("company_") and not isinstance(err, str)):
             return True
         if data.get("success") is False:
             return True

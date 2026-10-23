@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from alembic import command
 from app.api.deps import get_principal
 from app.core.config import BACKEND_DIR, Settings
+from app.core.owner_token import OWNER_COOKIE
 from app.core.principal import Principal, PrincipalType
 from app.main import create_app
 from app.models.company import CompanyMember
@@ -99,7 +100,15 @@ def app(
 
 @pytest.fixture
 def client(app: FastAPI) -> Iterator[TestClient]:
-    """Acts as the local owner (default local auth)."""
+    """Acts as the local owner: carries the owner cookie, exactly like a logged-in browser."""
+    with TestClient(app) as c:
+        c.cookies.set(OWNER_COOKIE, app.state.owner_token.get())
+        yield c
+
+
+@pytest.fixture
+def anon_client(app: FastAPI, client: TestClient) -> Iterator[TestClient]:
+    """Same app and database, no credentials at all (what a local agent process looks like)."""
     with TestClient(app) as c:
         yield c
 

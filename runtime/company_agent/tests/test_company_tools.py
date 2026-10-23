@@ -20,6 +20,9 @@ TOOLS = [
     "company_get_context", "company_create_task", "company_update_task", "company_complete_task",
     "company_review_task", "company_submit_artifact", "company_report_progress",
     "company_record_decision", "company_request_approval", "company_decide_approval",
+    "company_find_colleagues", "company_request_hire", "company_search_skills", "company_install_skill",
+    "company_author_skill", "company_assign_skills", "company_list_role_templates",
+    "company_create_role_template", "company_hire_agent",
 ]
 
 
@@ -34,15 +37,18 @@ def configured(api: StubApi, tmp_path: Path):
     ctx.reset()
 
 
-def call(name: str, **args):
-    out = registry.dispatch(name, args)
+def call(tool_name: str, /, **args):
+    out = registry.dispatch(tool_name, args)
     return json.loads(out) if isinstance(out, str) else out
 
 
-def test_all_ten_tools_registered_in_company_toolset():
+def test_all_tools_registered_in_company_toolset():
+    from company_agent.spec import COMPANY_TOOL_NAMES
+
     for name in TOOLS:
         assert registry.get_toolset_for_tool(name) == "company"
-    assert len(TOOLS) == 10
+    assert len(TOOLS) == 19
+    assert sorted(TOOLS) == sorted(COMPANY_TOOL_NAMES)  # spec validation and registry cannot drift
 
 
 def test_tools_hidden_until_configured(tmp_path: Path):
@@ -223,6 +229,32 @@ def test_complete_and_block_dispositions_tracked(configured, api: StubApi):
     assert ctx.dispositions() == {"task-1": "completed"}
 
 
+@pytest.mark.parametrize("task_error", [None, {"code": "failed", "message": "boom", "run_id": "r0"}])
+def test_successful_task_bodies_with_an_error_field_are_not_tool_errors(configured, api: StubApi, task_error):
+    """The real API's Task has `error: null` (or the last failed attempt's object). Treating the mere
+    presence of the key as failure made every real complete_task look broken: the agent was never marked
+    done and the launcher kept prompting it (found by the first live run against the backend)."""
+    from company_agent.runner import tool_result_is_error
+
+    api.task_error = task_error
+    out = call("company_complete_task", result_summary="done")
+    assert out["status"] == "done"
+    assert ctx.dispositions() == {"task-1": "completed"}
+    assert tool_result_is_error("company_complete_task", json.dumps(out)) is False
+    call("company_update_task", action="block", reason="stuck", task_id="task-9")
+    assert tool_result_is_error("company_update_task", json.dumps({"id": "t", "error": task_error})) is False
+    # real failures are still failures
+    failure = json.dumps({"error": "invalid_transition", "message": "Only in-progress tasks can be completed"})
+    assert tool_result_is_error("company_complete_task", failure) is True
+    assert tool_result_is_error("read_file", json.dumps({"error": {"code": 1}})) is True  # other tools unchanged
+
+
+def test_blocking_marks_the_disposition_even_when_the_task_body_has_an_error_object(configured, api: StubApi):
+    api.task_error = {"code": "failed", "message": "old failure", "run_id": "r0"}
+    call("company_update_task", action="block", reason="stuck")
+    assert ctx.dispositions() == {"task-1": "blocked"}
+
+
 def test_allowed_tools_subset_gates_availability(api: StubApi):
     ctx.configure(api.url, api.token, run_id="r", task_id="t", allowed_tools=["company_report_progress", "company_complete_task"])
     try:
@@ -240,7 +272,7 @@ def test_work_task_completion_without_deliverable_is_challenged_once(api: StubAp
         assert first["error"] == "no_deliverable" and "company_submit_artifact" in first["message"]
         assert api.requests == []  # never reached the server
         second = call("company_complete_task", result_summary="no deliverable needed because X")
-        assert "error" not in second and second["status"] == "done"
+        assert not isinstance(second.get("error"), str) and second["status"] == "done"
     finally:
         ctx.reset()
 
@@ -249,17 +281,17 @@ def test_completion_with_artifact_or_non_work_task_is_not_challenged(api: StubAp
     ctx.configure(api.url, api.token, run_id="r", task_id="task-1", task_kind="work")
     try:
         call("company_submit_artifact", title="T", content="c")
-        assert "error" not in call("company_complete_task", result_summary="done")
+        assert not isinstance(call("company_complete_task", result_summary="done").get("error"), str)
     finally:
         ctx.reset()
     ctx.configure(api.url, api.token, run_id="r", task_id="task-1", task_kind="planning")
     try:
-        assert "error" not in call("company_complete_task", result_summary="planned")
+        assert not isinstance(call("company_complete_task", result_summary="planned").get("error"), str)
     finally:
         ctx.reset()
     ctx.configure(api.url, api.token, run_id="r", task_id="task-1", task_kind="work")
     try:  # explicit output refs count as a deliverable
-        assert "error" not in call("company_complete_task", result_summary="done", output_artifact_ids=["a1"])
+        assert not isinstance(call("company_complete_task", result_summary="done", output_artifact_ids=["a1"]).get("error"), str)
     finally:
         ctx.reset()
 
@@ -294,3 +326,101 @@ def test_unconfigured_returns_error_not_exception():
     ctx.reset()
     out = call("company_get_context")
     assert out["error"] == "not_configured"
+
+
+# ---------------------------------------------------------------- M4: colleagues and hiring
+
+
+def test_find_colleagues_sends_filters_as_query(configured, api: StubApi):
+    out = call("company_find_colleagues", skill_tags=["Python", "TDD"], family="engineering")
+    assert out["items"][0]["name"] == "Bo"
+    (rec,) = api.calls("GET", "/agents")
+    assert rec.path.startswith("/api/agent/v1/agents?")
+    query = rec.path.split("?", 1)[1]
+    assert "skill_tags=python%2Ctdd" in query and "family=engineering" in query
+    call("company_find_colleagues")
+    assert api.calls("GET", "/agents")[1].path == "/api/agent/v1/agents"
+
+
+def test_request_hire_defaults_task_and_validates(configured, api: StubApi):
+    out = call("company_request_hire", required_skills=["design", "figma"], reason="Need UI work", role_hint="designer")
+    assert out["created"] is True
+    (rec,) = api.calls("POST", "/hiring-requests")
+    assert rec.body == {"required_skills": ["design", "figma"], "role_hint": "designer",
+                        "reason": "Need UI work", "task_id": "task-1"}
+    assert call("company_request_hire", reason="x")["error"] == "invalid_arguments"
+    assert call("company_request_hire", required_skills=["a"])["error"] == "invalid_arguments"
+    assert len(api.calls("POST", "/hiring-requests")) == 1
+
+
+def test_search_skills_trims_results_and_validates_source(configured, api: StubApi):
+    out = call("company_search_skills", query="research", source="hermes", limit=500)
+    assert out["items"][0]["slug"] == "arxiv"
+    assert len(out["items"][0]["description"]) <= 243  # clipped for small models
+    assert "stars" not in out["items"][0] and "skill_id" not in out["items"][0]
+    (rec,) = api.calls("GET", "/skills/catalog")
+    assert "q=research" in rec.path and "source=hermes" in rec.path and "limit=50" in rec.path  # limit capped
+    assert call("company_search_skills", source="pirate-bay")["error"] == "invalid_arguments"
+
+
+def test_install_and_author_skill_bodies(configured, api: StubApi):
+    call("company_install_skill", source_ref="hermes:arxiv")
+    call("company_author_skill", slug="triage", name="Triage", description="Sort inbound requests",
+         tags="support, triage", body_markdown="# Triage\n1. Read\n2. Label")
+    assert api.calls("POST", "/skills/install")[0].body == {"source_ref": "hermes:arxiv"}
+    assert api.calls("POST", "/skills/author")[0].body == {
+        "slug": "triage", "name": "Triage", "description": "Sort inbound requests",
+        "tags": ["support", "triage"], "body_markdown": "# Triage\n1. Read\n2. Label"}
+    assert call("company_install_skill")["error"] == "invalid_arguments"
+    assert call("company_author_skill", slug="x")["error"] == "invalid_arguments"
+
+
+def test_assign_skills_targets_the_agent(configured, api: StubApi):
+    call("company_assign_skills", agent_id="agent-9", skill_slugs='["arxiv", "llm-wiki"]')  # stringified list
+    (rec,) = api.calls("POST", "/agents/agent-9/skills")
+    assert rec.body == {"slugs": ["arxiv", "llm-wiki"]}
+    assert call("company_assign_skills", agent_id="agent-9")["error"] == "invalid_arguments"
+
+
+def test_role_templates_are_listed_without_playbooks_and_created(configured, api: StubApi):
+    listed = call("company_list_role_templates")
+    row = listed["items"][0]
+    assert row["slug"] == "software-engineer" and "instructions" not in row
+    assert len(row["description"]) <= 243
+    call("company_create_role_template", slug="data-analyst", title="Data Analyst", family="research",
+         default_toolsets="company,file,skills", required_skill_tags=["sql"])
+    assert api.calls("POST", "/role-templates")[0].body == {
+        "slug": "data-analyst", "title": "Data Analyst", "family": "research",
+        "default_toolsets": ["company", "file", "skills"], "required_skill_tags": ["sql"]}
+
+
+def test_hire_agent_converts_budget_and_defaults(configured, api: StubApi):
+    out = call("company_hire_agent", role_template="software-engineer", name="Quinn", manager_agent_id="agent-1",
+               skill_slugs=["tdd"], monthly_budget_usd=2.5)
+    assert out["auto_activated"] is True
+    (rec,) = api.calls("POST", "/hires")
+    assert rec.body["monthly_budget_micros"] == 2_500_000
+    assert rec.body["task_id"] == "task-1" and rec.body["skill_slugs"] == ["tdd"]
+    assert rec.body["reason"] == "Hire requested by task task-1"
+    assert call("company_hire_agent", name="Q", manager_agent_id="m")["error"] == "invalid_arguments"
+    assert call("company_hire_agent", role_template="x", name="Q", manager_agent_id="m",
+                monthly_budget_usd=-1)["error"] == "invalid_arguments"
+
+
+def test_hr_only_server_denial_reaches_the_model(configured, api: StubApi):
+    """The server (not this client) enforces HR-only; its 403 is surfaced as a readable error."""
+    api.forced["/hires"] = (403, {"error": {"code": "forbidden", "message": "Only the HR agent can hire",
+                                            "details": None}})
+    out = call("company_hire_agent", role_template="software-engineer", name="Quinn", manager_agent_id="a")
+    assert out["error"] == "forbidden" and out["status"] == 403 and "HR" in out["message"]
+
+
+def test_new_tools_respect_the_company_tools_subset(api: StubApi, tmp_path: Path):
+    ctx.configure(api.url, api.token, run_id="run-1", task_id="task-1", workspace_dir=str(tmp_path),
+                  allowed_tools=["company_get_context", "company_find_colleagues"])
+    try:
+        assert ctx.tool_enabled("company_find_colleagues")
+        assert not ctx.tool_enabled("company_hire_agent")
+        assert not ctx.tool_enabled("company_install_skill")
+    finally:
+        ctx.reset()

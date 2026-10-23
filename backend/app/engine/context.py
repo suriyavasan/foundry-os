@@ -76,11 +76,13 @@ def build_context(
 ) -> EngineContext:
     if session_factory is None:
         session_factory = build_session_factory(build_engine(settings.resolved_database_url))
+    keys = keys or SecretKeyProvider(settings)
     return EngineContext(
         settings=settings,
         session_factory=session_factory,
-        registry=registry or build_default_registry(settings),
-        keys=keys or SecretKeyProvider(settings),
+        registry=registry
+        or build_default_registry(settings, session_factory=session_factory, keys=keys),
+        keys=keys,
         storage=storage or LocalFileStorage(settings.artifacts_dir),
         clock=clock,
         skills=skills,

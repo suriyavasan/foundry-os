@@ -58,6 +58,18 @@ class Settings(BaseSettings):
     github_api_url: str = "https://api.github.com"
     skill_scan_timeout_seconds: float = 120.0
 
+    # --- Milestone 3b: auth + company agent runtime ---------------------------------------------
+    # Where the owner opens the app (used for the printed login link).
+    public_url: str = "http://localhost:8700"
+    # None = print the login URL only when stderr is a terminal; True/False force it.
+    print_login_url: bool | None = None
+    # Container image for sandboxed terminal/code tools (docker backend only; unverified: needs a
+    # running Docker daemon).
+    sandbox_docker_image: str = "python:3.12-slim"
+    # Per-run wall time the adapter waits after SIGTERM before SIGKILL.
+    runtime_kill_grace_seconds: float = 10.0
+    runtime_health_timeout_seconds: float = 15.0
+
     # Hermes runtime. These use the plain HERMES_* names (no COMPANY_OS_ prefix).
     hermes_api_url: str | None = Field(
         default=None, validation_alias=AliasChoices("HERMES_API_URL", "COMPANY_OS_HERMES_API_URL")

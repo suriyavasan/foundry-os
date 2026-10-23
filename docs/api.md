@@ -479,7 +479,7 @@ any other case is `401 unauthenticated` with the same message. It resolves to an
 company; everything it writes is attributed to that agent and audited. The same token is also accepted on the owner API
 (`/api/companies/{cid}/...`), where the caller is that agent: it can read its own company but every mutation that is
 human-only (policy, budgets, permissions, lifecycle, pause, task administration) answers 403, and any other
-company answers 404. A request without a token is the local owner (see "Known limits" below).
+company answers 404. A request with neither a run token nor an owner credential is `401` (Milestone 3b; see "Authentication" below).
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -513,8 +513,8 @@ permissions, budgets or runtime, and `policy.max_headcount` caps the number of l
 
 ## Known limits (Milestone 2)
 
-- Local auth mode has no authentication: a process that omits its run token is treated as the owner. Real
-  isolation of agents from the owner API needs M8 auth plus the runtime sandbox (M3).
+- ~~Local auth mode has no authentication~~ Fixed in Milestone 3b: every request needs an owner credential or a run
+  token (see "Milestone 3b" > "Authentication").
 - Only the `scripted` test runtime can execute tasks; the Hermes adapter reports health but `supports_execution` is
   false, so tasks assigned to it wait ("waiting for runtime"). Nothing here was exercised against a real model.
 - The SSE cursor is the outbox row id. On SQLite writers are serialized so ids commit in order; on Postgres a
@@ -678,3 +678,133 @@ Verified against real systems: the skills guard wrapper and the full library see
 license read from frontmatter; several skills correctly refused for non-SPDX license strings). Not verified: GitHub
 code search and authenticated rate limits (needs a token), the `uploaded` source (no endpoint yet), an HR agent
 driving the flow on a local model (needs the M3b adapter and the company-toolset additions).
+
+
+---
+
+# Milestone 3b: company agent runtime, model providers, credentials, owner login
+
+Migration `0004_model_providers_credentials` (run `uv run alembic upgrade head`; the API refuses to start
+without the `model_providers` table). New dependency: `cryptography`.
+
+## Authentication (breaking change)
+
+`COMPANY_OS_AUTH_MODE=local` no longer treats unauthenticated requests as the owner. Agent processes run on the same
+host, so "comes from localhost" proves nothing.
+
+| Caller | Credential | Principal |
+|---|---|---|
+| Browser | `cos_owner` cookie (`HttpOnly`, `SameSite=Strict`, 30 days) from `GET /api/auth/local?token=<owner token>` | the local owner |
+| Script / CLI | `Authorization: Bearer <contents of data/owner.token>` | the local owner |
+| Agent run | `Authorization: Bearer cos_run...` | that agent (owner API rules for agents apply) |
+| none / wrong | | `401 unauthenticated`, `details: {"reason": "owner_credential_required", "login_path": "/api/auth/local"}` |
+
+- `data/owner.token` is created at startup (32 random bytes urlsafe, mode 0600, never logged). The login URL is printed to
+  the terminal (stderr, only when it is a TTY, or with `COMPANY_OS_PRINT_LOGIN_URL=1`); log files never contain it.
+- `GET /api/auth/local?token=<token>`: constant-time compare; `303` to `/` with `Set-Cookie: cos_owner=...; HttpOnly;
+  SameSite=Strict; Path=/` (and `Cache-Control: no-store`, `Referrer-Policy: no-referrer`); wrong/missing token: `401`
+  (`details.reason = "invalid_login_token"`), no cookie.
+- Open without credentials: `GET /api/health`, `/api/openapi.json`, `/api/docs`, `GET /api/auth/local` (the login itself).
+- The runtime process never receives the owner token (not in env/argv; the file is outside the file-tool workspace jail).
+- CORS now sends `Access-Control-Allow-Credentials` for the configured origins; the dev proxy forwards cookies.
+
+## Credentials (`/api/companies/{cid}/credentials`)
+
+```json
+Credential = { "id", "company_id", "name", "kind": "api_key|token|other", "created_by_type", "created_by_id",
+               "revoked_at": null, "created_at", "updated_at" }          // metadata only: the value is never returned
+```
+
+| Method & path | Who | Notes |
+|---|---|---|
+| `GET /credentials`, `GET /credentials/{id}` | human members | agents: 403 |
+| `POST /credentials` `{name, kind?, value}` | owner/admin | 201 `Credential`; `name` unique among live credentials (409); `value` 1-8192 chars is Fernet-encrypted (key derived from `COMPANY_OS_SECRET_KEY` / `data/secret.key`); audit `credential.created` (name + kind only) |
+| `DELETE /credentials/{id}` | owner/admin | revokes (ciphertext wiped, name freed), idempotent; 409 while an enabled provider uses it |
+
+The value is never in a response, log line, audit row, event or RunEvent; validation errors do not echo it. Replacing the
+secret key makes stored credentials unreadable (re-enter them).
+
+## Model providers (`/api/companies/{cid}/model-providers`)
+
+```json
+ModelProvider = { "id", "company_id", "name", "kind": "ollama|openrouter|anthropic|openai|openai_compatible",
+                  "base_url": "http://127.0.0.1:11434", "credential_id": null, "default_model": "qwen2.5:7b",
+                  "context_length": 32768, "is_local": true, "enabled": true,
+                  "input_price_per_mtok_micros": null, "output_price_per_mtok_micros": null,   // null = unknown price
+                  "last_test": ProviderTest | null, "is_company_default": true, "created_at", "updated_at" }
+ProviderTest = { "status": "ok|warning|error", "message", "checked_at", "model_available", "tool_calling",
+                 "context_length_configured", "context_length_served", "warnings": [], "latency_ms" }
+```
+
+| Method & path | Who | Notes |
+|---|---|---|
+| `GET /model-providers`, `GET /model-providers/{id}` | human members | agents: 403 |
+| `POST /model-providers` | owner/admin | `{name, kind, base_url?, credential_id?, default_model, context_length? (8192+, default 32768), is_local?, enabled?, prices?, make_default?}` -> 201. Ollama `base_url` is the server root (a trailing `/v1` is stripped; default `http://127.0.0.1:11434`); URLs with embedded credentials are 422; `openrouter`/`anthropic`/`openai` need a `credential_id` (same company, not revoked, else 404/409); `openai_compatible` needs `base_url`. The first provider (or `make_default`) becomes the company default and equips the founder and HR (see below) |
+| `PATCH /model-providers/{id}` | owner/admin | `name, base_url, credential_id, default_model, context_length, is_local, enabled, prices`; `kind` is immutable; clears `last_test`; disabling the default clears it |
+| `DELETE /model-providers/{id}` | owner/admin | 204; 409 while a live agent uses it; clears the company default if it was one |
+| `POST /model-providers/{id}/test` | owner/admin | returns the provider with `last_test`. **Ollama:** checks the model exists and supports tools (`/api/show` capabilities), sends one tiny chat through `/v1/chat/completions` (what the runtime uses; loads the model) and reads the *served* context from `/api/ps`; when it is smaller than `context_length` the result is `warning` with the fix (`restart Ollama with OLLAMA_CONTEXT_LENGTH=<n>`). **Other kinds:** authenticated model-list call; tool calling is not probed |
+| `GET /model-providers/detect` | owner/admin | read-only probe of local Ollama (`?` none; use POST for another URL): `{base_url, reachable, models: [{name, parameter_size, quantization, context_length_native, tool_calling, recommended}], recommended_model, served_context_length, warnings, already_registered_provider_id, registered: null}` |
+| `POST /model-providers/detect` `{base_url?, register?: false, model?, context_length?, make_default?: true}` | owner/admin | same probe; with `"register": true` registers Ollama in one call (recommended tool-capable, non-reasoning model unless `model` is given; 409 if none / unreachable, 404 unknown model), runs the provider test and returns it in `registered`. Idempotent per base URL |
+
+Policy gains `default_model_provider_id`, `default_model_name` (must be an enabled provider of the company, else 404) and
+`sandbox_backend` (`auto|none|docker`, default `auto`: docker only if the daemon answers). Defaults that follow:
+- when a company gets its default provider, its **founder and HR** agents that still have runtime `unassigned` become
+  `company_agent` with that provider/model (agents with a runtime or model of their own are left alone);
+- `POST /agents` without an explicit `runtime` in a company that has a default model creates `company_agent` agents on it;
+  hires (`POST /hires`) inherit the founder's runtime/model, else the company default; `model_provider` on a hire must be
+  an enabled provider id of the company (404 otherwise).
+
+## Runtime `company_agent` ("Company Agent (Hermes fork)")
+
+Listed by `GET /api/runtimes`; capabilities `streaming_events, cancel, usage_tokens, usage_cost, artifacts`. Health:
+`not_configured` (interpreter/package missing), `unavailable` (`--version` fails or protocol mismatch), else `ok` with the
+sandbox state in `detail` (for example `sandbox: none (docker daemon not reachable); terminal and code_execution are never
+granted`).
+
+- **Per run:** the worker materializes the agent's assigned active skills into `data/agents/<agent id>/home/skills`, builds the
+  run spec (identity, org, task incl. revision feedback, model + credential, toolsets, company tools, limits, run token, workspace
+  `data/workspaces/<company>/<run>`), spawns `runtime/.venv/bin/python -m company_agent.run` (own process group, minimal env)
+  and writes the spec to its **stdin**. The model key and run token never appear in argv, environment or on disk.
+- **Toolsets** = role template defaults  intersect  agent `tool_permissions` (when non-empty)  intersect `runtime_config.toolsets`,
+  always plus `company`, minus `terminal`/`code_execution` unless the sandbox is docker. `skills_manage` is never granted
+  (HR authors skills through the API). **Company tools** follow the role: workers get
+  `get_context, report_progress, submit_artifact, complete_task, update_task, create_task`; founder/leads/reviewers/managers add
+  `review_task, record_decision, request_approval, find_colleagues, request_hire` (the founder also `decide_approval`); HR gets the
+  HR tools (`search_skills, install_skill, author_skill, assign_skills, list_role_templates, create_role_template, hire_agent`).
+  The server enforces the same roles independently.
+- `agent.runtime_config` keys: `max_iterations` (1-500, default 30), `toolsets`, `company_tools` (both can only restrict).
+- **Events:** the launcher's JSONL events are stored as RunEvents with the launcher's own `seq` (1, 2, ...). Server-written
+  `progress` events use seq >= 1,000,000; launcher lines with a duplicate/decreasing seq, a seq >= 1,000,000, an unknown type or
+  malformed JSON are dropped (first wins). Secrets (run token, cloud key) are scrubbed from every payload. `usage` and the terminal
+  event carry `billing: {cost_micros, cost_kind, note, local}`.
+- **Outcome mapping:** `run.completed` -> run `succeeded` (the agent already completed or blocked the task through the API);
+  `run.failed` (`max_iterations`, `time_limit`, `task_not_completed`, `model_error`) or a crash -> run `failed` -> the task state
+  machine retries (`ready`) until `max_attempts_per_task`, then `failed`; `run.cancelled` -> `cancelled`; a worker timeout ->
+  `timed_out`. Configuration problems (no provider, disabled provider, undecryptable credential) fail the run with code `config`.
+- **Cancel / timeout:** SIGTERM to the launcher, SIGKILL of its whole process group after `COMPANY_OS_RUNTIME_KILL_GRACE_SECONDS`
+  (default 10); stragglers in the group are always killed.
+- **Cost:** `ModelProvider.is_local` -> `cost_micros = 0`, `cost_kind = verified` ("no provider charge", stated in the `billing` payload).
+  Cloud: provider-reported actual cost -> `verified`; runtime or provider-price-table estimate -> `estimated`; nothing -> `unknown`
+  (the ledger then settles the reservation as an estimate). Tokens: `input_tokens` = uncached + cache-read + cache-write prompt tokens.
+
+## Verified and not verified (Milestone 3b)
+
+Verified live (2026-10-24, macOS arm64, Python 3.14 runtime, Ollama 0.40.4 `qwen2.5:7b` on a temporary server with
+`OLLAMA_CONTEXT_LENGTH=32768`, backend on a throw-away database/data dir with the embedded worker):
+- owner login (`401` without credentials, bearer, cookie, redaction of the login token in uvicorn's access log);
+- one-call Ollama registration with the served-context probe (and, against the user's real default Ollama, the 4096-token warning
+  with the fix text);
+- a hire from the `research-analyst` template and a task executed end to end: ready -> in_progress -> `in_review` (the agent
+  completed it through the API; the task has acceptance criteria) -> `done` (owner review), run `succeeded`, 15 stored events
+  (seq 1-15), a real artifact, usage 8 722 prompt / 690 output tokens, `cost_kind: verified`, `cost_micros: 0`, 62 s wall time;
+- cancel of a running run through the API: SIGTERM, run `cancelled` in 1.0 s, task `blocked` (`run_cancelled`), no leftover process;
+- the autonomous hiring chain: a task needing skill `docker` and no assignee -> hiring task for HR -> the local 7B HR agent used
+  `company_find_colleagues`, `company_search_skills`, `company_install_skill`, `company_create_role_template` and
+  `company_hire_agent` against the real endpoints -> the new employee was auto-activated and the waiting task assigned to it and
+  started (HR run: 12 tool calls, 117K prompt tokens, about 4 minutes; the model chose a $5 000 monthly budget for the hire, which
+  no policy capped because the company had no monthly budget).
+
+Verified by mocked transports only: cloud providers (OpenRouter, Anthropic, OpenAI, OpenAI-compatible) and their credential flow.
+**Not verified:** the docker sandbox (daemon not running; the probe bug that treated a dead daemon as available was found live and
+fixed), a Windows/Linux host, Hermes' native OpenRouter/Anthropic base-URL handling, worker hard-kill recovery of an orphaned
+launcher (it ends by its own time limit; its run token dies when recovery finalizes the run).

@@ -5,9 +5,11 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.errors import NotFound
 from app.core.principal import CompanyContext, require_human_admin
 from app.core.time import utcnow
 from app.models.policy import DEFAULT_HUMAN_APPROVAL_KINDS, CompanyPolicy
+from app.models.provider import ModelProvider
 from app.schemas.policy import PolicyUpdate
 from app.services import audit, events
 
@@ -28,8 +30,29 @@ UPDATABLE = (
     "allowed_model_providers",
     "auto_activate_hires",
     "hire_default_monthly_budget_micros",
+    "default_model_provider_id",
+    "default_model_name",
+    "sandbox_backend",
 )
 _BUDGET_FIELDS = {"daily_budget_micros", "monthly_budget_micros", "default_run_reservation_micros"}
+
+
+def _check_default_model(
+    db: Session, company_id: str, current: CompanyPolicy, data: PolicyUpdate
+) -> None:
+    """The company default model must be an enabled provider of this company (404 otherwise)."""
+    given = data.model_fields_set
+    if "default_model_provider_id" not in given or data.default_model_provider_id is None:
+        return
+    found = db.scalar(
+        select(ModelProvider.id).where(
+            ModelProvider.id == data.default_model_provider_id,
+            ModelProvider.company_id == company_id,
+            ModelProvider.enabled.is_(True),
+        )
+    )
+    if found is None:
+        raise NotFound("Model provider not found")
 
 
 def create_default_policy(db: Session, company_id: str) -> CompanyPolicy:
@@ -59,6 +82,7 @@ def update_policy(db: Session, ctx: CompanyContext, data: PolicyUpdate) -> Compa
     # Agents (including via their own run token) are rejected here: 403.
     require_human_admin(ctx, "change company policy")
     policy = load_policy(db, ctx.company_id)
+    _check_default_model(db, ctx.company_id, policy, data)
     changed: list[str] = []
     for field in UPDATABLE:
         if field not in data.model_fields_set:

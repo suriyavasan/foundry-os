@@ -33,6 +33,14 @@ class FakeClock:
             self._now = value.astimezone(UTC)
 
 
+def login(client: TestClient) -> TestClient:
+    """Give a test client the owner cookie (what the browser gets from /api/auth/local)."""
+    from app.core.owner_token import OWNER_COOKIE
+
+    client.cookies.set(OWNER_COOKIE, client.app.state.owner_token.get())  # type: ignore[attr-defined]
+    return client
+
+
 def api(cid: str, path: str = "") -> str:
     return f"/api/companies/{cid}{path}"
 

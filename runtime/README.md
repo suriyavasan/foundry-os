@@ -113,9 +113,12 @@ Required: `protocol` (=1), `run_id`, `company{id,name,mission?,strategic_goal?,c
 `model{provider: custom|openrouter|anthropic, base_url, api_key, model, context_length>=8192, is_local}`,
 `toolsets[]`, `limits{max_iterations 1-500, max_run_seconds 1-86400}`, `agent_api{url,token}`,
 absolute `workspace_dir` and `hermes_home` (must not nest), `sandbox{backend: none|docker, docker_image?, network?}`.
-Optional: `company_tools[]` — restrict the company toolset to a subset of the ten tools (small models do
+Optional: `company_tools[]` — restrict the company toolset to a subset of its 19 tools (small models do
 noticeably better with fewer tools; recommended worker subset: `get_context, report_progress,
-submit_artifact, complete_task, update_task, create_task`).
+submit_artifact, complete_task, update_task, create_task`). The control plane derives the subset from the
+agent's role: managers add `review_task, record_decision, request_approval, find_colleagues, request_hire`,
+the founder also `decide_approval`, HR gets `find_colleagues, search_skills, install_skill, author_skill,
+assign_skills, list_role_templates, create_role_template, hire_agent` (all server-enforced again by the API).
 
 Allowed toolsets: `company file web search skills skills_manage todo vision terminal code_execution`.
 `terminal`/`code_execution` are removed (with a `progress` warning) unless `sandbox.backend == "docker"`;

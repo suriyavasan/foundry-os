@@ -39,6 +39,8 @@ class StubApi:
     requests: list[Recorded] = field(default_factory=list)
     # path-prefix -> (status, body) forced for the next matching request(s)
     forced: dict[str, tuple[int, Any]] = field(default_factory=dict)
+    # What a task body's `error` field holds: None, or {"code", "message", "run_id"} after a failed attempt.
+    task_error: Any = None
     on_request: Optional[Callable[[Recorded], None]] = None
     _server: Optional[ThreadingHTTPServer] = None
     _thread: Optional[threading.Thread] = None
@@ -122,10 +124,13 @@ class StubApi:
             }
         if m == "POST" and sub == "/tasks":
             return 201, {"id": self._next_id("task"), "title": b.get("title"), "status": "backlog"}
+        # Real Task bodies carry an `error` field (null, or the last failed attempt's object): the stub must too.
         if m == "PATCH" and sub.startswith("/tasks/"):
-            return 200, {"id": sub.split("/")[2], "status": "blocked" if b.get("status") == "blocked" else "ready"}
+            return 200, {"id": sub.split("/")[2], "status": "blocked" if b.get("status") == "blocked" else "ready",
+                         "error": self.task_error}
         if m == "POST" and sub.endswith("/complete"):
-            return 200, {"id": sub.split("/")[2], "status": "done", "result_summary": b.get("result_summary")}
+            return 200, {"id": sub.split("/")[2], "status": "done", "result_summary": b.get("result_summary"),
+                         "error": self.task_error}
         if m == "POST" and sub.endswith("/review"):
             return 200, {"id": sub.split("/")[2], "status": "done" if b.get("decision") == "accept" else "revision_requested"}
         if m == "POST" and sub == "/artifacts":
@@ -140,6 +145,36 @@ class StubApi:
             return 201, {"id": self._next_id("appr"), "status": "pending", "approver": "founder"}
         if m == "POST" and sub.endswith("/decide"):
             return 200, {"id": sub.split("/")[2], "status": "approved"}
+        # ---- M4: colleagues, skills, hiring
+        if m == "GET" and sub == "/agents":
+            return 200, {"items": [{"id": "agent-9", "name": "Bo", "role_title": "Engineer", "role_family": "engineering",
+                                    "skills": ["tdd"], "skill_tags": ["tdd", "python"], "open_tasks": 1}],
+                         "next_cursor": None}
+        if m == "POST" and sub == "/hiring-requests":
+            return 201, {"hiring_task_id": self._next_id("task"), "created": True, "status": "backlog"}
+        if m == "GET" and sub == "/skills/catalog":
+            return 200, {"items": [{"slug": "arxiv", "name": "arXiv", "description": "d" * 600, "tags": ["research"],
+                                    "license": "MIT", "source": "hermes", "source_kind": "hermes_optional",
+                                    "source_ref": "hermes:arxiv", "item_type": "skill", "installed": False,
+                                    "skill_id": None, "status": None, "stars": None}], "next_cursor": None}
+        if m == "POST" and sub == "/skills/install":
+            return 201, {"skill": {"slug": "arxiv", "status": "active"}, "outcome": "installed", "quarantined": False}
+        if m == "POST" and sub == "/skills/author":
+            return 201, {"skill": {"slug": b.get("slug"), "status": "active"}, "outcome": "installed", "quarantined": False}
+        if m == "POST" and sub.startswith("/agents/") and sub.endswith("/skills"):
+            return 200, {"items": [{"skill": {"slug": s}} for s in (b.get("slugs") or [])], "next_cursor": None}
+        if m == "GET" and sub == "/role-templates":
+            return 200, {"items": [{"slug": "software-engineer", "family": "engineering", "title": "Software Engineer",
+                                    "description": "x" * 600, "default_kind": "specialist", "default_department": "Eng",
+                                    "instructions": "LONG PLAYBOOK " * 200, "default_toolsets": ["company", "file"],
+                                    "default_skill_slugs": ["tdd"], "required_skill_tags": ["python"], "builtin": True,
+                                    "id": None}], "next_cursor": None}
+        if m == "POST" and sub == "/role-templates":
+            return 201, {"slug": b.get("slug"), "title": b.get("title"), "builtin": False}
+        if m == "POST" and sub == "/hires":
+            return 201, {"agent": {"id": self._next_id("agent"), "name": b.get("name"), "status": "active"},
+                         "auto_activated": True, "approval_id": None, "approver": None,
+                         "reasons_not_auto_activated": [], "skills": b.get("skill_slugs", []), "skipped_default_skills": []}
         return 404, _err("not_found", "Not found")
 
 

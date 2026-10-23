@@ -269,6 +269,15 @@ def create_agent(db: Session, ctx: CompanyContext, data: AgentCreate) -> Agent:
         data = data.model_copy(update={"tool_permissions": list(defaults.default_toolsets)})
 
     validate_runtime_config(data.runtime_config)
+    runtime, model_provider, model_name = data.runtime, data.model_provider, data.model_name
+    if "runtime" not in fields:
+        # A company with a working default model runs its new employees on the company agent
+        # runtime out of the box (M3b); without one they stay "unassigned".
+        limits = policy.load_policy(db, ctx.company_id)
+        if limits.default_model_provider_id:
+            runtime = "company_agent"
+            model_provider = model_provider or limits.default_model_provider_id
+            model_name = model_name or limits.default_model_name
     if ctx.principal.is_agent:  # an autonomous hire may not exceed the company's headcount cap
         limits = policy.load_policy(db, ctx.company_id)
         headcount = db.scalar(
@@ -322,9 +331,9 @@ def create_agent(db: Session, ctx: CompanyContext, data: AgentCreate) -> Agent:
                 RoleFamily.FOUNDER.value if kind == AgentKind.FOUNDER else RoleFamily.GENERIC.value
             )
         ),
-        model_provider=data.model_provider,
-        model_name=data.model_name,
-        runtime=data.runtime,
+        model_provider=model_provider,
+        model_name=model_name,
+        runtime=runtime,
         runtime_config=dict(data.runtime_config),
         tool_permissions=list(data.tool_permissions),
         monthly_budget_micros=data.monthly_budget_micros,

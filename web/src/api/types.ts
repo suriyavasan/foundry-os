@@ -886,12 +886,14 @@ export interface CreateModelProviderRequest {
   kind: ProviderKind
   base_url?: string | null
   credential_id?: Uuid | null
-  default_model?: string | null
-  context_length?: number | null
-  is_local?: boolean
+  default_model: string
+  context_length?: number
+  is_local?: boolean | null
   enabled?: boolean
   input_price_per_mtok_micros?: number | null
   output_price_per_mtok_micros?: number | null
+  /** Make this the company's default model provider. */
+  make_default?: boolean
 }
 export type UpdateModelProviderRequest = Partial<Pick<CreateModelProviderRequest, 'enabled' | 'default_model' | 'context_length'>>
 
@@ -905,9 +907,10 @@ export interface Credential {
   revoked_at?: Timestamp | null
 }
 
+export type CredentialKind = 'api_key' | 'token' | 'other'
 export interface CreateCredentialRequest {
   name: string
-  kind: string
+  kind?: CredentialKind
   /** Write-only. Sent once, never read back, never logged. */
   value: string
 }

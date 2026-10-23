@@ -27,7 +27,7 @@ class ToolClientConfig:
     workspace_dir: str = ""
     # Called as on_artifact(artifact_id, title) after an artifact was accepted by the API.
     on_artifact: Optional[Callable[[str, str], None]] = None
-    # Restrict the company toolset to these tool names (None = all ten). Fewer tools = better small models.
+    # Restrict the company toolset to these tool names (None = all). Fewer tools = better small models.
     allowed_tools: Optional[frozenset] = None
     task_kind: str = ""
 

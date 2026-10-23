@@ -201,3 +201,56 @@ def test_prompts_carry_identity_task_and_safety_rules(raw):
 def test_long_fields_are_clipped(raw):
     raw["task"]["description"] = "d" * 50_000
     assert len(build_task_prompt(parse_spec(raw))) < 6000
+
+
+# ------------------------------------------------------------------ private URLs (M3b-sec)
+
+
+@pytest.fixture
+def strict_url_policy(tmp_path, monkeypatch):
+    """Hermes' URL guard as the launcher configures it: scrubbed env, generated config."""
+    from tools import url_safety
+
+    monkeypatch.delenv("HERMES_ALLOW_PRIVATE_URLS", raising=False)
+    url_safety._reset_allow_private_cache()
+    yield url_safety
+    url_safety._reset_allow_private_cache()
+
+
+@pytest.mark.parametrize("url", [
+    "http://127.0.0.1:8700/api/agent/v1/context",   # the control plane itself
+    "http://localhost:11434/api/tags",              # Ollama
+    "http://[::1]:8700/api/health",
+    "http://10.0.0.5/admin",
+    "http://192.168.1.1/",
+    "http://172.16.0.9/",
+    "http://169.254.169.254/latest/meta-data/",     # cloud metadata
+    "http://metadata.google.internal/",
+    "file:///etc/passwd",
+])
+def test_runtime_url_guard_blocks_private_and_loopback_targets(strict_url_policy, url):
+    assert strict_url_policy.is_safe_url(url) is False
+
+
+def test_launcher_env_forces_private_urls_off_even_if_the_parent_opted_in(raw):
+    spec = parse_spec(raw)
+    env = home.build_process_env(spec, {"PATH": "/usr/bin", "HERMES_ALLOW_PRIVATE_URLS": "true"})
+    assert env["HERMES_ALLOW_PRIVATE_URLS"] == "false"
+    assert build_cfg(spec)["security"]["allow_private_urls"] is False
+
+
+def test_an_inherited_opt_in_is_neutralised_by_apply_process_env(raw, monkeypatch, strict_url_policy):
+    monkeypatch.setenv("HERMES_ALLOW_PRIVATE_URLS", "true")
+    spec = parse_spec(raw)
+    saved = dict(os.environ)
+    try:
+        home.apply_process_env(spec)
+        strict_url_policy._reset_allow_private_cache()
+        assert strict_url_policy.is_safe_url("http://127.0.0.1:8700/api") is False
+    finally:
+        os.environ.clear()
+        os.environ.update(saved)
+
+
+def build_cfg(spec):
+    return home.build_enforced_config(spec, ["company"])

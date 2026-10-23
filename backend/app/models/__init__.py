@@ -8,6 +8,7 @@ from app.models.department import Department
 from app.models.governance import Approval, Decision
 from app.models.ledger import BudgetReservation, UsageRecord
 from app.models.policy import CompanyPolicy
+from app.models.provider import Credential, ModelProvider
 from app.models.run import CompanyEvent, Job, RunEvent, TaskRun
 from app.models.schedule import Schedule, ScheduleFire
 from app.models.skill import AgentSkill, RoleTemplate, Skill, SkillBlob
@@ -26,10 +27,12 @@ __all__ = [
     "CompanyEvent",
     "CompanyMember",
     "CompanyPolicy",
+    "Credential",
     "Decision",
     "Department",
     "Goal",
     "Job",
+    "ModelProvider",
     "Project",
     "RunEvent",
     "RoleTemplate",

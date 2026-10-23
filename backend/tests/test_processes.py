@@ -16,7 +16,7 @@ from sqlalchemy import create_engine, text
 from app.core.config import BACKEND_DIR
 from app.main import create_app
 from app.runtimes.registry import build_default_registry
-from tests.helpers import api, get_task, new_agent, new_task, wait_until
+from tests.helpers import api, get_task, login, new_agent, new_task, wait_until
 
 
 def test_embedded_worker_runs_tasks_inside_the_api_process(make_settings):
@@ -28,6 +28,7 @@ def test_embedded_worker_runs_tasks_inside_the_api_process(make_settings):
     )
     app = create_app(settings, runtime_registry=build_default_registry(settings))
     with TestClient(app) as client:
+        login(client)
         cid = client.post("/api/companies", json={"name": "Embedded Co"}).json()["id"]
         agent = new_agent(client, cid, script={"summary": "embedded works"})
         task = new_task(client, cid, assignee_agent_id=agent["id"])

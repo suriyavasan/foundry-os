@@ -12,7 +12,7 @@ from app.core.tokens import TOKEN_PREFIX, RunTokenClaims, mint_run_token, verify
 from app.runtimes.registry import build_default_registry
 from app.runtimes.scripted import ScriptedRuntime
 from app.services.redaction import REDACTED, redact_payload
-from tests.helpers import api
+from tests.helpers import api, login
 
 KEY = b"k" * 32
 CLAIMS = RunTokenClaims("run-1", "agent-1", "company-1", 2_000_000_000)
@@ -165,7 +165,7 @@ def test_scripted_runtime_is_off_by_default_and_labelled_when_on(make_settings, 
     with TestClient(
         create_app(make_settings(enable_test_runtimes=True), runtime_registry=enabled)
     ) as c:
-        items = {i["id"]: i for i in c.get("/api/runtimes").json()["items"]}
+        items = {i["id"]: i for i in login(c).get("/api/runtimes").json()["items"]}
     assert (
         items["scripted"]["kind"] == "test_fixture"
         and items["scripted"]["health"]["status"] == "ok"

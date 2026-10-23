@@ -13,8 +13,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
+from app.core.crypto import CredentialCipher
 from app.core.errors import NotFound, Unauthenticated
 from app.core.keys import SecretKeyProvider
+from app.core.owner_token import OWNER_COOKIE, OwnerTokenProvider
 from app.core.principal import CompanyContext, Principal, Role
 from app.core.tokens import TOKEN_PREFIX
 from app.models.agent import Agent
@@ -45,6 +47,14 @@ def get_skills_env(request: Request) -> SkillsEnv:
     return request.app.state.skills
 
 
+def get_cipher(request: Request) -> CredentialCipher:
+    return request.app.state.cipher
+
+
+def get_owner_token(request: Request) -> OwnerTokenProvider:
+    return request.app.state.owner_token
+
+
 def get_db(request: Request) -> Iterator[Session]:
     session = request.app.state.session_factory()
     try:
@@ -64,18 +74,29 @@ def bearer_token(request: Request) -> str | None:
 
 
 def get_principal(request: Request, db: DbSession) -> Principal:
-    """A valid agent run token makes the caller that agent (bound to its company), so the
-    owner API's authorization rules apply to it. Otherwise, in local auth mode every request
-    is the single local owner (localhost only!)."""
+    """Who is calling?
+
+    * ``Authorization: Bearer cos_run.…`` (a live run token) -> that agent, bound to its company;
+    * a valid owner credential -> the single local owner: the ``cos_owner`` cookie set by
+      ``GET /api/auth/local`` or ``Authorization: Bearer <owner token>`` (constant-time compare);
+    * anything else -> 401. Loopback is NOT trusted: agent processes run on this host.
+    """
     settings: Settings = request.app.state.settings
     token = bearer_token(request)
     if token and token.startswith(TOKEN_PREFIX):
         return agent_auth.authenticate(db, request.app.state.keys, token).ctx.principal
     if settings.auth_mode == "local":
-        owner = users.get_local_owner(db)
-        if owner is None:
-            raise Unauthenticated("Local owner account is missing; restart the server")
-        return users.principal_for_user(owner)
+        owner_token: OwnerTokenProvider = request.app.state.owner_token
+        if owner_token.verify(token) or owner_token.verify(request.cookies.get(OWNER_COOKIE)):
+            owner = users.get_local_owner(db)
+            if owner is None:
+                raise Unauthenticated("Local owner account is missing; restart the server")
+            return users.principal_for_user(owner)
+        raise Unauthenticated(
+            "Owner credential required. Open Company OS from the login link printed in the "
+            "terminal where the backend runs (see backend/README.md).",
+            details={"reason": "owner_credential_required", "login_path": "/api/auth/local"},
+        )
     raise Unauthenticated()  # pragma: no cover - other modes arrive in M8
 
 

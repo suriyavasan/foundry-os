@@ -132,10 +132,13 @@ TOOLSETS = {
     # COMPANY FORK: tools that call the Company OS agent API (tools/company_tools.py).
     "company": _ts(
         "Company OS: read company context, delegate subtasks, report progress, submit artifacts, "
-        "complete/review tasks, record decisions, request approvals",
+        "complete/review tasks, record decisions, request approvals, find colleagues, hire (HR)",
         ["company_get_context", "company_create_task", "company_update_task", "company_complete_task",
          "company_review_task", "company_submit_artifact", "company_report_progress",
-         "company_record_decision", "company_request_approval", "company_decide_approval"],
+         "company_record_decision", "company_request_approval", "company_decide_approval",
+         "company_find_colleagues", "company_request_hire", "company_search_skills",
+         "company_install_skill", "company_author_skill", "company_assign_skills",
+         "company_list_role_templates", "company_create_role_template", "company_hire_agent"],
     ),
     "memory": _ts("Persistent memory across sessions (personal notes + user profile)", ["memory"]),
     "context_engine": _ts("Runtime tools exposed by the active context engine"),

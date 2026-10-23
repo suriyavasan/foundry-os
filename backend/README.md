@@ -22,8 +22,59 @@ uv run uvicorn app.main:app --reload --port 8700   # bind to localhost only (loc
 ```
 
 - API: `http://localhost:8700/api` - OpenAPI at `/api/openapi.json`, UI at `/api/docs`
-- `COMPANY_OS_AUTH_MODE=local` treats every request as the local owner (`owner@localhost`)
-  with no authentication. Never expose it beyond localhost.
+
+## Logging in (local mode)
+
+`COMPANY_OS_AUTH_MODE=local` has one owner account (`owner@localhost`), but **requests are no longer
+trusted just because they come from this machine**: agent processes run here too. The owner proves
+who they are with `data/owner.token` (32 random bytes, urlsafe, mode 0600, created at first start
+and never logged):
+
+1. Start the backend in a terminal. It prints a one-time **login link** to that terminal (stderr)
+   when stderr is a TTY, for example
+   `http://localhost:8700/api/auth/local?token=...` and the Vite dev variant
+   `http://localhost:5173/api/auth/local?token=...` (dev server proxies `/api`, cookies included).
+   When output is redirected (service manager, `nohup`) nothing is printed: read the token with
+   `cat data/owner.token`, or force the link with `COMPANY_OS_PRINT_LOGIN_URL=1`.
+2. Open the link in your browser. `GET /api/auth/local?token=<token>` compares in constant time,
+   sets the `cos_owner` cookie (`HttpOnly`, `SameSite=Strict`, 30 days) and redirects to `/`.
+   A wrong token is 401 and sets nothing.
+3. Scripts and the CLI send `Authorization: Bearer <contents of data/owner.token>`.
+4. Agent runs authenticate with their run token (`Authorization: Bearer cos_run...`), which makes the
+   caller *that agent* (never the owner). Anything else is `401 unauthenticated`
+   (`details.reason = "owner_credential_required"`); `/api/health` and the OpenAPI docs stay open.
+
+The runtime process never receives the owner token: it is not in its environment or arguments, and
+the file lives outside the agent's workspace jail (tested). Delete `data/owner.token` and restart to
+rotate it. Treat the token like a password; `data/secret.key` (run-token signing and credential
+encryption) is equally sensitive.
+
+## Model providers, credentials and the company agent runtime (Milestone 3b)
+
+```bash
+# 1. runtime venv (once): see ../runtime/README.md, then
+curl -s -X POST localhost:8700/api/companies/$CID/model-providers/detect \
+  -H "Authorization: Bearer $(cat ../data/owner.token)" -H 'content-type: application/json' \
+  -d '{"register": true}'      # registers local Ollama (tool-capable model) + makes it the default
+```
+
+- Providers (`/model-providers`) say where agents get their LLM: local Ollama first, then OpenRouter,
+  Anthropic, OpenAI and any OpenAI-compatible endpoint. API keys live in the credential store
+  (`/credentials`): Fernet-encrypted with a key derived from `COMPANY_OS_SECRET_KEY` / `data/secret.key`
+  (losing that key makes stored credentials unreadable: re-enter them), metadata-only API, decrypted
+  only inside the runtime adapter right before the run spec is written to the runtime's stdin.
+- **Ollama context trap:** Ollama's OpenAI-compatible endpoint ignores per-request `num_ctx` and serves
+  whatever the *server* was started with (4096 by default). Company-agent prompts need ~5K tokens.
+  `POST /model-providers/{id}/test` loads the model and reads the served window from `/api/ps`; it warns
+  with the fix: `OLLAMA_CONTEXT_LENGTH=32768 ollama serve` (restart Ollama).
+- The `company_agent` runtime (`app/runtimes/company_agent.py`) spawns `runtime/.venv/bin/python -m
+  company_agent.run` per run: spec on stdin, JSONL on stdout, `HERMES_HOME` =
+  `data/agents/<agent id>/home` (skills materialized before every run), workspace =
+  `data/workspaces/<company>/<run>`. Without a reachable Docker daemon the sandbox is `none` and
+  `terminal` / `code_execution` are never granted.
+- Settings: `COMPANY_OS_RUNTIME_PYTHON`, `COMPANY_OS_RUNTIME_DIR`, `COMPANY_OS_PUBLIC_URL`,
+  `COMPANY_OS_PRINT_LOGIN_URL`, `COMPANY_OS_SANDBOX_DOCKER_IMAGE`, `COMPANY_OS_RUNTIME_KILL_GRACE_SECONDS`.
+- Agent API URL for local runtimes: set `COMPANY_OS_AGENT_API_URL` to the port you serve on.
 
 ## Work engine (Milestone 2)
 
@@ -66,9 +117,14 @@ uv run alembic upgrade head
 | Variable | Default | Purpose |
 |---|---|---|
 | `COMPANY_OS_DATABASE_URL` | `sqlite:///../data/company_os.db` | SQLAlchemy URL; relative SQLite paths resolve against `backend/` |
-| `COMPANY_OS_AUTH_MODE` | `local` | Only `local` exists in M1 |
+| `COMPANY_OS_AUTH_MODE` | `local` | Only `local` exists; requires the owner token (see "Logging in") |
+| `COMPANY_OS_PUBLIC_URL` | `http://localhost:8700` | base of the printed login link |
+| `COMPANY_OS_PRINT_LOGIN_URL` | unset | `1`/`0` force/suppress printing the login link (default: only on a TTY) |
+| `COMPANY_OS_RUNTIME_PYTHON` | `<runtime>/.venv/bin/python` | interpreter of the company agent runtime |
+| `COMPANY_OS_SANDBOX_DOCKER_IMAGE` | `python:3.12-slim` | image for sandboxed terminal/code tools (docker only; unverified) |
+| `COMPANY_OS_RUNTIME_KILL_GRACE_SECONDS` | `10` | SIGTERM -> SIGKILL grace when cancelling a run |
 | `COMPANY_OS_CORS_ORIGINS` | `["http://localhost:5173","http://127.0.0.1:5173"]` | JSON list of allowed origins |
-| `COMPANY_OS_DATA_DIR` | the SQLite file's directory | artifacts, run workspaces and `secret.key` live here |
+| `COMPANY_OS_DATA_DIR` | the SQLite file's directory | artifacts, workspaces, agent homes, `secret.key` and `owner.token` live here |
 | `COMPANY_OS_SECRET_KEY` | auto-generated `<data dir>/secret.key` (0600) | HMAC key for agent run tokens; never logged or returned |
 | `COMPANY_OS_EMBEDDED_WORKER` | `0` | run the worker + scheduler inside the API process |
 | `COMPANY_OS_ENABLE_TEST_RUNTIMES` | `0` | register the `scripted` test-fixture runtime |

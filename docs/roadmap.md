@@ -27,8 +27,8 @@ reachable from anywhere — without approving each step.*
 | M1 | Foundation | Architecture, AGENTS.md, backend + web skeleton, company/org persistence | done |
 | M2 | Work engine | Goals, projects, tasks, runs, events, artifacts, policy, budget ledger, approvals, schedules, job queue, worker, SSE, agent API | done |
 | M3a | Agent runtime (Hermes fork) | `runtime/` fork, run protocol, company toolset, file jail, live on local Ollama | done |
-| M3b | Runtime integration | Adapter, model providers, encrypted credentials, HR tools in runtime, local-owner auth gate, real E2E task | in progress |
-| M4 | Skills & HR | Skill library (Hermes + GitHub), scan/quarantine, role templates, HR agent, hiring, gap detection; skills UI | backend done · UI in progress |
+| M3b | Runtime integration | Adapter, model providers, encrypted credentials, HR tools in runtime, local-owner auth gate, real E2E task | done |
+| M4 | Skills & HR | Skill library (Hermes + GitHub), scan/quarantine, role templates, HR agent, hiring, gap detection; skills UI | done |
 | M5 | Autonomous operating model | Layered loops (strategic/management/execution/support), Founder's notes + AI Co-founder triage, event triggers, self-healing, lessons, company memory, schedules | planned |
 | M6 | Guardrails & governance | Action risk tiers + policy engine, rate limits, maker-checker for external actions, outbound DLP, injection defenses, stall/runaway detection, emergency stop, mid-run budgets, free-first routing, finance views, guardrail audit | planned |
 | M7 | Accounts, login & team | Username/password onboarding, sessions, roles, email/link invitations, humans in the org tree with assignable tasks, notifications | planned |
@@ -64,6 +64,15 @@ detection, circuit breaker and emergency stop. Agents can never change their own
   require the Founder's approval by default (configurable).
 
 ## Status notes
+
+- **M3b live proof (2026-10-24, local qwen2.5:7b, 32K context):** a research-analyst hire
+  executed a real task end to end (15 events, artifact with the requested 5 bullets,
+  8.7K prompt / 690 output tokens, verified $0 local cost, 62 s); cancel in 1 s. Unprompted,
+  a skill gap (docker) triggered HR: Harper searched/installed a skill, created a role
+  template, hired a "Docker Expert" who was auto-assigned and completed the waiting task.
+- Gap found: HR set a $5,000/month budget on its hire with no company budget configured →
+  M6 adds `max_agent_monthly_budget_micros` and hire budget defaults (agents can never
+  exceed policy caps).
 
 - M1–M3a, M4 backend committed (`1a113fa`, `6d2ef72`, `555a561`, `361a9be`).
 - Local models via Ollama (`qwen2.5:7b` verified). Ollama must run with

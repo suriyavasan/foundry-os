@@ -16,12 +16,14 @@ from app.api.routes import (
     agents,
     approvals,
     artifacts,
+    auth,
     companies,
     control,
     departments,
     goals,
     policy,
     projects,
+    providers,
     runtimes,
     schedules,
     skills,
@@ -29,8 +31,10 @@ from app.api.routes import (
     tasks,
 )
 from app.core.config import APP_VERSION, Settings, get_settings
+from app.core.crypto import CredentialCipher
 from app.core.errors import register_exception_handlers
 from app.core.keys import SecretKeyProvider
+from app.core.owner_token import OwnerTokenProvider, install_log_redaction
 from app.db.session import build_engine, build_session_factory
 from app.runtimes.registry import RuntimeRegistry, build_default_registry
 from app.services.users import ensure_local_owner
@@ -40,7 +44,14 @@ from app.storage.local import LocalFileStorage
 logger = logging.getLogger("company_os")
 
 # One table per migration generation: absent means `alembic upgrade head` has not been run.
-REQUIRED_TABLES = {"users", "company_policies", "task_runs", "company_events", "skills"}
+REQUIRED_TABLES = {
+    "users",
+    "company_policies",
+    "task_runs",
+    "company_events",
+    "skills",
+    "model_providers",
+}
 
 
 def create_app(
@@ -49,16 +60,12 @@ def create_app(
     skills_env: SkillsEnv | None = None,
 ) -> FastAPI:
     settings = settings or get_settings()
+    install_log_redaction()
     engine = build_engine(settings.resolved_database_url)
     session_factory = build_session_factory(engine)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        if settings.auth_mode == "local":
-            logger.warning(
-                "COMPANY_OS_AUTH_MODE=local: every request is treated as the local owner with "
-                "NO authentication. Only run this bound to localhost (127.0.0.1)."
-            )
         settings.prepare_data_dir()
         present = set(inspect(engine).get_table_names())
         if not present >= REQUIRED_TABLES:
@@ -67,6 +74,10 @@ def create_app(
                 "Run `uv run alembic upgrade head` in backend/ first."
             )
         ensure_local_owner(session_factory)
+        if settings.auth_mode == "local":
+            # Owner credential (M3b-sec): without it every API request is a 401.
+            app.state.owner_token.ensure()
+            app.state.owner_token.announce()
         service = None
         if settings.embedded_worker:
             from app.engine.context import build_context
@@ -102,14 +113,20 @@ def create_app(
     app.state.settings = settings
     app.state.engine = engine
     app.state.session_factory = session_factory
-    app.state.runtimes = runtime_registry or build_default_registry(settings)
     app.state.keys = SecretKeyProvider(settings)
+    app.state.owner_token = OwnerTokenProvider(settings)
+    app.state.cipher = CredentialCipher(app.state.keys)
+    app.state.runtimes = runtime_registry or build_default_registry(
+        settings, session_factory=session_factory, keys=app.state.keys
+    )
     app.state.storage = LocalFileStorage(settings.artifacts_dir)
     app.state.skills = skills_env or build_skills_env(settings)
 
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
+        # explicit origins only; the owner cookie is SameSite=Strict
+        allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -117,6 +134,7 @@ def create_app(
 
     for router in (
         system.router,
+        auth.router,
         companies.router,
         departments.router,
         # before agents: /agents/{id}/skills must win over the /agents/{id}/{action} catch-all
@@ -125,6 +143,7 @@ def create_app(
         activity.router,
         runtimes.router,
         policy.router,
+        providers.router,
         goals.router,
         projects.router,
         tasks.router,

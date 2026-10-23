@@ -21,8 +21,8 @@ Rules for this tree: upstream files are modified **only** when unavoidable; each
 | Path | Purpose |
 |---|---|
 | `company_agent/` | The launcher: `run.py` (entrypoint, stdin spec -> JSONL stdout, signals, limits), `spec.py` (run spec validation), `protocol.py` (event writer: seq, single terminal, redaction), `runner.py` (builds `AIAgent`, callbacks -> events, time/cancel/finish handling), `prompts.py` (role prompt), `home.py` (HERMES_HOME, SOUL.md, enforced `config.yaml`, scrubbed environment), `toolpolicy.py` (toolset mapping/removal), `approvals.py` (deny-all approval callback), `context.py` (tool client config). |
-| `company_agent/tests/` | 145 pytest tests incl. a deterministic fake OpenAI-compatible model server and a stub agent API. |
-| `tools/company_tools.py` | The `company` toolset (10 tools) calling the Company OS agent API. Auto-discovered by Hermes' tool registry. |
+| `company_agent/tests/` | pytest suite incl. a deterministic fake OpenAI-compatible model server and a stub agent API (counts in the milestone report). |
+| `tools/company_tools.py` | The `company` toolset (19 tools: 10 work tools + M4 colleague/hiring/HR tools) calling the Company OS agent API. Auto-discovered by Hermes' tool registry. |
 | `scripts/check_imports.py` | Import check for the pruned tree (run after any prune / upstream sync). |
 | `scripts/scan_dropped_imports.py` | Static list of imports of dropped modules still present in kept code. |
 | `scripts/live_smoke.py` | Manual live smoke against a real local model with a printing stub API. |
@@ -37,7 +37,7 @@ Every row is also marked `COMPANY FORK` in the source.
 | 1 | `agent/model_metadata.py` | `MINIMUM_CONTEXT_LENGTH` is now computed by `_resolve_minimum_context_length()`: env `HERMES_MIN_CONTEXT_TOKENS`, else `model.min_context_tokens` in `$HERMES_HOME/config.yaml`, else upstream's 64 000. Values < 2048 / non-integers are ignored. Added `import os`. | Upstream rejects models with < 64K context (`agent_init.py` `_enforce_minimum_context`, `conversation_loop.py`). Company OS runs 32K local models (16 GB machine); runs use a floor of `min(16384, context_length)`. |
 | 2 | `agent/file_safety.py` | New workspace jail: `company_jail_root()`, `get_company_jail_error(path, write=)`; hooked into `get_read_block_error` (reads), `_classify_write_denial` / `get_write_denied_error` / `is_write_denied` (writes, new denial class `company_jail`). Active only when `HERMES_COMPANY_JAIL=<workspace>`. Paths are `realpath`ed (symlinks cannot escape). Read-only exceptions: `$HERMES_HOME/skills`, `$HERMES_HOME/cache/spillover` (Hermes tells the model to read spilled tool output there). | Upstream's `HERMES_WRITE_SAFE_ROOT` covers writes only and is documented as not a boundary. The file tools, vision/transcription loaders and search-result filtering all reach `get_read_block_error` / `get_write_denied_error`, so one check covers them. |
 | 3 | `tools/file_tools_write_guards.py` | `_check_sensitive_path` calls `get_company_jail_error(..., write=True)` first on every candidate path. Import added. | The `patch` tool's V4A mode reads a target (`read_file_raw`) before any write-denial check runs; vetting every header path up front means an out-of-workspace file is never read or leaked through a failed diff. |
-| 4 | `toolsets.py` | Added static toolsets `company` (the 10 company tools) and `skills_read` (`skills_list`, `skill_view`). | `company`: explicit membership instead of registry-only toolset. `skills_read`: employees get read-only skills (no `skill_manage`, no self-authored skills); the launcher maps spec `skills` -> `skills_read`, `skills_manage` -> `skills`. |
+| 4 | `toolsets.py` | Added static toolsets `company` (the 19 company tools; 9 were added in M3b for M4: `find_colleagues`, `request_hire`, `search_skills`, `install_skill`, `author_skill`, `assign_skills`, `list_role_templates`, `create_role_template`, `hire_agent`) and `skills_read` (`skills_list`, `skill_view`). | `company`: explicit membership instead of registry-only toolset. `skills_read`: employees get read-only skills (no `skill_manage`, no self-authored skills); the launcher maps spec `skills` -> `skills_read`, `skills_manage` -> `skills`. |
 | 5 | `model_tools.py` | `_pre_dispatch_guards`: `ImportError` for `acp_adapter.edit_approval` no longer falls into the blanket `except Exception` (which returned "Edit approval denied: approval guard failed" for every `write_file` / `patch`). | `acp_adapter/` is not shipped. Found by the end-to-end test (a plain write inside the workspace failed). |
 | 6 | `agent/system_prompt.py` | `build_system_prompt_parts` returns `_build_company_prompt_parts()` when `agent.platform == "company"`: identity (SOUL.md) + one-paragraph tool-use guidance + the stock tool-use-enforcement block for models that need it (qwen, gpt, gemini...) + skills index + date. | The stock prompt is ~1.5K tokens of Hermes-product text (docs pointer, steering protocol, coding posture, profile/toolchain probes, "Finishing the job" for coding) that is irrelevant to an employee and hurts 7B models. Measured: 5 771 -> 2 344 characters for the same run. |
 | 7 | `pyproject.toml` | `[tool.pytest.ini_options] testpaths = ["company_agent/tests"]` (was `["tests"]`). Nothing else: dependency tables and `uv.lock` are untouched. | Upstream's `tests/` is not shipped (see "Tests" below). |
@@ -93,6 +93,8 @@ A static scan of imports of dropped modules is reproducible with `scripts/scan_d
   `skills.external_dirs: []`, no trusted project dirs, curator off, background review off,
   `auth.adopt_external_logins: false`, `security.allow_lazy_installs: false`, `tools.tool_search: off`,
   `web.backend: ddgs` with `keyless_fallback: false`, `terminal` per sandbox, model/context settings.
+* **Private URLs** (M3b): `security.allow_private_urls: false` is written to the generated config and `HERMES_ALLOW_PRIVATE_URLS=false` is forced in the process env (an inherited opt-in cannot apply); Hermes' URL guard blocks loopback, RFC1918, link-local and cloud-metadata targets (tested for the control plane, Ollama and LAN addresses). The only network tool the company toolsets expose is search-only `web_search` (ddgs), which cannot be pointed at a URL.
+* **Secrets outside the jail** (M3b): the control plane's `owner.token`, `secret.key` and database sit in the data dir above the workspace; tests assert the file tools cannot read, search or overwrite them (absolute path, `..`, symlink, `~`).
 * **Toolsets**: only `company file web search skills skills_manage todo vision terminal code_execution` are
   accepted in a spec; `terminal` and `code_execution` are removed unless `sandbox.backend == "docker"`
   (progress warning emitted); spec `web` -> `search` (ddgs cannot extract); `skills` -> read-only.
@@ -114,6 +116,7 @@ patched upstream code paths through the real tools and a real launcher subproces
 Exercised against the real systems on 2026-10-24 (macOS arm64, Python 3.14.7):
 * the launcher end to end with a deterministic fake model server (JSON and SSE) and a stub agent API:
   full loop, errors, nudges, iteration cap, time limit, SIGTERM/SIGINT, jail, redaction, bad specs;
+* M3b: the launcher driven by the **real Company OS backend** (embedded worker, real agent API, real Ollama `qwen2.5:7b` on a temporary 32K server): see the M3b section of `../docs/api.md` and the milestone report. That run exposed a launcher/tool bug the stub API could not (a Task body's own `error` field was mistaken for a tool failure, so the agent was never marked done); fixed in `tools/company_tools.py` and `runner.tool_result_is_error`, with regression tests.
 * the launcher against a **real local Ollama `qwen2.5:7b`** (tool calling), including real DuckDuckGo
   (`ddgs`) web search; see `README.md` for the result and the Ollama context caveat;
 * `web_search` (ddgs), `skills_list`, `todo_list`, `read_file`/`write_file`/`patch`/`search_files` through the
@@ -121,8 +124,7 @@ Exercised against the real systems on 2026-10-24 (macOS arm64, Python 3.14.7):
 
 **Not** exercised: docker sandbox (`sandbox.backend == "docker"`: daemon not running; the generated
 `terminal` config for it is unverified and the file jail is intentionally off there), Anthropic/OpenRouter
-providers (no keys), the real Company OS backend agent API (the backend was still being built; the tools
-follow `docs/specs/m2-work-engine.md` section 3 and `backend/app/schemas/agent_api.py`), Windows/Linux.
+providers (no keys), the HR/hiring tools against a real model (they are covered against the stub API and the real endpoints' schemas; the HR flow driven by a local model is untested), Windows/Linux.
 
 ## Syncing with upstream
 

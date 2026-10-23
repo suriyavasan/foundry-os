@@ -38,6 +38,7 @@ from app.models.enums import (
 )
 from app.models.governance import Approval
 from app.models.policy import CompanyPolicy
+from app.models.provider import ModelProvider
 from app.models.skill import Skill
 from app.models.work import Project, Task
 from app.roles.loader import RESERVED_FAMILIES
@@ -278,6 +279,24 @@ def hire(db: Session, ctx: CompanyContext, data: HireCreate) -> HireOutcome:
         if data.monthly_budget_micros is not None
         else limits.hire_default_monthly_budget_micros
     )
+    if data.model_provider is not None:
+        known_provider = db.scalar(
+            select(ModelProvider.id).where(
+                ModelProvider.id == data.model_provider,
+                ModelProvider.company_id == company_id,
+                ModelProvider.enabled.is_(True),
+            )
+        )
+        if known_provider is None:
+            raise NotFound("Model provider not found")
+    # Inherit the founder's runtime and model; fall back to the company default model.
+    runtime = founder.runtime if founder else "unassigned"
+    provider_id = data.model_provider or (founder.model_provider if founder else None)
+    model_name = data.model_name or (founder.model_name if founder else None)
+    if runtime == "unassigned" and limits.default_model_provider_id:
+        runtime = "company_agent"
+        provider_id = provider_id or limits.default_model_provider_id
+        model_name = model_name or limits.default_model_name
     now = utcnow()
     agent = Agent(
         company_id=company_id,
@@ -290,9 +309,9 @@ def hire(db: Session, ctx: CompanyContext, data: HireCreate) -> HireOutcome:
         reports_to_human=False,
         responsibilities=spec.description or None,
         instructions=spec.instructions or None,
-        model_provider=data.model_provider or (founder.model_provider if founder else None),
-        model_name=data.model_name or (founder.model_name if founder else None),
-        runtime=founder.runtime if founder else "unassigned",
+        model_provider=provider_id,
+        model_name=model_name,
+        runtime=runtime,
         runtime_config={},
         tool_permissions=list(spec.default_toolsets),
         monthly_budget_micros=monthly,

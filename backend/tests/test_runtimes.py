@@ -15,6 +15,7 @@ from app.runtimes.base import (
 )
 from app.runtimes.hermes import HermesAdapter
 from app.runtimes.registry import RuntimeRegistry, build_default_registry
+from tests.helpers import login
 
 SECRET = "super-secret-hermes-key-123456"
 URL = "http://hermes.test:8642"
@@ -27,7 +28,7 @@ def _client_with(make_settings, transport=None, key=SECRET, url=URL):
 
 
 def _runtime(client):
-    resp = client.get("/api/runtimes")
+    resp = login(client).get("/api/runtimes")
     assert resp.status_code == 200
     items = resp.json()["items"]
     assert len(items) == 1

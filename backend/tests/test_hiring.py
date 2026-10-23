@@ -101,23 +101,47 @@ def test_hire_within_policy_is_activated_automatically(app, client, world):
     assert {i["assigned_by_type"] for i in skills} == {"agent"}
 
 
+def test_hire_inherits_the_founders_model_and_runtime_or_the_company_default(client, world):
+    cid, founder, _, hr = world
+    # no provider registered yet: nothing pretends to be runnable
+    r = hr.post("/hires", json=hire_body(founder, hr, name="Early"))
+    early = get_agent(client, cid, r.json()["agent"]["id"])
+    assert (early["runtime"], early["model_provider"]) == ("unassigned", None)
+    # registering a provider equips the founder; later hires inherit its runtime and model
+    p = client.post(
+        api(cid, "/model-providers"),
+        json={"name": "Local", "kind": "ollama", "default_model": "qwen2.5:7b"},
+    ).json()
+    r = hr.post("/hires", json=hire_body(founder, hr, name="Late"))
+    late = get_agent(client, cid, r.json()["agent"]["id"])
+    assert (late["runtime"], late["model_provider"], late["model_name"]) == (
+        "company_agent",
+        p["id"],
+        "qwen2.5:7b",
+    )
+
+
 def test_title_department_and_model_can_be_chosen(client, world):
     cid, founder, _, hr = world
-    r = hr.post(
-        "/hires",
-        json=hire_body(
-            founder,
-            hr,
-            role_title="Backend Engineer",
-            department="Platform",
-            model_provider="ollama",
-            model_name="qwen2.5:7b",
-        ),
+    provider = client.post(
+        api(cid, "/model-providers"),
+        json={"name": "Local", "kind": "ollama", "default_model": "qwen2.5:7b"},
+    ).json()
+    body = hire_body(
+        founder,
+        hr,
+        role_title="Backend Engineer",
+        department="Platform",
+        model_provider="ollama",  # a name is not a provider id: rejected, never silently stored
+        model_name="qwen2.5:7b",
     )
+    assert hr.post("/hires", json=body).status_code == 404
+    body["model_provider"] = provider["id"]
+    r = hr.post("/hires", json=body)
     agent = get_agent(client, cid, r.json()["agent"]["id"])
     assert (agent["role_title"], agent["model_provider"], agent["model_name"]) == (
         "Backend Engineer",
-        "ollama",
+        provider["id"],
         "qwen2.5:7b",
     )
     depts = {d["id"]: d["name"] for d in client.get(api(cid, "/departments")).json()["items"]}

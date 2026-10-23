@@ -137,7 +137,8 @@ export function validateProviderForm(v: ProviderFormValues, opts: { hasCredentia
       e.base_url = 'Enter a full URL like http://127.0.0.1:11434'
     }
   }
-  if (v.default_model.length > 160) e.default_model = 'At most 160 characters'
+  if (!v.default_model.trim()) e.default_model = 'Default model is required (e.g. qwen2.5:7b)'
+  else if (v.default_model.length > 160) e.default_model = 'At most 160 characters'
   const ctx = parseContextLength(v.context_length)
   if (ctx.error) e.context_length = ctx.error
   const inp = parsePrice(v.input_price)
@@ -158,8 +159,8 @@ export function toCreateProviderBody(v: ProviderFormValues, credentialId: string
     kind: v.kind,
     base_url: url || null,
     credential_id: credentialId,
-    default_model: model || null,
-    context_length: parseContextLength(v.context_length).value,
+    default_model: model,
+    context_length: parseContextLength(v.context_length).value ?? undefined,
     is_local: deriveIsLocal(v.kind, url),
     enabled: true,
     input_price_per_mtok_micros: parsePrice(v.input_price).value,

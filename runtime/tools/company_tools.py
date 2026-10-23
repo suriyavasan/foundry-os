@@ -1,11 +1,21 @@
 """Company toolset (COMPANY FORK, not in upstream Hermes).
 
-Ten tools that let an AI employee act inside Company OS by calling the control plane's
-agent API (``docs/specs/m2-work-engine.md`` section 3) with its scoped run token:
+Tools that let an AI employee act inside Company OS by calling the control plane's agent API
+(``docs/specs/m2-work-engine.md`` section 3, ``docs/specs/m4-skills-and-hr.md`` section 3) with its
+scoped run token.
 
+Work (every employee):
     company_get_context, company_create_task, company_update_task, company_complete_task,
     company_review_task, company_submit_artifact, company_report_progress,
     company_record_decision, company_request_approval, company_decide_approval
+Colleagues and hiring (M4):
+    company_find_colleagues, company_request_hire
+    HR-only on the server (a non-HR token gets 403, whatever the model tries):
+    company_search_skills, company_install_skill, company_author_skill, company_assign_skills,
+    company_list_role_templates, company_create_role_template, company_hire_agent
+
+Which of these a given employee sees is decided by the control plane (spec ``company_tools``
+subset, derived from the role template); the server remains the authority on every call.
 
 The connection (URL + token) is installed by the launcher via
 ``company_agent.context.configure``; the tools are hidden (``check_fn``) until then. Every
@@ -35,6 +45,7 @@ MAX_TOOL_RESULT_CHARS = 30_000
 ARTIFACT_KINDS = ["document", "code", "design", "report", "data", "link", "other"]
 TASK_KINDS = ["work", "review", "planning", "hiring", "routine"]
 PRIORITIES = ["low", "normal", "high", "urgent"]
+SKILL_SOURCES = ["all", "library", "hermes", "github"]
 APPROVAL_KINDS = [
     "external_purchase", "budget_increase", "external_communication",
     "production_deploy", "sensitive_action", "hire", "other",
@@ -104,6 +115,16 @@ def _json_of(result: str) -> Any:
         return json.loads(result)
     except ValueError:
         return None
+
+
+def _is_error(parsed: Any) -> bool:
+    """True for a tool-level error body (``{"error": "<code>", "message": ...}``).
+
+    NOT ``"error" in parsed``: successful API bodies carry their own ``error`` field (a Task has
+    ``error: null``, or the last failed attempt's ``{code, message, run_id}`` object). Found by the
+    first live run against the real backend, where every successful complete_task looked like a
+    failure and the agent never stopped."""
+    return isinstance(parsed, dict) and isinstance(parsed.get("error"), str)
 
 
 def _clean(d: dict[str, Any]) -> dict[str, Any]:
@@ -195,7 +216,7 @@ def company_update_task(args: dict[str, Any], **_: Any) -> str:
         return _err("invalid_arguments", "action must be one of: block, unblock, reassign")
     result = _call("PATCH", f"/tasks/{task_id}", json=body)
     parsed = _json_of(result)
-    if action == "block" and isinstance(parsed, dict) and "error" not in parsed and task_id == ctx.config().task_id:
+    if action == "block" and isinstance(parsed, dict) and not _is_error(parsed) and task_id == ctx.config().task_id:
         ctx.mark_task_blocked(task_id)
     return result
 
@@ -227,7 +248,7 @@ def company_complete_task(args: dict[str, Any], **_: Any) -> str:
             "company_complete_task again and say why in result_summary.")
     result = _call("POST", f"/tasks/{task_id}/complete", json=body)
     parsed = _json_of(result)
-    if isinstance(parsed, dict) and "error" not in parsed:
+    if isinstance(parsed, dict) and not _is_error(parsed):
         ctx.mark_task_completed(task_id)
     return result
 
@@ -293,7 +314,7 @@ def company_submit_artifact(args: dict[str, Any], **_: Any) -> str:
     else:
         result = _call("POST", "/artifacts", json={**fields, "content": str(content)})
     parsed = _json_of(result)
-    if isinstance(parsed, dict) and parsed.get("id") and "error" not in parsed:
+    if isinstance(parsed, dict) and parsed.get("id") and not _is_error(parsed):
         ctx.note_artifact_submitted(str(parsed["id"]))
         cb = ctx.config().on_artifact
         if cb is not None:
@@ -357,6 +378,155 @@ def company_decide_approval(args: dict[str, Any], **_: Any) -> str:
         return _err("invalid_arguments", "decision must be 'approve', 'reject' or 'request_changes'")
     return _call("POST", f"/approvals/{str(args['approval_id']).strip()}/decide",
                  json=_clean({"decision": decision, "note": args.get("note")}))
+
+
+# ------------------------------------------------------------------ M4: colleagues + hiring
+
+
+def _trim(result: str, keep: tuple[str, ...], list_key: str = "items", clip: dict[str, int] | None = None) -> str:
+    """Shrink a list response to the fields a small model needs (long fields blow its context)."""
+    parsed = _json_of(result)
+    if not isinstance(parsed, dict) or _is_error(parsed) or not isinstance(parsed.get(list_key), list):
+        return result
+    rows = []
+    for row in parsed[list_key]:
+        if not isinstance(row, dict):
+            continue
+        item = {k: row[k] for k in keep if k in row}
+        for k, limit in (clip or {}).items():
+            if isinstance(item.get(k), str) and len(item[k]) > limit:
+                item[k] = item[k][:limit] + "..."
+        rows.append(item)
+    out = {list_key: rows}
+    if parsed.get("next_cursor"):
+        out["next_cursor"] = parsed["next_cursor"]
+    return _out(out)
+
+
+def company_find_colleagues(args: dict[str, Any], **_: Any) -> str:
+    tags = _str_list(args.get("skill_tags")) or []
+    params = _clean({
+        "skill_tags": ",".join(t.lower() for t in tags) or None,
+        "family": args.get("family"),
+        "status": args.get("status"),
+    })
+    return _call("GET", "/agents", params=params)
+
+
+def company_request_hire(args: dict[str, Any], **_: Any) -> str:
+    skills = _str_list(args.get("required_skills")) or []
+    if not skills:
+        return _err("invalid_arguments", "required_skills must list at least one skill or capability tag.")
+    if (bad := _need(args, "reason")):
+        return bad
+    task_id = _task_id(args)
+    if not task_id:
+        return _err("invalid_arguments", "task_id is required")
+    return _call("POST", "/hiring-requests", json=_clean({
+        "required_skills": skills,
+        "role_hint": args.get("role_hint"),
+        "reason": str(args["reason"]).strip(),
+        "task_id": task_id,
+    }))
+
+
+def company_search_skills(args: dict[str, Any], **_: Any) -> str:
+    source = str(args.get("source") or "").strip() or None
+    if source is not None and source not in SKILL_SOURCES:
+        return _err("invalid_arguments", f"source must be one of: {', '.join(SKILL_SOURCES)}")
+    limit = args.get("limit")
+    try:
+        limit = max(1, min(int(limit), 50)) if limit is not None else 20
+    except (TypeError, ValueError):
+        return _err("invalid_arguments", "limit must be a number")
+    result = _call("GET", "/skills/catalog", params=_clean({"q": args.get("query"), "source": source, "limit": limit}))
+    return _trim(result, ("slug", "name", "description", "tags", "license", "source", "source_ref",
+                          "item_type", "installed", "status"), clip={"description": 240})
+
+
+def company_install_skill(args: dict[str, Any], **_: Any) -> str:
+    if (bad := _need(args, "source_ref")):
+        return bad
+    return _call("POST", "/skills/install", json=_clean({
+        "source_ref": str(args["source_ref"]).strip(), "slug": args.get("slug")}))
+
+
+def company_author_skill(args: dict[str, Any], **_: Any) -> str:
+    if (bad := _need(args, "slug", "name", "description", "body_markdown")):
+        return bad
+    files = args.get("files")
+    if isinstance(files, str):
+        files = _json_of(files)
+    body = _clean({
+        "slug": str(args["slug"]).strip(),
+        "name": str(args["name"]).strip(),
+        "description": str(args["description"]).strip(),
+        "tags": _str_list(args.get("tags")) or [],
+        "body_markdown": str(args["body_markdown"]),
+        "files": files if isinstance(files, list) else None,
+    })
+    return _call("POST", "/skills/author", json=body)
+
+
+def company_assign_skills(args: dict[str, Any], **_: Any) -> str:
+    if (bad := _need(args, "agent_id")):
+        return bad
+    slugs = _str_list(args.get("skill_slugs")) or []
+    if not slugs:
+        return _err("invalid_arguments", "skill_slugs must list at least one skill slug.")
+    return _call("POST", f"/agents/{str(args['agent_id']).strip()}/skills", json={"slugs": slugs})
+
+
+def company_list_role_templates(args: dict[str, Any], **_: Any) -> str:
+    result = _call("GET", "/role-templates")
+    return _trim(result, ("slug", "family", "title", "description", "default_kind", "default_department",
+                          "default_toolsets", "default_skill_slugs", "required_skill_tags", "builtin"),
+                 clip={"description": 240})
+
+
+def company_create_role_template(args: dict[str, Any], **_: Any) -> str:
+    if (bad := _need(args, "slug", "title")):
+        return bad
+    body = _clean({
+        "slug": str(args["slug"]).strip(),
+        "title": str(args["title"]).strip(),
+        "family": args.get("family"),
+        "description": args.get("description"),
+        "default_kind": args.get("default_kind"),
+        "default_department": args.get("default_department"),
+        "instructions": args.get("instructions"),
+        "default_toolsets": _str_list(args.get("default_toolsets")),
+        "default_skill_slugs": _str_list(args.get("default_skill_slugs")),
+        "required_skill_tags": _str_list(args.get("required_skill_tags")),
+    })
+    return _call("POST", "/role-templates", json=body)
+
+
+def company_hire_agent(args: dict[str, Any], **_: Any) -> str:
+    if (bad := _need(args, "role_template", "name", "manager_agent_id")):
+        return bad
+    task_id = _task_id(args)
+    if not task_id:
+        return _err("invalid_arguments", "task_id (the hiring task) is required")
+    try:
+        budget = (_usd_to_micros(args["monthly_budget_usd"], "monthly_budget_usd")
+                  if args.get("monthly_budget_usd") is not None else None)
+    except ValueError as exc:
+        return _err("invalid_arguments", str(exc))
+    body = _clean({
+        "role_template": str(args["role_template"]).strip(),
+        "name": str(args["name"]).strip(),
+        "role_title": args.get("role_title"),
+        "manager_agent_id": str(args["manager_agent_id"]).strip(),
+        "department": args.get("department"),
+        "skill_slugs": _str_list(args.get("skill_slugs")) or [],
+        "model_provider": args.get("model_provider"),
+        "model_name": args.get("model_name"),
+        "monthly_budget_micros": budget,
+        "reason": str(args.get("reason") or "").strip() or f"Hire requested by task {task_id}",
+        "task_id": task_id,
+    })
+    return _call("POST", "/hires", json=body)
 
 
 # --------------------------------------------------------------------------- schemas
@@ -468,6 +638,88 @@ _TOOLS: dict[str, tuple[dict[str, Any], Callable[..., str], str]] = {
                  "note": _str("Reason for the decision")},
                 ["approval_id", "decision"]),
         company_decide_approval, "⚖️"),
+    "company_find_colleagues": (
+        _schema("company_find_colleagues",
+                "Find colleagues by skill tags / role family, with their open-task load. Use before creating or "
+                "delegating tasks, or before asking for a hire.",
+                {"skill_tags": {"type": "array", "items": _S, "description": "Skill tags, all must match"},
+                 "family": _str("Role family, e.g. engineering, design, research"),
+                 "status": _str("Agent status (default: active)")},
+                []),
+        company_find_colleagues, "👥"),
+    "company_request_hire": (
+        _schema("company_request_hire",
+                "Ask HR to fill a capability gap: creates a hiring task for the HR agent. Check "
+                "company_find_colleagues first.",
+                {"required_skills": {"type": "array", "items": _S, "description": "Skills/tags the new hire needs"},
+                 "reason": _str("Why the company needs this hire"),
+                 "role_hint": _str("Suggested role, e.g. 'frontend engineer'"),
+                 "task_id": _str("The task that needs the hire (default: your task)")},
+                ["required_skills", "reason"]),
+        company_request_hire, "🙋"),
+    "company_search_skills": (
+        _schema("company_search_skills",
+                "HR: search the skill catalog (company library, Hermes skills, GitHub) for a capability.",
+                {"query": _str("Search words, or owner/repo for source=github"),
+                 "source": {"type": "string", "enum": SKILL_SOURCES},
+                 "limit": {"type": "number", "description": "Max results (default 20)"}},
+                []),
+        company_search_skills, "🔎"),
+    "company_install_skill": (
+        _schema("company_install_skill",
+                "HR: install a skill into the company library. source_ref is 'hermes:<slug>' or "
+                "'github:owner/repo[@ref]:path' (from company_search_skills). Quarantined skills are unusable.",
+                {"source_ref": _str("Skill source reference"),
+                 "slug": _str("Library slug override (optional)")},
+                ["source_ref"]),
+        company_install_skill, "📥"),
+    "company_author_skill": (
+        _schema("company_author_skill",
+                "HR: write a new company skill (concise, procedural SKILL.md body) when nothing suitable exists.",
+                {"slug": _str("kebab-case id"), "name": _str("Skill name"),
+                 "description": _str("One sentence: when to use this skill"),
+                 "tags": {"type": "array", "items": _S}, "body_markdown": _str("SKILL.md body (markdown)"),
+                 "files": {"type": "array", "items": {"type": "object"},
+                           "description": "Extra files: [{path, content}]"}},
+                ["slug", "name", "description", "body_markdown"]),
+        company_author_skill, "✍️"),
+    "company_assign_skills": (
+        _schema("company_assign_skills",
+                "HR: give installed skills to an employee (never yourself).",
+                {"agent_id": _str("Employee agent id"),
+                 "skill_slugs": {"type": "array", "items": _S, "description": "Library skill slugs"}},
+                ["agent_id", "skill_slugs"]),
+        company_assign_skills, "🎓"),
+    "company_list_role_templates": (
+        _schema("company_list_role_templates",
+                "HR/founder: list role templates (title, family, default tools and skills).", {}, []),
+        company_list_role_templates, "📋"),
+    "company_create_role_template": (
+        _schema("company_create_role_template",
+                "HR/founder: define a new role template when no existing one fits. Keep toolsets minimal.",
+                {"slug": _str("kebab-case id"), "title": _str("Role title"), "family": _str("Role family"),
+                 "description": _str("What the role does"),
+                 "instructions": _str("Role playbook for the employee"),
+                 "default_toolsets": {"type": "array", "items": _S,
+                                      "description": "e.g. company, file, web, skills, todo"},
+                 "default_skill_slugs": {"type": "array", "items": _S},
+                 "required_skill_tags": {"type": "array", "items": _S}},
+                ["slug", "title"]),
+        company_create_role_template, "🧩"),
+    "company_hire_agent": (
+        _schema("company_hire_agent",
+                "HR: hire an employee from a role template. Activated automatically only if company limits allow; "
+                "otherwise an approval is created. Complete the hiring task afterwards.",
+                {"role_template": _str("Role template slug"), "name": _str("Distinct first name"),
+                 "manager_agent_id": _str("Agent id of the new hire's manager"),
+                 "role_title": _str("Precise job title (optional)"),
+                 "department": _str("Department name (optional)"),
+                 "skill_slugs": {"type": "array", "items": _S, "description": "Extra skills beyond the template"},
+                 "monthly_budget_usd": {"type": "number", "description": "Monthly budget cap in US dollars"},
+                 "reason": _str("Why this hire"),
+                 "task_id": _str("The hiring task id (default: your task)")},
+                ["role_template", "name", "manager_agent_id"]),
+        company_hire_agent, "🤝"),
 }
 
 def _availability(tool_name: str) -> Callable[[], bool]:

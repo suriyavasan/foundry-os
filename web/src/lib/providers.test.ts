@@ -18,8 +18,13 @@ const SECRET = 'sk-or-v1-abcdef0123456789'
 const cloud = () => emptyProviderForm({ name: 'OpenRouter', kind: 'openrouter', default_model: 'qwen/qwen3', input_price: '0.15', output_price: '0.6', secret: SECRET })
 
 describe('provider form validation', () => {
-  it('accepts a local Ollama with just a name and URL', () => {
-    expect(validateProviderForm(emptyProviderForm({ name: 'Local', kind: 'ollama', base_url: 'http://127.0.0.1:11434' }))).toEqual({})
+  it('accepts a local Ollama with a name, URL and default model', () => {
+    expect(
+      validateProviderForm(emptyProviderForm({ name: 'Local', kind: 'ollama', base_url: 'http://127.0.0.1:11434', default_model: 'qwen2.5:7b' })),
+    ).toEqual({})
+  })
+  it('requires a default model (the server rejects providers without one)', () => {
+    expect(validateProviderForm(emptyProviderForm({ name: 'Local', kind: 'ollama', base_url: 'http://127.0.0.1:11434' })).default_model).toBeTruthy()
   })
   it('requires a name, and a base URL for ollama and openai-compatible', () => {
     expect(validateProviderForm(emptyProviderForm({ kind: 'ollama' }))).toMatchObject({ name: expect.any(String), base_url: expect.any(String) })

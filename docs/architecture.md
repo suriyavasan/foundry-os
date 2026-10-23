@@ -233,10 +233,13 @@ run stock Hermes.
   agent service identity). Company-scoped routes live under `/api/companies/{company_id}/…`;
   a dependency resolves membership and yields a `CompanyContext`. Services take the context
   and filter every query by `company_id`. Non-members get **404** (no existence leaks).
-- **Auth (M1):** `COMPANY_OS_AUTH_MODE=local` — a single local owner account is created at
-  startup and every request is that owner. Only acceptable bound to localhost. Real
-  sessions (password/OIDC, secure cookies, CSRF) arrive in M8; the principal abstraction
-  means services do not change.
+- **Auth (current, M3b-sec):** `COMPANY_OS_AUTH_MODE=local` — a single local owner. Owner
+  requests must present `data/owner.token` (0600) as the `cos_owner` cookie (set via the
+  one-time login link `GET /api/auth/local?token=…`, printed to the terminal only) or as a
+  Bearer token. Run tokens resolve to that agent. Anything else → 401. Agent processes never
+  receive the owner token and the file jail blocks reading it. Full accounts (username +
+  password, sessions, CSRF, invitations) arrive in M7; the principal abstraction means
+  services do not change.
 - **Secrets:** never returned by the API, never logged, never written into agent
   instructions or runtime config visible to agents. Stored encrypted (Fernet key from
   `COMPANY_OS_SECRET_KEY`) behind `CredentialReference` (M4).

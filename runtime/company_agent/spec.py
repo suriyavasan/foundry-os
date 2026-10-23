@@ -34,6 +34,10 @@ COMPANY_TOOL_NAMES = (
     "company_get_context", "company_create_task", "company_update_task", "company_complete_task",
     "company_review_task", "company_submit_artifact", "company_report_progress", "company_record_decision",
     "company_request_approval", "company_decide_approval",
+    # M4: colleagues + hiring (server-enforced roles; HR tools are HR-only on the API side).
+    "company_find_colleagues", "company_request_hire",
+    "company_search_skills", "company_install_skill", "company_author_skill", "company_assign_skills",
+    "company_list_role_templates", "company_create_role_template", "company_hire_agent",
 )
 
 MIN_CONTEXT_LENGTH = 8192
@@ -78,7 +82,7 @@ class RunSpec:
     sandbox_backend: str = "none"
     docker_image: str = ""
     docker_network: bool = False
-    # Optional subset of the ten company tools (None = all). Small models do better with fewer tools.
+    # Optional subset of the company tools (None = all). Small models do better with fewer tools.
     company_tools: Optional[list[str]] = None
 
     @property

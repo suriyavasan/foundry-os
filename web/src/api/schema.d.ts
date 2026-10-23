@@ -38,6 +38,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/local": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Local Login
+         * @description Exchange the owner token (from the terminal login link) for an HttpOnly, SameSite=Strict
+         *     session cookie, then redirect to ``/``. A wrong token is 401 and sets nothing.
+         */
+        get: operations["local_login_api_auth_local_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/companies": {
         parameters: {
             query?: never;
@@ -438,6 +459,128 @@ export interface paths {
         head?: never;
         /** Update Policy */
         patch: operations["update_policy_api_companies__company_id__policy_patch"];
+        trace?: never;
+    };
+    "/api/companies/{company_id}/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Credentials */
+        get: operations["list_credentials_api_companies__company_id__credentials_get"];
+        put?: never;
+        /** Create Credential */
+        post: operations["create_credential_api_companies__company_id__credentials_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/credentials/{credential_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Credential */
+        get: operations["get_credential_api_companies__company_id__credentials__credential_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Revoke Credential
+         * @description Revoke (the stored ciphertext is wiped). Refused while an enabled provider uses it.
+         */
+        delete: operations["revoke_credential_api_companies__company_id__credentials__credential_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/model-providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Providers */
+        get: operations["list_providers_api_companies__company_id__model_providers_get"];
+        put?: never;
+        /** Create Provider */
+        post: operations["create_provider_api_companies__company_id__model_providers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/model-providers/detect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Detect Get
+         * @description Probe local Ollama (read-only: nothing is registered).
+         */
+        get: operations["detect_get_api_companies__company_id__model_providers_detect_get"];
+        put?: never;
+        /**
+         * Detect Post
+         * @description Probe local Ollama; with ``register: true`` and a tool-capable model, register it (and make
+         *     it the company default) in one call. Idempotent per base URL.
+         */
+        post: operations["detect_post_api_companies__company_id__model_providers_detect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/model-providers/{provider_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Provider */
+        get: operations["get_provider_api_companies__company_id__model_providers__provider_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Provider */
+        delete: operations["delete_provider_api_companies__company_id__model_providers__provider_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Provider */
+        patch: operations["update_provider_api_companies__company_id__model_providers__provider_id__patch"];
+        trace?: never;
+    };
+    "/api/companies/{company_id}/model-providers/{provider_id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Provider
+         * @description Connectivity test. For Ollama it loads the model and reports the *served* context window,
+         *     warning (with the fix) when it is smaller than the configured one. Result in ``last_test``.
+         */
+        post: operations["test_provider_api_companies__company_id__model_providers__provider_id__test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/companies/{company_id}/goals": {
@@ -2060,6 +2203,49 @@ export interface components {
             /** Unknown Micros */
             unknown_micros: number;
         };
+        /**
+         * Credential
+         * @description Metadata only. The value is never returned by any endpoint.
+         */
+        Credential: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string;
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "api_key" | "token" | "other";
+            /** Created By Type */
+            created_by_type: string;
+            /** Created By Id */
+            created_by_id: string | null;
+            /** Revoked At */
+            revoked_at: string | null;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /** CredentialCreate */
+        CredentialCreate: {
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @default api_key
+             * @enum {string}
+             */
+            kind?: "api_key" | "token" | "other";
+            /**
+             * Value
+             * Format: password
+             */
+            value: string;
+        };
         /** CtxAgent */
         CtxAgent: {
             /** Id */
@@ -2304,6 +2490,76 @@ export interface components {
             /** Depends On Task Id */
             depends_on_task_id: string;
         };
+        /** DetectRequest */
+        DetectRequest: {
+            /** Base Url */
+            base_url?: string | null;
+            /**
+             * Register
+             * @default false
+             */
+            register?: boolean;
+            /** Model */
+            model?: string | null;
+            /**
+             * Context Length
+             * @default 32768
+             */
+            context_length?: number;
+            /**
+             * Make Default
+             * @default true
+             */
+            make_default?: boolean;
+        };
+        /** DetectResult */
+        DetectResult: {
+            /**
+             * Kind
+             * @default ollama
+             * @constant
+             */
+            kind?: "ollama";
+            /** Base Url */
+            base_url: string;
+            /** Reachable */
+            reachable: boolean;
+            /**
+             * Models
+             * @default []
+             */
+            models?: components["schemas"]["DetectedModel"][];
+            /** Recommended Model */
+            recommended_model?: string | null;
+            /** Served Context Length */
+            served_context_length?: number | null;
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings?: string[];
+            /** Already Registered Provider Id */
+            already_registered_provider_id?: string | null;
+            registered?: components["schemas"]["ModelProvider"] | null;
+        };
+        /** DetectedModel */
+        DetectedModel: {
+            /** Name */
+            name: string;
+            /** Parameter Size */
+            parameter_size?: string | null;
+            /** Quantization */
+            quantization?: string | null;
+            /** Context Length Native */
+            context_length_native?: number | null;
+            /** Tool Calling */
+            tool_calling?: boolean | null;
+            /**
+             * Recommended
+             * @default false
+             */
+            recommended?: boolean;
+        };
         /**
          * ErrorInfo
          * @description Structured failure details on a task. Always has a code and a message; may carry extra
@@ -2544,6 +2800,104 @@ export interface components {
             /** Display Name */
             display_name: string;
         };
+        /** ModelProvider */
+        ModelProvider: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string;
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "ollama" | "openrouter" | "anthropic" | "openai" | "openai_compatible";
+            /** Base Url */
+            base_url: string | null;
+            /** Credential Id */
+            credential_id: string | null;
+            /** Default Model */
+            default_model: string;
+            /** Context Length */
+            context_length: number;
+            /** Is Local */
+            is_local: boolean;
+            /** Enabled */
+            enabled: boolean;
+            /** Input Price Per Mtok Micros */
+            input_price_per_mtok_micros: number | null;
+            /** Output Price Per Mtok Micros */
+            output_price_per_mtok_micros: number | null;
+            last_test: components["schemas"]["ProviderTest"] | null;
+            /**
+             * Is Company Default
+             * @default false
+             */
+            is_company_default?: boolean;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /** ModelProviderCreate */
+        ModelProviderCreate: {
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "ollama" | "openrouter" | "anthropic" | "openai" | "openai_compatible";
+            /** Base Url */
+            base_url?: string | null;
+            /** Credential Id */
+            credential_id?: string | null;
+            /** Default Model */
+            default_model: string;
+            /**
+             * Context Length
+             * @default 32768
+             */
+            context_length?: number;
+            /** Is Local */
+            is_local?: boolean | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled?: boolean;
+            /** Input Price Per Mtok Micros */
+            input_price_per_mtok_micros?: number | null;
+            /** Output Price Per Mtok Micros */
+            output_price_per_mtok_micros?: number | null;
+            /**
+             * Make Default
+             * @default false
+             */
+            make_default?: boolean;
+        };
+        /** ModelProviderUpdate */
+        ModelProviderUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Base Url */
+            base_url?: string | null;
+            /** Credential Id */
+            credential_id?: string | null;
+            /** Default Model */
+            default_model?: string | null;
+            /** Context Length */
+            context_length?: number | null;
+            /** Is Local */
+            is_local?: boolean | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Input Price Per Mtok Micros */
+            input_price_per_mtok_micros?: number | null;
+            /** Output Price Per Mtok Micros */
+            output_price_per_mtok_micros?: number | null;
+        };
         /** Overview */
         Overview: {
             company: components["schemas"]["Company"];
@@ -2625,6 +2979,13 @@ export interface components {
             /** Next Cursor */
             next_cursor?: string | null;
         };
+        /** Page[Credential] */
+        Page_Credential_: {
+            /** Items */
+            items: components["schemas"]["Credential"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
         /** Page[Decision] */
         Page_Decision_: {
             /** Items */
@@ -2643,6 +3004,13 @@ export interface components {
         Page_Goal_: {
             /** Items */
             items: components["schemas"]["Goal"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** Page[ModelProvider] */
+        Page_ModelProvider_: {
+            /** Items */
+            items: components["schemas"]["ModelProvider"][];
             /** Next Cursor */
             next_cursor?: string | null;
         };
@@ -2732,6 +3100,16 @@ export interface components {
             auto_activate_hires?: boolean;
             /** Hire Default Monthly Budget Micros */
             hire_default_monthly_budget_micros?: number | null;
+            /** Default Model Provider Id */
+            default_model_provider_id?: string | null;
+            /** Default Model Name */
+            default_model_name?: string | null;
+            /**
+             * Sandbox Backend
+             * @default auto
+             * @enum {string}
+             */
+            sandbox_backend?: "auto" | "none" | "docker";
             /** Created At */
             created_at: string;
             /** Updated At */
@@ -2771,6 +3149,12 @@ export interface components {
             auto_activate_hires?: boolean | null;
             /** Hire Default Monthly Budget Micros */
             hire_default_monthly_budget_micros?: number | null;
+            /** Default Model Provider Id */
+            default_model_provider_id?: string | null;
+            /** Default Model Name */
+            default_model_name?: string | null;
+            /** Sandbox Backend */
+            sandbox_backend?: ("auto" | "none" | "docker") | null;
         };
         /** ProgressBody */
         ProgressBody: {
@@ -2850,6 +3234,33 @@ export interface components {
             lead_agent_id?: string | null;
             /** Budget Micros */
             budget_micros?: number | null;
+        };
+        /** ProviderTest */
+        ProviderTest: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "warning" | "error";
+            /** Message */
+            message: string;
+            /** Checked At */
+            checked_at: string;
+            /** Model Available */
+            model_available?: boolean | null;
+            /** Tool Calling */
+            tool_calling?: boolean | null;
+            /** Context Length Configured */
+            context_length_configured?: number | null;
+            /** Context Length Served */
+            context_length_served?: number | null;
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings?: string[];
+            /** Latency Ms */
+            latency_ms?: number | null;
         };
         /** ReviewBody */
         ReviewBody: {
@@ -3725,6 +4136,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Me"];
+                };
+            };
+        };
+    };
+    local_login_api_auth_local_get: {
+        parameters: {
+            query?: {
+                token?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            303: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -4757,6 +5199,404 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Policy"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_credentials_api_companies__company_id__credentials_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_Credential_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_credential_api_companies__company_id__credentials_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CredentialCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Credential"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_credential_api_companies__company_id__credentials__credential_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                credential_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Credential"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_credential_api_companies__company_id__credentials__credential_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                credential_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Credential"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_providers_api_companies__company_id__model_providers_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_ModelProvider_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_provider_api_companies__company_id__model_providers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelProviderCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelProvider"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    detect_get_api_companies__company_id__model_providers_detect_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetectResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    detect_post_api_companies__company_id__model_providers_detect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["DetectRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetectResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_provider_api_companies__company_id__model_providers__provider_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelProvider"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_provider_api_companies__company_id__model_providers__provider_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_provider_api_companies__company_id__model_providers__provider_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelProviderUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelProvider"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_provider_api_companies__company_id__model_providers__provider_id__test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelProvider"];
                 };
             };
             /** @description Validation Error */

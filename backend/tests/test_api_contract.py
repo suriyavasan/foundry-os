@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from app.main import create_app
 from app.runtimes.registry import RuntimeRegistry
 from tests.conftest import agents_url, new_agent
+from tests.helpers import login
 
 
 def test_health_and_me(client):
@@ -18,9 +19,9 @@ def test_health_and_me(client):
 
 def test_local_owner_is_created_once(app):
     with TestClient(app) as c1:
-        first = c1.get("/api/me").json()["user"]["id"]
+        first = login(c1).get("/api/me").json()["user"]["id"]
     with TestClient(app) as c2:
-        assert c2.get("/api/me").json()["user"]["id"] == first
+        assert login(c2).get("/api/me").json()["user"]["id"] == first
 
 
 def test_validation_error_envelope(client):
@@ -65,7 +66,7 @@ def test_internal_error_does_not_leak(make_settings):
         raise RuntimeError("secret-internal-detail /etc/passwd")
 
     with TestClient(app, raise_server_exceptions=False) as c:
-        r = c.get("/api/boom")
+        r = login(c).get("/api/boom")
     assert r.status_code == 500
     assert r.json() == {
         "error": {"code": "internal_error", "message": "Internal server error", "details": None}

@@ -50,6 +50,7 @@ def build_process_env(spec: RunSpec, source: Optional[Mapping[str, str]] = None)
         "HOME": os.path.join(home, "home"),
         "TMPDIR": os.path.join(home, "tmp"),
         "HERMES_DISABLE_LAZY_INSTALLS": "1",
+        "HERMES_ALLOW_PRIVATE_URLS": "false",  # explicit: an inherited opt-out can never apply
         "HERMES_MIN_CONTEXT_TOKENS": str(minimum_context(spec)),
         "TERMINAL_CWD": spec.workspace_dir,
         "PYTHONUNBUFFERED": "1",
@@ -115,7 +116,8 @@ def build_enforced_config(spec: RunSpec, toolsets: list[str]) -> dict[str, Any]:
         "auxiliary": {"background_review": {"enabled": False}, "title_generation": {"enabled": False}},
         "auth": {"adopt_external_logins": False},
         "checkpoints": {"enabled": False},
-        "security": {"allow_lazy_installs": False},
+        # Never let a run fetch loopback/private/metadata addresses (the control plane, Ollama, LAN).
+        "security": {"allow_lazy_installs": False, "allow_private_urls": False},
         # Small local models do much better with the tools directly in the request than behind
         # Hermes' search/describe/call indirection.
         "tools": {"tool_search": {"enabled": "off"}},

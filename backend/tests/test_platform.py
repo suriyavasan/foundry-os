@@ -68,12 +68,12 @@ def test_env_prefix(monkeypatch):
         Settings(_env_file=None)
 
 
-def test_startup_warns_about_local_auth(app, caplog):
-    with caplog.at_level(logging.WARNING, logger="company_os"), TestClient(app):
+def test_startup_creates_the_owner_token_and_never_logs_it(app, caplog):
+    with caplog.at_level(logging.INFO, logger="company_os"), TestClient(app):
         pass
-    assert any(
-        "localhost" in r.message and "NO authentication" in r.message for r in caplog.records
-    )
+    token = app.state.owner_token.path.read_text().strip()
+    assert len(token) >= 32
+    assert token not in caplog.text  # the login URL goes to the terminal only, never to logs
 
 
 def test_foreign_keys_enforced(app, client, company):
