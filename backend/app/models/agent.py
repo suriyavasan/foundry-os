@@ -10,7 +10,7 @@ from app.core.ids import new_id
 from app.core.time import utcnow
 from app.db.base import Base, TimestampMixin
 from app.db.types import UTCDateTime
-from app.models.enums import AgentKind, AgentStatus
+from app.models.enums import AgentKind, AgentStatus, RoleFamily
 
 
 class Agent(TimestampMixin, Base):
@@ -52,4 +52,10 @@ class Agent(TimestampMixin, Base):
     tool_permissions: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     monthly_budget_micros: Mapped[int | None] = mapped_column(BigInteger)
     daily_budget_micros: Mapped[int | None] = mapped_column(BigInteger)
+    # M4: the role template this employee was created from (built-in or company-custom slug)
+    # and the avatar family the canvas draws (founder -> founder, else generic by default).
+    role_template: Mapped[str | None] = mapped_column(String(64))
+    role_family: Mapped[str] = mapped_column(
+        String(24), default=RoleFamily.GENERIC, server_default=RoleFamily.GENERIC, nullable=False
+    )
     status_changed_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)

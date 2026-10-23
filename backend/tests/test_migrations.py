@@ -140,3 +140,145 @@ def test_every_tenant_owned_table_has_an_indexed_company_id(db_url):
             assert "company_id" in indexed, table
     finally:
         engine.dispose()
+
+
+# ------------------------------------------------------------------ 0003: skills & HR
+
+M4_TABLES = {"skill_blobs", "skills", "agent_skills", "role_templates"}
+
+
+def test_0003_upgrade_downgrade_roundtrip(tmp_path):
+    url = f"sqlite:///{tmp_path / 'm4.db'}"
+    cfg = alembic_config(url)
+    command.upgrade(cfg, "head")
+    assert tables(url) >= M4_TABLES
+    engine = create_engine(url)
+    insp = inspect(engine)
+    assert {"role_template", "role_family"} <= {c["name"] for c in insp.get_columns("agents")}
+    assert {"auto_activate_hires", "hire_default_monthly_budget_micros"} <= {
+        c["name"] for c in insp.get_columns("company_policies")
+    }
+    assert "blocked_reason" in {c["name"] for c in insp.get_columns("tasks")}
+    assert {"subject_type", "subject_id"} <= {c["name"] for c in insp.get_columns("approvals")}
+    skill_uniques = [set(u["column_names"]) for u in insp.get_unique_constraints("skills")]
+    assert {"company_id", "slug"} in skill_uniques
+    assert {"agent_id", "skill_id"} in [
+        set(u["column_names"]) for u in insp.get_unique_constraints("agent_skills")
+    ]
+    engine.dispose()
+    command.downgrade(cfg, "0002")
+    assert not (M4_TABLES & tables(url)) and tables(url) >= M2_TABLES
+    engine = create_engine(url)
+    assert "role_family" not in {c["name"] for c in inspect(engine).get_columns("agents")}
+    engine.dispose()
+    command.upgrade(cfg, "head")
+    assert tables(url) >= M4_TABLES
+
+
+def _legacy_company(conn, name: str, *, with_people_department: bool = False) -> dict[str, str]:
+    now = datetime.now(UTC).replace(tzinfo=None).isoformat(sep=" ")
+    ids = {"company": str(uuid.uuid4()), "founder": str(uuid.uuid4()), "worker": str(uuid.uuid4())}
+    conn.execute(
+        text(
+            "INSERT INTO companies (id, name, slug, constraints, timezone, status, created_at, updated_at) "
+            "VALUES (:id, :n, :s, '[]', 'UTC', 'active', :t, :t)"
+        ),
+        {"id": ids["company"], "n": name, "s": name.lower(), "t": now},
+    )
+    for key, kind, agent_name in (
+        ("founder", "founder", "Atlas"),
+        ("worker", "specialist", "Nova"),
+    ):
+        conn.execute(
+            text(
+                "INSERT INTO agents (id, company_id, name, role_title, kind, status, reports_to_human, "
+                "runtime, runtime_config, tool_permissions, model_provider, model_name, status_changed_at, "
+                "created_at, updated_at) VALUES (:id, :c, :n, 'Role', :k, 'active', 0, 'scripted', '{}', "
+                "'[]', 'ollama', 'qwen2.5:7b', :t, :t, :t)"
+            ),
+            {"id": ids[key], "c": ids["company"], "n": agent_name, "k": kind, "t": now},
+        )
+    if with_people_department:
+        conn.execute(
+            text(
+                "INSERT INTO departments (id, company_id, name, created_at, updated_at) "
+                "VALUES (:id, :c, 'People', :t, :t)"
+            ),
+            {"id": str(uuid.uuid4()), "c": ids["company"], "t": now},
+        )
+    return ids
+
+
+def test_0003_backfills_an_hr_agent_people_department_and_seed_job(tmp_path):
+    url = f"sqlite:///{tmp_path / 'legacy_m4.db'}"
+    cfg = alembic_config(url)
+    command.upgrade(cfg, "0002")
+    engine = create_engine(url)
+    with engine.begin() as conn:
+        plain = _legacy_company(conn, "Plain")
+        has_people = _legacy_company(conn, "HasPeople", with_people_department=True)
+    engine.dispose()
+
+    command.upgrade(cfg, "head")
+
+    engine = create_engine(url)
+    with engine.connect() as conn:
+        for ids in (plain, has_people):
+            rows = conn.execute(
+                text(
+                    "SELECT id, name, kind, status, role_template, role_family, manager_agent_id, "
+                    "department_id, runtime, model_provider, model_name, tool_permissions, instructions "
+                    "FROM agents WHERE company_id = :c ORDER BY name"
+                ),
+                {"c": ids["company"]},
+            ).all()
+            by_name = {r[1]: r for r in rows}
+            assert set(by_name) == {"Atlas", "Harper", "Nova"}
+            # role_family inferred for existing agents
+            assert (by_name["Atlas"][4], by_name["Atlas"][5]) == ("founder-ceo", "founder")
+            assert (by_name["Nova"][4], by_name["Nova"][5]) == (None, "generic")
+            hr = by_name["Harper"]
+            assert (hr[2], hr[3], hr[4], hr[5]) == ("specialist", "active", "hr-partner", "hr")
+            assert hr[6] == ids["founder"]
+            assert (hr[8], hr[9], hr[10]) == ("scripted", "ollama", "qwen2.5:7b")  # copied
+            assert "company" in hr[11] and hr[12]
+            people = conn.execute(
+                text(
+                    "SELECT id, lead_agent_id FROM departments WHERE company_id = :c AND name = 'People'"
+                ),
+                {"c": ids["company"]},
+            ).all()
+            assert len(people) == 1 and people[0][0] == hr[7] and people[0][1] == hr[0]
+            jobs = conn.execute(
+                text("SELECT kind, status, dedupe_key, payload FROM jobs WHERE company_id = :c"),
+                {"c": ids["company"]},
+            ).all()
+            assert [(j[0], j[1], j[2]) for j in jobs] == [
+                ("seed_skill_library", "queued", f"seed_skill_library:{ids['company']}")
+            ]
+            audit = conn.execute(
+                text(
+                    "SELECT action FROM audit_events WHERE company_id = :c AND action = 'agent.created'"
+                ),
+                {"c": ids["company"]},
+            ).all()
+            assert len(audit) == 1
+        policy = conn.execute(
+            text(
+                "SELECT auto_activate_hires, hire_default_monthly_budget_micros FROM company_policies"
+            )
+        ).all()
+        assert all(bool(p[0]) and p[1] is None for p in policy)
+    engine.dispose()
+
+    # a second pass (downgrade + upgrade) does not hire a second HR agent
+    command.downgrade(cfg, "0002")
+    command.upgrade(cfg, "head")
+    engine = create_engine(url)
+    with engine.connect() as conn:
+        n = conn.execute(
+            text("SELECT COUNT(*) FROM agents WHERE company_id = :c AND name = 'Harper'"),
+            {"c": plain["company"]},
+        ).scalar()
+    engine.dispose()
+    assert n == 1

@@ -26,6 +26,8 @@ UPDATABLE = (
     "heartbeat_interval_seconds",
     "default_run_reservation_micros",
     "allowed_model_providers",
+    "auto_activate_hires",
+    "hire_default_monthly_budget_micros",
 )
 _BUDGET_FIELDS = {"daily_budget_micros", "monthly_budget_micros", "default_run_reservation_micros"}
 

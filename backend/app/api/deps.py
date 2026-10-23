@@ -21,6 +21,7 @@ from app.models.agent import Agent
 from app.models.company import CompanyMember
 from app.runtimes.registry import RuntimeRegistry
 from app.services import agent_auth, users
+from app.skills.env import SkillsEnv
 from app.storage.base import ArtifactStorage
 
 
@@ -40,6 +41,10 @@ def get_storage(request: Request) -> ArtifactStorage:
     return request.app.state.storage
 
 
+def get_skills_env(request: Request) -> SkillsEnv:
+    return request.app.state.skills
+
+
 def get_db(request: Request) -> Iterator[Session]:
     session = request.app.state.session_factory()
     try:
@@ -49,6 +54,7 @@ def get_db(request: Request) -> Iterator[Session]:
 
 
 DbSession = Annotated[Session, Depends(get_db)]
+Skills = Annotated[SkillsEnv, Depends(get_skills_env)]
 
 
 def bearer_token(request: Request) -> str | None:

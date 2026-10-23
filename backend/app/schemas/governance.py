@@ -44,6 +44,8 @@ class Approval(ApiModel):
     decided_at: Timestamp | None
     decision_note: str | None
     consumed_at: Timestamp | None
+    subject_type: str | None = None  # e.g. "agent_hire"
+    subject_id: str | None = None
     created_at: Timestamp
     updated_at: Timestamp
 

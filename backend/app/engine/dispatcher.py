@@ -26,7 +26,7 @@ from app.models.enums import (
 )
 from app.models.run import TaskRun
 from app.models.work import Task
-from app.services import jobs, ledger, policy, runs, tasks
+from app.services import hiring, jobs, ledger, policy, runs, tasks
 
 PRIORITY_RANK = case(
     (Task.priority == "urgent", 3),
@@ -61,6 +61,9 @@ def _dispatch_company(
     ctx: EngineContext, company_id: str, now: datetime, report: DispatchReport
 ) -> None:
     with ctx.session_factory() as db:
+        # Skill-gap detection first: unassigned tasks needing skills get an employee (or a
+        # hiring request), then readiness sees the new assignees.
+        hiring.resolve_skill_gaps(db, company_id, now=now)
         tasks.recompute_readiness(db, company_id, now=now)
         db.commit()
 

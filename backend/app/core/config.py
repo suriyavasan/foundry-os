@@ -10,6 +10,7 @@ from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
+REPO_DIR = BACKEND_DIR.parent
 DEFAULT_DATABASE_URL = "sqlite:///../data/company_os.db"
 APP_VERSION = "0.1.0"
 
@@ -44,6 +45,19 @@ class Settings(BaseSettings):
     engine_tick_seconds: float = 2.0  # scheduler tick (dispatch, schedules)
     engine_poll_seconds: float = 0.5  # worker queue poll
 
+    # --- Milestone 4: skills & HR -----------------------------------------------------------
+    # Checkout of our Hermes fork: source of the bundled/optional skills and of the skills guard.
+    runtime_dir: Path | None = None  # default <repo>/runtime
+    # The runtime's own virtualenv python (runs `-m company_agent.skills_scan`). Default
+    # <runtime_dir>/.venv/bin/python. Missing -> non-builtin skill imports are refused
+    # (fail closed).
+    runtime_python: Path | None = None
+    # TEMPORARY (until the M3b credential store): optional token for GitHub skill discovery/install.
+    # Never logged or returned by the API. Unset -> unauthenticated, rate-limited requests.
+    github_token: SecretStr | None = None
+    github_api_url: str = "https://api.github.com"
+    skill_scan_timeout_seconds: float = 120.0
+
     # Hermes runtime. These use the plain HERMES_* names (no COMPANY_OS_ prefix).
     hermes_api_url: str | None = Field(
         default=None, validation_alias=AliasChoices("HERMES_API_URL", "COMPANY_OS_HERMES_API_URL")
@@ -64,7 +78,7 @@ class Settings(BaseSettings):
         db_path = sqlite_file_path(self.resolved_database_url)
         if db_path is not None:
             return db_path.parent
-        return BACKEND_DIR.parent / "data"
+        return REPO_DIR / "data"
 
     @property
     def artifacts_dir(self) -> Path:
@@ -73,6 +87,22 @@ class Settings(BaseSettings):
     @property
     def workspaces_dir(self) -> Path:
         return self.resolved_data_dir / "workspaces"
+
+    @property
+    def skills_blobs_dir(self) -> Path:
+        return self.resolved_data_dir / "skills" / "blobs"
+
+    @property
+    def resolved_runtime_dir(self) -> Path:
+        if self.runtime_dir is None:
+            return REPO_DIR / "runtime"
+        return self.runtime_dir if self.runtime_dir.is_absolute() else REPO_DIR / self.runtime_dir
+
+    @property
+    def resolved_runtime_python(self) -> Path:
+        if self.runtime_python is not None:
+            return self.runtime_python
+        return self.resolved_runtime_dir / ".venv" / "bin" / "python"
 
     def prepare_data_dir(self) -> None:
         """Create the parent directory of a file-based SQLite database and the data dir."""

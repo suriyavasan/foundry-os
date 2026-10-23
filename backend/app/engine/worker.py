@@ -12,9 +12,12 @@ from datetime import datetime
 from app.engine.context import EngineContext
 from app.engine.executor import RunExecutor
 from app.services import jobs
+from app.services import skills as skills_service
+from app.services.companies import SEED_JOB_KIND
 
 logger = logging.getLogger("company_os.worker")
 
+JOB_KINDS = ("execute_run", SEED_JOB_KIND)
 LEASE_SECONDS = 60
 POLL_SECONDS = 0.5
 SHUTDOWN_GRACE_SECONDS = 10.0
@@ -32,8 +35,10 @@ class Worker:
         worker_id: str | None = None,
         concurrency: int | None = None,
         monitor_interval: float = 0.5,
+        kinds: tuple[str, ...] = JOB_KINDS,
     ) -> None:
         self.ctx = ctx
+        self.kinds = list(kinds)
         self.worker_id = worker_id or default_worker_id()
         self.concurrency = concurrency or ctx.settings.worker_concurrency
         self.shutdown = threading.Event()
@@ -48,11 +53,13 @@ class Worker:
         try:
             if job.kind == "execute_run":
                 self.executor.execute(str(job.payload["run_id"]), job.id)
+            elif job.kind == SEED_JOB_KIND:
+                self._seed_skill_library(str(job.payload["company_id"]))
             else:
                 raise ValueError(f"unknown job kind {job.kind!r}")
         except Exception as exc:
             logger.error("job %s (%s) failed: %s", job.id, job.kind, type(exc).__name__)
-            unknown = job.kind != "execute_run"
+            unknown = job.kind not in JOB_KINDS
             exhausted = jobs.LeasedJob(
                 job.id,
                 job.kind,
@@ -69,6 +76,11 @@ class Worker:
         with ctx.session_factory() as db:
             jobs.complete(db, job.id, self.worker_id, ctx.clock())
 
+    def _seed_skill_library(self, company_id: str) -> None:
+        assert self.ctx.skills is not None
+        with self.ctx.session_factory() as db:
+            skills_service.seed_company_library(db, company_id, self.ctx.skills)
+
     def run_once(self, now: datetime | None = None) -> bool:
         """Lease and execute one job synchronously. Returns False if the queue was empty."""
         job = jobs.lease_next(
@@ -76,7 +88,7 @@ class Worker:
             self.worker_id,
             now or self.ctx.clock(),
             lease_seconds=LEASE_SECONDS,
-            kinds=["execute_run"],
+            kinds=self.kinds,
         )
         if job is None:
             return False
@@ -105,7 +117,7 @@ class Worker:
                             self.worker_id,
                             self.ctx.clock(),
                             lease_seconds=LEASE_SECONDS,
-                            kinds=["execute_run"],
+                            kinds=self.kinds,
                         )
                     except Exception:
                         logger.exception("could not lease a job")

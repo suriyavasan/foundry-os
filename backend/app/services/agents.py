@@ -22,9 +22,10 @@ from app.core.principal import CompanyContext, Role, require_human_admin
 from app.core.time import utcnow
 from app.models.agent import Agent
 from app.models.department import Department
-from app.models.enums import LIVE_AGENT_STATUSES, AgentKind, AgentStatus
+from app.models.enums import LIVE_AGENT_STATUSES, AgentKind, AgentStatus, RoleFamily
 from app.schemas.agent import AgentCreate, AgentUpdate, LifecycleAction
-from app.services import audit, events, policy, tasks
+from app.services import audit, events, policy, role_templates, tasks
+from app.services import skills as skills_service
 from app.services.pagination import paginate
 
 # Fields that gate what an agent may do or spend. Agents can never change these on
@@ -256,6 +257,17 @@ def create_agent(db: Session, ctx: CompanyContext, data: AgentCreate) -> Agent:
     elif not ctx.is_human_admin:
         raise Forbidden("Only company owners and admins can create agents")
 
+    template = None
+    if data.role_template or data.skill_slugs:
+        if ctx.principal.is_agent:
+            raise Forbidden("Agents cannot apply role templates or skills; ask HR (hiring request)")
+        if data.role_template:
+            template = role_templates.get_template(db, ctx.company_id, data.role_template)
+    defaults = template.spec if template else None
+    kind = data.kind if "kind" in fields or defaults is None else defaults.default_kind.value
+    if defaults is not None and "tool_permissions" not in fields:
+        data = data.model_copy(update={"tool_permissions": list(defaults.default_toolsets)})
+
     validate_runtime_config(data.runtime_config)
     if ctx.principal.is_agent:  # an autonomous hire may not exceed the company's headcount cap
         limits = policy.load_policy(db, ctx.company_id)
@@ -269,10 +281,17 @@ def create_agent(db: Session, ctx: CompanyContext, data: AgentCreate) -> Agent:
                 f"Headcount limit of {limits.max_headcount} reached",
                 details={"limit": "max_headcount", "max": limits.max_headcount},
             )
-    if data.kind == AgentKind.FOUNDER and _live_founder_exists(db, ctx):
+    if kind == AgentKind.FOUNDER and _live_founder_exists(db, ctx):
         raise Conflict("This company already has a founder")
-    if data.department_id:
-        _check_department(db, ctx, data.department_id)
+    department_id = data.department_id
+    if department_id:
+        _check_department(db, ctx, department_id)
+    elif defaults is not None and "department_id" not in fields and defaults.default_department:
+        from app.services import hiring  # local: hiring -> approvals -> agents
+
+        department_id = hiring._find_or_create_department(
+            db, ctx.company_id, defaults.default_department, ctx.principal
+        ).id
     if data.manager_agent_id:
         _check_manager(db, ctx, data.manager_agent_id, None)
 
@@ -280,13 +299,29 @@ def create_agent(db: Session, ctx: CompanyContext, data: AgentCreate) -> Agent:
         company_id=ctx.company_id,
         name=data.name,
         role_title=data.role_title,
-        kind=data.kind,
+        kind=kind,
         status=AgentStatus.PROPOSED,
-        department_id=data.department_id,
+        department_id=department_id,
         manager_agent_id=data.manager_agent_id,
         reports_to_human=data.reports_to_human,
-        responsibilities=data.responsibilities,
-        instructions=data.instructions,
+        responsibilities=(
+            defaults.description or None
+            if defaults is not None and "responsibilities" not in fields
+            else data.responsibilities
+        ),
+        instructions=(
+            defaults.instructions or None
+            if defaults is not None and "instructions" not in fields
+            else data.instructions
+        ),
+        role_template=defaults.slug if defaults is not None else None,
+        role_family=(
+            defaults.family.value
+            if defaults is not None
+            else (
+                RoleFamily.FOUNDER.value if kind == AgentKind.FOUNDER else RoleFamily.GENERIC.value
+            )
+        ),
         model_provider=data.model_provider,
         model_name=data.model_name,
         runtime=data.runtime,
@@ -298,6 +333,15 @@ def create_agent(db: Session, ctx: CompanyContext, data: AgentCreate) -> Agent:
     )
     db.add(agent)
     db.flush()
+    if defaults is not None or data.skill_slugs:
+        wanted = list(
+            dict.fromkeys(
+                [*(defaults.default_skill_slugs if defaults else ()), *(data.skill_slugs or [])]
+            )
+        )
+        skills_service.assign_slugs_internal(
+            db, ctx.company_id, agent, wanted, principal=ctx.principal
+        )
     audit.record(
         db,
         company_id=ctx.company_id,
@@ -306,7 +350,7 @@ def create_agent(db: Session, ctx: CompanyContext, data: AgentCreate) -> Agent:
         target_type="agent",
         target_id=agent.id,
         summary=f"Proposed {agent.kind} agent {agent.name} ({agent.role_title})",
-        data={"kind": agent.kind, "status": agent.status},
+        data={"kind": agent.kind, "status": agent.status, "role_template": agent.role_template},
     )
     events.emit(db, ctx.company_id, "agent.updated", {"agent_id": agent.id, "status": agent.status})
     _commit(db)

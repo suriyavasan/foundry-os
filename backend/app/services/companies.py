@@ -11,9 +11,11 @@ from app.core.errors import Conflict, Forbidden, NotFound
 from app.core.principal import CompanyContext, Principal, require_human_admin
 from app.models.agent import Agent
 from app.models.company import Company, CompanyMember
-from app.models.enums import AgentKind, AgentStatus, CompanyStatus, MemberRole
+from app.models.department import Department
+from app.models.enums import AgentKind, AgentStatus, CompanyStatus, MemberRole, RoleFamily
+from app.roles.loader import get_builtin_template
 from app.schemas.company import CompanyCreate, CompanyUpdate
-from app.services import audit, policy
+from app.services import audit, jobs, policy
 from app.services.pagination import paginate
 
 UPDATABLE = ("name", "mission", "vision", "strategic_goal", "constraints", "timezone", "status")
@@ -34,6 +36,69 @@ def unique_slug(db: Session, name: str) -> str:
     while f"{base}-{n}" in taken:
         n += 1
     return f"{base}-{n}"
+
+
+FOUNDER_TEMPLATE = "founder-ceo"
+HR_TEMPLATE = "hr-partner"
+HR_NAME = "Harper"
+SEED_JOB_KIND = "seed_skill_library"
+
+
+def _create_hr_agent(db: Session, company_id: str, founder: Agent, principal: Principal) -> Agent:
+    """Every company gets an active HR agent in a "People" department, reporting to the founder
+    (same transaction as the company)."""
+    template = get_builtin_template(HR_TEMPLATE)
+    assert template is not None
+    dept = Department(
+        company_id=company_id,
+        name=template.default_department or "People",
+        description="Hiring, skills and people operations.",
+    )
+    db.add(dept)
+    db.flush()
+    hr = Agent(
+        company_id=company_id,
+        name=HR_NAME,
+        role_title=template.title,
+        kind=template.default_kind.value,
+        status=AgentStatus.ACTIVE,
+        department_id=dept.id,
+        manager_agent_id=founder.id,
+        reports_to_human=False,
+        responsibilities=template.description,
+        instructions=template.instructions,
+        model_provider=founder.model_provider,
+        model_name=founder.model_name,
+        runtime=founder.runtime,
+        runtime_config={},
+        tool_permissions=list(template.default_toolsets),
+        role_template=template.slug,
+        role_family=template.family.value,
+    )
+    db.add(hr)
+    db.flush()
+    dept.lead_agent_id = hr.id
+    audit.record(
+        db,
+        company_id=company_id,
+        principal=principal,
+        action="department.created",
+        target_type="department",
+        target_id=dept.id,
+        summary=f"Created department {dept.name}",
+        data={"name": dept.name},
+    )
+    audit.record(
+        db,
+        company_id=company_id,
+        principal=principal,
+        action="agent.created",
+        target_type="agent",
+        target_id=hr.id,
+        summary=f"Added HR partner {hr.name} ({hr.role_title})",
+        data={"kind": hr.kind, "status": hr.status, "role_template": hr.role_template},
+    )
+    return hr
 
 
 def create_company(db: Session, principal: Principal, data: CompanyCreate) -> Company:
@@ -65,6 +130,8 @@ def create_company(db: Session, principal: Principal, data: CompanyCreate) -> Co
         runtime=data.founder.runtime,
         runtime_config={},
         tool_permissions=[],
+        role_template=FOUNDER_TEMPLATE,
+        role_family=RoleFamily.FOUNDER.value,
     )
     db.add(founder)
     db.flush()
@@ -77,6 +144,15 @@ def create_company(db: Session, principal: Principal, data: CompanyCreate) -> Co
         target_id=company.id,
         summary=f"Created company {company.name} with founder {founder.name}",
         data={"founder_agent_id": founder.id, "slug": company.slug},
+    )
+    _create_hr_agent(db, company.id, founder, principal)
+    # The skill library is imported by the worker (scans take a while; creation stays fast).
+    jobs.enqueue(
+        db,
+        kind=SEED_JOB_KIND,
+        payload={"company_id": company.id},
+        company_id=company.id,
+        dedupe_key=f"{SEED_JOB_KIND}:{company.id}",
     )
     try:
         db.commit()

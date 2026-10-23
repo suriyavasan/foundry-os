@@ -95,6 +95,8 @@ class Task(TimestampMixin, Base):
     # reviewer feedback (shown to the assignee on a revision).
     created_by_run_id: Mapped[str | None] = mapped_column(String(36))
     review_note: Mapped[str | None] = mapped_column(Text)
+    # M4: why a backlog task is parked, e.g. "waiting_for_hire" (no employee has its skills yet).
+    blocked_reason: Mapped[str | None] = mapped_column(String(80))
     idempotency_key: Mapped[str | None] = mapped_column(String(200))
 
 

@@ -11,8 +11,10 @@ from dataclasses import replace
 from fastapi import APIRouter, Depends, Request, Response
 from starlette.concurrency import run_in_threadpool
 
-from app.api.deps import DbSession, RunCtx, get_storage
+from app.api.deps import DbSession, RunCtx, Skills, get_storage
+from app.api.routes.skills import agent_skill_out, install_result
 from app.api.uploads import read_artifact_input
+from app.schemas.agent import Agent as AgentOut
 from app.schemas.agent_api import (
     AgentContext,
     AgentTaskComplete,
@@ -21,6 +23,7 @@ from app.schemas.agent_api import (
     ProgressOut,
 )
 from app.schemas.artifact import ArtifactDetail, ArtifactVersion
+from app.schemas.common import Page
 from app.schemas.governance import (
     AgentDecideBody,
     Approval,
@@ -29,6 +32,23 @@ from app.schemas.governance import (
     Decision,
     DecisionCreate,
 )
+from app.schemas.hr import (
+    Colleague,
+    HireCreate,
+    HireResult,
+    HiringRequestCreate,
+    HiringRequestResult,
+    RoleTemplate,
+    RoleTemplateCreate,
+)
+from app.schemas.skills import (
+    AgentSkill,
+    CatalogItem,
+    SkillAuthor,
+    SkillInstall,
+    SkillInstallResult,
+    SkillRefs,
+)
 from app.schemas.work import ReviewBody, Task, TaskCreate
 from app.services import (
     agent_actions,
@@ -36,6 +56,9 @@ from app.services import (
     approvals,
     artifacts,
     decisions,
+    hiring,
+    role_templates,
+    skills,
     tasks,
 )
 from app.storage.base import ArtifactStorage
@@ -144,3 +167,98 @@ def get_approval(approval_id: str, rc: RunCtx, db: DbSession):
 @router.post("/approvals/{approval_id}/decide", response_model=Approval)
 def decide_approval(approval_id: str, body: AgentDecideBody, rc: RunCtx, db: DbSession):
     return approvals.decide(db, rc.ctx, approval_id, body.decision, body.note)
+
+
+# ---------------------------------------------------------------- Milestone 4: skills & HR
+
+
+@router.get("/agents", response_model=Page[Colleague])
+def find_colleagues(
+    rc: RunCtx,
+    db: DbSession,
+    skill_tags: str | None = None,
+    family: str | None = None,
+    status: str | None = None,
+):
+    """Colleague search (any agent). ``skill_tags``: comma-separated, all must match."""
+    tags = [t for t in (skill_tags or "").split(",") if t.strip()]
+    items = hiring.find_colleagues(db, rc.ctx, skill_tags=tags, family=family, status=status)
+    return {"items": items, "next_cursor": None}
+
+
+@router.get("/agents/{agent_id}/skills", response_model=Page[AgentSkill])
+def agent_skills(agent_id: str, rc: RunCtx, db: DbSession):
+    rows = skills.list_agent_skills(db, rc.ctx, agent_id)
+    return {"items": [agent_skill_out(r) for r in rows], "next_cursor": None}
+
+
+@router.get("/skills/catalog", response_model=Page[CatalogItem])
+def skill_catalog(
+    rc: RunCtx,
+    db: DbSession,
+    env: Skills,
+    q: str | None = None,
+    source: str | None = None,
+    limit: int = 50,
+    cursor: str | None = None,
+):
+    items, next_cursor = skills.catalog(
+        db, rc.ctx, env, q=q, source=source, limit=max(1, min(limit, 200)), cursor=cursor
+    )
+    return {"items": items, "next_cursor": next_cursor}
+
+
+@router.post("/skills/install", response_model=SkillInstallResult)
+def install_skill(body: SkillInstall, response: Response, rc: RunCtx, db: DbSession, env: Skills):
+    result = skills.install_skill(db, rc.ctx, env, body.source_ref, slug=body.slug)
+    response.status_code = 201 if result.outcome == "installed" else 200
+    return install_result(result)
+
+
+@router.post("/skills/author", response_model=SkillInstallResult, status_code=201)
+def author_skill(body: SkillAuthor, rc: RunCtx, db: DbSession, env: Skills):
+    return install_result(skills.author_skill(db, rc.ctx, env, body))
+
+
+@router.post("/agents/{agent_id}/skills", response_model=Page[AgentSkill])
+def assign_skills(agent_id: str, body: SkillRefs, rc: RunCtx, db: DbSession):
+    rows = skills.assign_skills(db, rc.ctx, agent_id, skill_ids=body.skill_ids, slugs=body.slugs)
+    return {"items": [agent_skill_out(r) for r in rows], "next_cursor": None}
+
+
+@router.delete("/agents/{agent_id}/skills/{skill_ref}", status_code=204)
+def unassign_skill(agent_id: str, skill_ref: str, rc: RunCtx, db: DbSession):
+    skills.unassign_skill(db, rc.ctx, agent_id, skill_ref)
+    return Response(status_code=204)
+
+
+@router.get("/role-templates", response_model=Page[RoleTemplate])
+def list_role_templates(rc: RunCtx, db: DbSession):
+    views = role_templates.list_for(db, rc.ctx)
+    return {"items": [v.as_dict() for v in views], "next_cursor": None}
+
+
+@router.post("/role-templates", response_model=RoleTemplate, status_code=201)
+def create_role_template(body: RoleTemplateCreate, rc: RunCtx, db: DbSession):
+    return role_templates.create_template(db, rc.ctx, body).as_dict()
+
+
+@router.post("/hires", response_model=HireResult, status_code=201)
+def hire(body: HireCreate, rc: RunCtx, db: DbSession):
+    outcome = hiring.hire(db, rc.ctx, body)
+    return HireResult(
+        agent=AgentOut.model_validate(outcome.agent),
+        auto_activated=outcome.auto_activated,
+        approval_id=outcome.approval.id if outcome.approval else None,
+        approver=outcome.approval.approver if outcome.approval else None,
+        reasons_not_auto_activated=outcome.reasons,
+        skills=outcome.skills,
+        skipped_default_skills=outcome.skipped_default_skills,
+    )
+
+
+@router.post("/hiring-requests", response_model=HiringRequestResult)
+def hiring_request(body: HiringRequestCreate, response: Response, rc: RunCtx, db: DbSession):
+    task, created = hiring.request_hire(db, rc.ctx, body)
+    response.status_code = 201 if created else 200
+    return HiringRequestResult(hiring_task_id=task.id, created=created, status=task.status)

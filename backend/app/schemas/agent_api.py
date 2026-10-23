@@ -90,6 +90,9 @@ class CtxAgent(BaseModel):
     tool_permissions: list[str] = []
     model_provider: str | None = None
     model_name: str | None = None
+    role_family: str | None = None
+    skills: list[str] = []  # slugs of assigned ACTIVE skills
+    skill_tags: list[str] = []
 
 
 class CtxPolicy(BaseModel):
@@ -120,5 +123,5 @@ class AgentContext(BaseModel):
     direct_reports: list[CtxAgent]
     colleagues: list[CtxAgent]
     policy: CtxPolicy
-    # Skill tags per colleague arrive with the skills system (M4); not reported until then.
-    skills_available: bool = False
+    # M4: agents (self, manager, reports, colleagues) carry their skill slugs and tags.
+    skills_available: bool = True

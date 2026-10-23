@@ -134,6 +134,8 @@ def transition(
     now = now or utcnow()
     task.status = target.value
     task.updated_at = now
+    if target != S.BACKLOG:
+        task.blocked_reason = None  # "waiting_for_hire" only makes sense while parked in backlog
     if target == S.IN_PROGRESS and task.started_at is None:
         task.started_at = now
     if target in TERMINAL_TASK_STATUSES:
@@ -632,6 +634,7 @@ def update_task(db: Session, ctx: CompanyContext, task_id: str, data: TaskUpdate
         )
         events.emit(db, ctx.company_id, "task.updated", task_event_payload(task))
         if "assignee_agent_id" in changed:
+            task.blocked_reason = None
             recompute_readiness(db, ctx.company_id, task_ids=[task.id], principal=ctx.principal)
         if "budget_micros" in changed:
             release_budget_blocked(db, ctx.company_id, ctx.principal, task_ids=[task.id])

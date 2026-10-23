@@ -41,6 +41,9 @@ class AgentSession:
     def patch(self, path: str, **kw):
         return self.client.patch(BASE + path, headers=self._headers(kw), **kw)
 
+    def delete(self, path: str, **kw):
+        return self.client.delete(BASE + path, headers=self._headers(kw), **kw)
+
 
 def start_run(
     app,
@@ -241,7 +244,7 @@ def test_context_has_what_an_agent_needs(app, client, world):
     assert (
         ctx["policy"]["max_delegation_depth"] == 3 and ctx["policy"]["tasks_created_this_run"] == 0
     )
-    assert ctx["skills_available"] is False
+    assert ctx["skills_available"] is True
     # secrets / enforcement internals are not part of the context
     assert "budget_lock_version" not in str(ctx) and "runtime_config" not in str(ctx)
 

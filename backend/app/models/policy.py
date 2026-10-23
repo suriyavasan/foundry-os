@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, ForeignKey, Integer, String
+from sqlalchemy import BigInteger, Boolean, ForeignKey, Integer, String, true
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
 
@@ -44,6 +44,11 @@ class CompanyPolicy(Base):
         BigInteger, default=50_000, nullable=False
     )
     allowed_model_providers: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    # M4 hiring policy. A hire is auto-activated only in autonomous mode with this flag set.
+    auto_activate_hires: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true(), nullable=False
+    )
+    hire_default_monthly_budget_micros: Mapped[int | None] = mapped_column(BigInteger)
     budget_lock_version: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)

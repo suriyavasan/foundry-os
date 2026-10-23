@@ -14,6 +14,7 @@ from app.core.time import utcnow
 from app.db.session import build_engine, build_session_factory
 from app.runtimes.base import HealthStatus
 from app.runtimes.registry import RuntimeRegistry, build_default_registry
+from app.skills.env import SkillsEnv, build_skills_env
 from app.storage.base import ArtifactStorage
 from app.storage.local import LocalFileStorage
 
@@ -54,10 +55,13 @@ class EngineContext:
     keys: SecretKeyProvider
     storage: ArtifactStorage
     clock: Callable[[], datetime] = utcnow
+    skills: SkillsEnv | None = None
     health: HealthCache = field(init=False)
 
     def __post_init__(self) -> None:
         self.health = HealthCache(self.registry)
+        if self.skills is None:
+            self.skills = build_skills_env(self.settings)
 
 
 def build_context(
@@ -68,6 +72,7 @@ def build_context(
     keys: SecretKeyProvider | None = None,
     storage: ArtifactStorage | None = None,
     clock: Callable[[], datetime] = utcnow,
+    skills: SkillsEnv | None = None,
 ) -> EngineContext:
     if session_factory is None:
         session_factory = build_session_factory(build_engine(settings.resolved_database_url))
@@ -78,4 +83,5 @@ def build_context(
         keys=keys or SecretKeyProvider(settings),
         storage=storage or LocalFileStorage(settings.artifacts_dir),
         clock=clock,
+        skills=skills,
     )

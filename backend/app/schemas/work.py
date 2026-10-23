@@ -178,6 +178,7 @@ class Task(ApiModel):
     input_refs: list[str]
     output_refs: list[str]
     review_note: str | None
+    blocked_reason: str | None = None  # e.g. "waiting_for_hire"
     created_by_type: ActorTypeLiteral
     created_by_id: str | None
     created_by_run_id: str | None

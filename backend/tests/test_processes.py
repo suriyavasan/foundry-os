@@ -8,6 +8,7 @@ import signal
 import subprocess
 import sys
 import threading
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
@@ -54,6 +55,10 @@ def _spawn_worker(db_url: str) -> subprocess.Popen:
         "COMPANY_OS_ENABLE_TEST_RUNTIMES": "1",
         "COMPANY_OS_ENGINE_TICK_SECONDS": "0.1",
         "COMPANY_OS_ENGINE_POLL_SECONDS": "0.1",
+        # never scan the real skill library from this process test
+        "COMPANY_OS_RUNTIME_DIR": str(
+            Path(db_url.removeprefix("sqlite:///")).parent / "no-runtime"
+        ),
         "PYTHONUNBUFFERED": "1",
     }
     return subprocess.Popen(

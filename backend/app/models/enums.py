@@ -190,3 +190,52 @@ class JobStatus(StrEnum):
     DONE = "done"
     FAILED = "failed"
     DEAD = "dead"
+
+
+# ---------------------------------------------------------------- Milestone 4: skills & HR
+
+
+class SkillSourceKind(StrEnum):
+    HERMES_BUNDLED = "hermes_bundled"
+    HERMES_OPTIONAL = "hermes_optional"
+    GITHUB = "github"
+    COMPANY_AUTHORED = "company_authored"
+    UPLOADED = "uploaded"
+
+
+class SkillTrust(StrEnum):
+    """Mirrors the trust levels of the skills guard (runtime/tools/skills_guard.py)."""
+
+    BUILTIN = "builtin"
+    TRUSTED = "trusted"
+    COMMUNITY = "community"
+
+
+class ScanVerdict(StrEnum):
+    SAFE = "safe"
+    CAUTION = "caution"
+    DANGEROUS = "dangerous"
+    UNSCANNED = "unscanned"
+
+
+class SkillStatus(StrEnum):
+    ACTIVE = "active"
+    QUARANTINED = "quarantined"
+    ARCHIVED = "archived"
+
+
+class RoleFamily(StrEnum):
+    """Avatar type of an employee (the canvas UI draws one per family)."""
+
+    FOUNDER = "founder"
+    HR = "hr"
+    ENGINEERING = "engineering"
+    DESIGN = "design"
+    MARKETING = "marketing"
+    SALES = "sales"
+    CUSTOMER_SUCCESS = "customer_success"
+    RESEARCH = "research"
+    QA = "qa"
+    OPERATIONS = "operations"
+    FINANCE = "finance"
+    GENERIC = "generic"

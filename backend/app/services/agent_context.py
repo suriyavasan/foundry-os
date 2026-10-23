@@ -20,7 +20,7 @@ from app.schemas.agent_api import (
     CtxTask,
     CtxTaskBrief,
 )
-from app.services import policy
+from app.services import policy, skills
 from app.services.agent_auth import AgentRunContext
 
 MAX_COLLEAGUES = 100
@@ -36,8 +36,14 @@ def _task_brief(task: Task) -> CtxTaskBrief:
     )
 
 
-def _agent_brief(agent: Agent, *, full: bool = False) -> CtxAgent:
+def _agent_brief(
+    agent: Agent, caps: dict[str, tuple[set[str], set[str]]], *, full: bool = False
+) -> CtxAgent:
+    slugs, tags = caps.get(agent.id, (set(), set()))
     return CtxAgent(
+        role_family=agent.role_family,
+        skills=sorted(slugs),
+        skill_tags=sorted(tags),
         id=agent.id,
         name=agent.name,
         role_title=agent.role_title,
@@ -106,6 +112,12 @@ def build_context(db: Session, rc: AgentRunContext) -> AgentContext:
             .limit(MAX_COLLEAGUES)
         )
     )
+    caps = skills.capability_map(
+        db,
+        company_id,
+        [agent.id, *(r.id for r in reports), *(c.id for c in colleagues)]
+        + ([manager.id] if manager else []),
+    )
     created = db.scalar(
         select(func.count(Task.id)).where(
             Task.company_id == company_id, Task.created_by_run_id == rc.run.id
@@ -151,10 +163,10 @@ def build_context(db: Session, rc: AgentRunContext) -> AgentContext:
                 for a in artifacts
             ],
         ),
-        agent=_agent_brief(agent, full=True),
-        manager=_agent_brief(manager) if manager else None,
-        direct_reports=[_agent_brief(r) for r in reports],
-        colleagues=[_agent_brief(c) for c in colleagues],
+        agent=_agent_brief(agent, caps, full=True),
+        manager=_agent_brief(manager, caps) if manager else None,
+        direct_reports=[_agent_brief(r, caps) for r in reports],
+        colleagues=[_agent_brief(c, caps) for c in colleagues],
         policy=CtxPolicy(
             autonomy_mode=limits.autonomy_mode,
             human_approval_required_for=list(limits.human_approval_required_for),

@@ -24,6 +24,7 @@ from app.api.routes import (
     projects,
     runtimes,
     schedules,
+    skills,
     system,
     tasks,
 )
@@ -33,16 +34,19 @@ from app.core.keys import SecretKeyProvider
 from app.db.session import build_engine, build_session_factory
 from app.runtimes.registry import RuntimeRegistry, build_default_registry
 from app.services.users import ensure_local_owner
+from app.skills.env import SkillsEnv, build_skills_env
 from app.storage.local import LocalFileStorage
 
 logger = logging.getLogger("company_os")
 
 # One table per migration generation: absent means `alembic upgrade head` has not been run.
-REQUIRED_TABLES = {"users", "company_policies", "task_runs", "company_events"}
+REQUIRED_TABLES = {"users", "company_policies", "task_runs", "company_events", "skills"}
 
 
 def create_app(
-    settings: Settings | None = None, runtime_registry: RuntimeRegistry | None = None
+    settings: Settings | None = None,
+    runtime_registry: RuntimeRegistry | None = None,
+    skills_env: SkillsEnv | None = None,
 ) -> FastAPI:
     settings = settings or get_settings()
     engine = build_engine(settings.resolved_database_url)
@@ -75,6 +79,7 @@ def create_app(
                     registry=app.state.runtimes,
                     keys=app.state.keys,
                     storage=app.state.storage,
+                    skills=app.state.skills,
                 )
             )
             service.start()
@@ -100,6 +105,7 @@ def create_app(
     app.state.runtimes = runtime_registry or build_default_registry(settings)
     app.state.keys = SecretKeyProvider(settings)
     app.state.storage = LocalFileStorage(settings.artifacts_dir)
+    app.state.skills = skills_env or build_skills_env(settings)
 
     app.add_middleware(
         CORSMiddleware,
@@ -113,6 +119,8 @@ def create_app(
         system.router,
         companies.router,
         departments.router,
+        # before agents: /agents/{id}/skills must win over the /agents/{id}/{action} catch-all
+        skills.router,
         agents.router,
         activity.router,
         runtimes.router,

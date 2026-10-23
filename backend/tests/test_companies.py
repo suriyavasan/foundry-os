@@ -19,8 +19,12 @@ def test_create_company_side_effects(client, app, company):
     assert me["memberships"] == [{"company_id": cid, "company_name": "Acme Labs", "role": "owner"}]
 
     agents = client.get(f"/api/companies/{cid}/agents").json()["items"]
-    assert len(agents) == 1
-    founder = agents[0]
+    assert len(agents) == 2
+    founder = next(a for a in agents if a["kind"] == "founder")
+    assert founder["role_family"] == "founder" and founder["role_template"] == "founder-ceo"
+    hr = next(a for a in agents if a["role_family"] == "hr")
+    assert (hr["name"], hr["status"], hr["role_template"]) == ("Harper", "active", "hr-partner")
+    assert hr["manager_agent_id"] == founder["id"] and hr["reports_to_human"] is False
     assert founder["kind"] == "founder"
     assert founder["status"] == "active"
     assert founder["reports_to_human"] is True
@@ -29,10 +33,15 @@ def test_create_company_side_effects(client, app, company):
     assert founder["runtime"] == "unassigned"
 
     events = client.get(f"/api/companies/{cid}/activity").json()["items"]
-    assert [e["action"] for e in events] == ["company.created"]
-    assert events[0]["actor_type"] == "human"
-    assert events[0]["actor_label"] == "Owner"
-    assert "Acme Labs" in events[0]["summary"]
+    assert sorted(e["action"] for e in events) == [
+        "agent.created",
+        "company.created",
+        "department.created",
+    ]
+    created = next(e for e in events if e["action"] == "company.created")
+    assert created["actor_type"] == "human"
+    assert created["actor_label"] == "Owner"
+    assert "Acme Labs" in created["summary"]
 
     with app.state.session_factory() as db:
         members = db.scalars(select(CompanyMember).where(CompanyMember.company_id == cid)).all()
@@ -122,7 +131,7 @@ def test_patch_company_noop_writes_no_audit(client, company):
     cid = company["id"]
     client.patch(f"/api/companies/{cid}", json={"mission": company["mission"]})
     actions = [e["action"] for e in client.get(f"/api/companies/{cid}/activity").json()["items"]]
-    assert actions == ["company.created"]
+    assert "company.updated" not in actions and "company.created" in actions
 
 
 def test_patch_company_null_name_and_unknown_field_rejected(client, company):

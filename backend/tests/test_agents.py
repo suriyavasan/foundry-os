@@ -148,7 +148,9 @@ def test_only_founder_cannot_be_retired_but_can_pause(client, company):
 
 def test_founder_unique_per_company_not_global(client, company):
     other = client.post("/api/companies", json={"name": "Other"}).json()
-    assert len(client.get(agents_url(other["id"])).json()["items"]) == 1
+    # the founder plus the HR partner every company starts with
+    items = client.get(agents_url(other["id"])).json()["items"]
+    assert sorted(a["role_family"] for a in items) == ["founder", "hr"]
 
 
 # ------------------------------------------------------------------ editing rules
@@ -225,8 +227,9 @@ def test_retire_clears_department_lead(client, company):
         f"/api/companies/{cid}/departments", json={"name": "Eng", "lead_agent_id": agent["id"]}
     ).json()
     client.post(f"{url}/retire")
-    got = client.get(f"/api/companies/{cid}/departments").json()["items"][0]
-    assert got["id"] == dept["id"] and got["lead_agent_id"] is None
+    depts = client.get(f"/api/companies/{cid}/departments").json()["items"]
+    got = next(d for d in depts if d["id"] == dept["id"])
+    assert got["lead_agent_id"] is None
     # and retired agents can't be put in charge
     r = client.patch(
         f"/api/companies/{cid}/departments/{dept['id']}", json={"lead_agent_id": agent["id"]}

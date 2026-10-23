@@ -519,3 +519,162 @@ permissions, budgets or runtime, and `policy.max_headcount` caps the number of l
   false, so tasks assigned to it wait ("waiting for runtime"). Nothing here was exercised against a real model.
 - The SSE cursor is the outbox row id. On SQLite writers are serialized so ids commit in order; on Postgres a
   slow transaction could in principle commit a lower id after a higher one was already delivered.
+
+---
+
+# Milestone 4: skills & HR
+
+Spec: `docs/specs/m4-skills-and-hr.md`. Migration `0003_skills_and_roles` (existing companies get an HR
+agent "Harper" in a "People" department and a queued `seed_skill_library` job; existing agents get
+`role_family` = `founder` for founders, else `generic`). Run `uv run alembic upgrade head` before starting
+the API: it refuses to start without the `skills` table.
+
+New error codes: `422 license_not_allowed` (GitHub skill with a missing/unlisted license),
+`503 scanner_unavailable` (the runtime's security scanner is not installed or failed: only built-in skills
+can be imported), `502 upstream_error` (GitHub failed or rate-limited; the token is never echoed).
+
+## Changed resources
+
+- `Agent` gains `role_template: string|null` (slug) and `role_family` (`founder|hr|engineering|design|marketing|
+  sales|customer_success|research|qa|operations|finance|generic`, default `generic`; founders are `founder`).
+  `PATCH /agents/{id}` still rejects both (unknown field): they are set by templates only.
+- `POST /agents` accepts `role_template` (slug) and `skill_slugs`. For every field **not** sent, the template's
+  defaults apply (`kind`, department by name - created if missing, `responsibilities`, `instructions`,
+  `tool_permissions` = the template's toolsets) and the template's default skills (plus `skill_slugs`) that exist
+  and are active in the company library are assigned. Humans only: an agent sending either field gets 403 (agents
+  hire through HR). Unknown template: 404.
+- Company creation now also creates the active HR agent **Harper** (`hr-partner`, reports to the founder,
+  department "People" led by Harper) and queues the `seed_skill_library` job (the worker imports the library).
+- `Policy` gains `auto_activate_hires: bool` (default true) and `hire_default_monthly_budget_micros: int|null`.
+- `Task` gains `blocked_reason: string|null` (`"waiting_for_hire"` while a backlog task waits for a hire).
+- `Approval` gains `subject_type` / `subject_id` (`"agent_hire"` + the proposed agent id for hire approvals; set
+  only by the hiring service, never by clients).
+- Approving a hire approval activates that agent (and consumes the approval); rejecting it rejects the agent;
+  `request_changes` leaves it `proposed`.
+- Agent API `GET /context`: every agent brief (self, manager, reports, colleagues) now has `role_family`,
+  `skills` (slugs of assigned active skills) and `skill_tags`; `skills_available` is `true`.
+- `GET /api/runtimes` and the rest are unchanged.
+
+## Skills (owner API, `/api/companies/{cid}`)
+
+```json
+Skill = { "id", "company_id", "slug", "name", "description", "category": null, "tags": ["..."],
+          "version": null, "author": null, "license": "MIT"|null,
+          "source_kind": "hermes_bundled|hermes_optional|github|company_authored|uploaded",
+          "source_ref": "hermes@db1fa153:skills/creative/claude-design | github:owner/repo@<commit sha>:path | company:<slug> | company_os:roles/skills/<slug>",
+          "blob_sha256", "trust": "builtin|trusted|community",
+          "scan_verdict": "safe|caution|dangerous|unscanned", "status": "active|quarantined|archived",
+          "requires_toolsets": [], "required_env": ["NAMES_ONLY"], "created_by_type", "created_by_id",
+          "created_at", "updated_at" }
+SkillDetail = Skill + { "scan_report": { "verdict", "scanner_version", "summary", "finding_count",
+                        "findings": [ { "category", "pattern", "severity", "file", "line", "description" } ] },
+                        "frontmatter": {}, "files": [ { "path", "size_bytes" } ],
+                        "assigned_agents": [ { "id", "name", "role_title", "status" } ] }
+```
+
+| Method & path | Who | Notes |
+|---|---|---|
+| `GET /skills` | any member | `?status=&source_kind=&tag=&q=&limit=&cursor=` (oldest first) |
+| `GET /skills/catalog` | any member | `?q=&source=all\|library\|hermes\|github&limit=&cursor=` -> `{items: CatalogItem[], next_cursor}`; cursor is an offset. `CatalogItem = {slug, name, description, tags, license, source, source_kind, source_ref, item_type: skill\|repository, installed, skill_id, status, stars}`. `source=github`: `q=owner/repo` lists that repository's skills (pinned to its default-branch commit); other `q` runs a repository search (`topic:agent-skills`) and, with a token, a `filename:SKILL.md` code search |
+| `POST /skills/install` `{source_ref, slug?}` | owner/admin | -> `{skill, outcome: installed\|updated\|unchanged, quarantined, scan}`; 201 when installed, else 200. Accepts `hermes:<slug or path>`, `hermes@<sha>:<path>`, `github:<owner>/<repo>[@<ref>]:<path>`, or a `https://github.com/<o>/<r>/tree/<ref>/<path>` URL. A different source under an existing slug is 409 (pass `slug`) |
+| `POST /skills/seed` | owner/admin | queues the library seeding job -> 202 `{job_id, status: queued\|already_queued}`; `?wait=true` runs it inline and returns `{installed, updated, unchanged, quarantined, missing, agents_equipped}` |
+| `GET /skills/{id}` | any member | `SkillDetail` |
+| `GET /skills/{id}/files/{path}` | any member | `{path, content, truncated}` text preview (<= 200 KB); binary 409, traversal 400/404 |
+| `POST /skills/{id}/archive` | owner/admin | `{note?}`; archived skills are never materialized; seeding does not resurrect them |
+| `POST /skills/{id}/unquarantine` | owner/admin | `{note?}`: explicit human override of the scanner, audited with the overridden verdict |
+| `GET /agents/{id}/skills` | any member | `{items: [{skill, assigned_by_type, assigned_by_id, assigned_at}]}` |
+| `POST /agents/{id}/skills` `{skill_ids?, slugs?}` | owner/admin | only **active** skills (else 409); idempotent; returns the agent's skills |
+| `DELETE /agents/{id}/skills/{skill_id_or_slug}` | owner/admin | 204 |
+| `GET /role-templates`, `POST /role-templates` | members read / owner-admin create | `RoleTemplate = {slug, family, title, description, default_kind, default_department, instructions, default_toolsets, default_skill_slugs, required_skill_tags, builtin, id}`. Built-in templates (code, `backend/app/roles/builtin`) are visible to every company; custom ones live in the company. Slugs of built-ins are reserved (409) |
+
+Policy for imports (mirrors `runtime/tools/skills_guard.py`):
+
+| trust | who | safe | caution | dangerous |
+|---|---|---|---|---|
+| `builtin` | Hermes bundled/optional, Company OS seed skills | active | active | active (verdict recorded) |
+| `trusted` | GitHub `openai/skills`, `anthropics/skills`, `huggingface/skills`, `NVIDIA/skills` (exact repos) | active | active | quarantined |
+| `community` | any other GitHub repo, skills authored by HR | active | quarantined | quarantined |
+
+A quarantined skill is stored (inspect it with `GET /skills/{id}`) but never assigned or materialized. Scanning runs
+`<runtime python> -m company_agent.skills_scan <dir>`; if the runtime venv is missing, non-builtin imports are
+refused (`503 scanner_unavailable`) and built-in ones are stored as `scan_verdict: "unscanned"`.
+GitHub installs resolve the ref to a commit sha, download only that skill directory at the sha (limits are checked
+on the tree listing first: <= 100 files, <= 2 MB, no symlinks/submodules/native binaries) and require an allowed
+license: skill-level `license` frontmatter, else a `LICENSE` file in the skill, else the repository license; allowed
+SPDX ids: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, CC0-1.0, CC-BY-4.0, Unlicense, MPL-2.0.
+A frontmatter license such as "Complete terms in LICENSE.txt" is refused (not an SPDX id). Only public repositories
+are supported; `COMPANY_OS_GITHUB_TOKEN` (temporary, until the M3b credential store) raises rate limits and enables
+code search, and is sent only to `api.github.com`.
+
+Audit actions: `skill.installed|updated|quarantined|unquarantined|archived`, `skill_library.seeded|seed_requested`,
+`agent.skills_changed`, `role_template.created`, `hire.created|requested`, `task.assigned`. Company events:
+`skill.installed|updated|quarantined|archived`, `skill_library.seeded`, `agent.skills_changed`,
+`role_template.created`, `hire.created|requested`.
+
+## Agent API additions (`/api/agent/v1`, run token)
+
+Roles are enforced in the services, so the same checks apply if an agent token calls the owner API.
+
+| Method & path | Who | Notes |
+|---|---|---|
+| `GET /agents` | any agent | colleague search: `?skill_tags=a,b&family=&status=` (default `status=active`) -> `{items: [{id, name, role_title, role_family, role_template, kind, status, department_id, skills, skill_tags, open_tasks}], next_cursor: null}` sorted by load. A skill contributes its tags, slug and category to `skill_tags` |
+| `GET /agents/{id}/skills` | any agent | as the owner endpoint |
+| `GET /skills/catalog` | HR, founder | as the owner endpoint |
+| `POST /skills/install` | HR | as the owner endpoint |
+| `POST /skills/author` `{slug, name, description, tags, body_markdown, files?: [{path, content}]}` | HR | generates the frontmatter (`name` = slug); source `company_authored`, trust `community`: scanned, quarantined on caution/dangerous. Re-authoring a slug updates it and bumps the patch version. 201 |
+| `POST /agents/{id}/skills`, `DELETE /agents/{id}/skills/{ref}` | HR | never to itself (403) |
+| `GET /role-templates`, `POST /role-templates` | HR, founder | agent-authored templates cannot include `terminal`/`code_execution` or the `founder`/`hr` families (403) |
+| `POST /hires` | HR only | below |
+| `POST /hiring-requests` | founder, leads, anyone with reports | below |
+
+`POST /hires` `{role_template, name, role_title?, manager_agent_id, department?, skill_slugs?, model_provider?,
+model_name?, monthly_budget_micros?, reason, task_id}` -> 201
+`{agent, auto_activated, approval_id, approver, reasons_not_auto_activated, skills, skipped_default_skills}`.
+The new agent gets the template's kind, instructions, responsibilities and toolsets (as `tool_permissions`; HR cannot
+pass permissions), the template's default skills that exist in the library plus `skill_slugs` (unknown or
+non-active explicit skills: 404/409), the founder's `runtime` and (unless given) model, the requested or
+`hire_default_monthly_budget_micros` budget, and department by name (created if missing). HR cannot hire into the
+`founder`/`hr` templates (403). Refused with `409 limit_exceeded` (`details.limit = max_headcount`) when live
+(proposed/active/paused/retiring) headcount already equals `max_headcount`. The hire is **activated immediately** iff
+all hold: `autonomy_mode = autonomous`, `auto_activate_hires`, `hire` not in `human_approval_required_for`, and - when
+the company has a monthly budget - the budgets of active/paused/retiring agents plus the requested one fit within it.
+Otherwise the agent stays `proposed` and an Approval (`kind: hire`, approver derived from policy, `scope:
+{action: "activate_agent", agent_id}`, `evidence.not_auto_activated_because` = reason codes
+`autonomy_mode_not_autonomous|auto_activate_hires_disabled|hire_requires_human_approval|headcount_limit|
+budget_does_not_fit`) is created.
+
+`POST /hiring-requests` `{required_skills[], role_hint?, reason, task_id}` -> `{hiring_task_id, created, status}` (201,
+or 200 for the same task + skill set). Creates a `hiring` task assigned to the active HR agent (409 if there is none);
+an agent may have at most 5 open hiring requests (409 `limit_exceeded`).
+
+## Gap detection (dispatcher)
+
+On every dispatch tick (and right after a hire is activated or an agent's skills change), for each **backlog** task
+with `required_skills`, no assignee and all dependencies done (company active): the best active agent whose skill
+capabilities (tags, slugs, categories of its active skills, lowercase) cover all required tags is assigned -
+same department as the project lead first, then fewest open tasks, then oldest agent (`task.assigned` audit). If
+nobody qualifies, a hiring request for HR is created once per (task, skill set) and the task stays `backlog` with
+`blocked_reason: "waiting_for_hire"`. Tasks without `required_skills` are left alone. If the company has no active HR
+agent the check is simply retried on later ticks.
+
+## Processes and settings
+
+- `seed_skill_library` jobs (queued at company creation, by the migration backfill, and by `POST /skills/seed`) are
+  executed by the worker (`companyos-worker` or the embedded worker); seeding is idempotent and copies skills into the
+  content-addressed store `data/skills/blobs/<sha256>/` (shared across companies; hash = sha256 over the sorted
+  `path NUL size NUL content` listing).
+- Settings: `COMPANY_OS_RUNTIME_DIR` (default `<repo>/runtime`), `COMPANY_OS_RUNTIME_PYTHON` (default
+  `<runtime>/.venv/bin/python`), `COMPANY_OS_GITHUB_TOKEN` (temporary), `COMPANY_OS_GITHUB_API_URL`,
+  `COMPANY_OS_SKILL_SCAN_TIMEOUT_SECONDS`.
+- Materialization (used by the M3b runtime adapter, not an HTTP endpoint):
+  `services.skills.materialize_for_agent(db, company_id, agent_id, hermes_home)` makes `<hermes_home>/skills/`
+  contain exactly the agent's assigned **active** skills (blob hash re-verified, atomic per-skill replace, everything
+  else removed).
+
+## Verified and not verified (Milestone 4)
+
+Verified against real systems: the skills guard wrapper and the full library seed (35 skills, real scanner) against
+`runtime/`; GitHub discovery and installs against `anthropics/skills` without a token (trusted repo, caution allowed,
+license read from frontmatter; several skills correctly refused for non-SPDX license strings). Not verified: GitHub
+code search and authenticated rate limits (needs a token), the `uploaded` source (no endpoint yet), an HR agent
+driving the flow on a local model (needs the M3b adapter and the company-toolset additions).

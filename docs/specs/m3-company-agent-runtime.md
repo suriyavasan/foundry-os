@@ -219,3 +219,28 @@ M4 adds hiring/skills tools to the same toolset.
   `company_agent` executes a task through the worker, produces an artifact via the
   company toolset, and the run, events, usage (verified $0, local) and artifact are
   visible through the API. Record exactly what was run.
+
+### M3b-sec. Close the local-mode owner bypass (security, required before real runs)
+
+Problem (found in M2): in `COMPANY_OS_AUTH_MODE=local` every request without a run token
+is treated as the owner. Agent processes run on the same host, so a request that simply
+omits its token would act as the owner and bypass the agent self-modification guard.
+
+Fix:
+- On startup in local mode, ensure `data/owner.token` exists (32 random bytes, urlsafe,
+  file mode 0600, never logged). Owner requests must present it:
+  - browser: HttpOnly, SameSite=Strict cookie `cos_owner`, set by
+    `GET /api/auth/local?token=<token>` (constant-time compare; redirects to `/`); the
+    server logs a one-time login URL at startup (the URL itself is printed to the terminal
+    only, not to log files);
+  - CLI/scripts: `Authorization: Bearer <owner token>`.
+  - No owner credential and no valid run token → 401 `unauthenticated`.
+- Requests from loopback are no longer implicitly trusted. Tests keep overriding
+  `get_principal`.
+- The web app: on 401 from `/api/me`, show a full-page "Open Company OS from the login link
+  printed in your terminal" state (with `companyos up`/backend README instructions); Vite
+  dev proxy forwards cookies.
+- Runtime processes never receive the owner token (minimal env, home outside `data/`
+  secrets; the file jail already blocks reads outside the workspace).
+- Also verify the runtime's web tools cannot fetch `http://127.0.0.1:*` / private ranges
+  (Hermes `HERMES_ALLOW_PRIVATE_URLS` default) — add a launcher-level assertion/test.

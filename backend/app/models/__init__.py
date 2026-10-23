@@ -10,11 +10,13 @@ from app.models.ledger import BudgetReservation, UsageRecord
 from app.models.policy import CompanyPolicy
 from app.models.run import CompanyEvent, Job, RunEvent, TaskRun
 from app.models.schedule import Schedule, ScheduleFire
+from app.models.skill import AgentSkill, RoleTemplate, Skill, SkillBlob
 from app.models.user import User
 from app.models.work import Goal, Project, Task, TaskDependency
 
 __all__ = [
     "Agent",
+    "AgentSkill",
     "Approval",
     "Artifact",
     "ArtifactVersion",
@@ -30,8 +32,11 @@ __all__ = [
     "Job",
     "Project",
     "RunEvent",
+    "RoleTemplate",
     "Schedule",
     "ScheduleFire",
+    "Skill",
+    "SkillBlob",
     "Task",
     "TaskDependency",
     "TaskRun",

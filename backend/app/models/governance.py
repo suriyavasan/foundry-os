@@ -42,6 +42,10 @@ class Approval(TimestampMixin, Base):
     decided_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     decision_note: Mapped[str | None] = mapped_column(Text)
     consumed_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    # M4: set only by services (never by clients): what a decision on this approval acts on,
+    # e.g. ("agent_hire", <proposed agent id>) -> approving activates that agent.
+    subject_type: Mapped[str | None] = mapped_column(String(32))
+    subject_id: Mapped[str | None] = mapped_column(String(36))
 
 
 class Decision(TimestampMixin, Base):

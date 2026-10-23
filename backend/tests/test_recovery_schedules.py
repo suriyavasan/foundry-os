@@ -28,9 +28,9 @@ def _simulate_crashed_worker(app, clock, *, heartbeat_age: int) -> str:
         run.started_at = clock()
         run.heartbeat_at = clock() - timedelta(seconds=heartbeat_age)
         db.execute(
-            update(Job).values(
-                status="leased", leased_by="dead-worker", lease_expires_at=clock(), attempts=1
-            )
+            update(Job)
+            .where(Job.kind == "execute_run")
+            .values(status="leased", leased_by="dead-worker", lease_expires_at=clock(), attempts=1)
         )
         db.commit()
         return run.id
@@ -109,7 +109,9 @@ def test_expired_job_lease_is_requeued_and_picked_up_again(
     agent = new_agent(client, cid)
     task = new_task(client, cid, assignee_agent_id=agent["id"])
     scheduler.tick()
-    leased = jobs.lease_next(engine.session_factory, "crashy", clock(), lease_seconds=60)
+    leased = jobs.lease_next(
+        engine.session_factory, "crashy", clock(), lease_seconds=60, kinds=["execute_run"]
+    )
     assert leased is not None
     assert not worker.run_once()  # leased by someone else
     clock.advance(30)
@@ -118,7 +120,7 @@ def test_expired_job_lease_is_requeued_and_picked_up_again(
     clock.advance(31)
     with app.state.session_factory() as db:
         assert jobs.requeue_expired(db, clock()) == 1
-        row = db.scalars(select(Job)).one()
+        row = db.scalars(select(Job).where(Job.kind == "execute_run")).one()
         assert row.status == "queued" and row.leased_by is None and row.attempts == 1
     assert worker.drain() == 1  # run was still queued, so it now executes
     assert get_task(client, cid, task["id"])["status"] == "done"
@@ -133,16 +135,16 @@ def test_exhausted_job_lease_dies_and_its_queued_run_is_failed(
     scheduler.tick()
     with app.state.session_factory() as db:
         db.execute(
-            update(Job).values(
-                status="leased", attempts=5, max_attempts=5, lease_expires_at=clock()
-            )
+            update(Job)
+            .where(Job.kind == "execute_run")
+            .values(status="leased", attempts=5, max_attempts=5, lease_expires_at=clock())
         )
         db.commit()
     clock.advance(5)
     report = recovery.recover(engine)
     assert report.requeued_jobs == 1 and len(report.dead_job_run_ids) == 1
     with app.state.session_factory() as db:
-        assert db.scalars(select(Job.status)).one() == "dead"
+        assert db.scalars(select(Job.status).where(Job.kind == "execute_run")).one() == "dead"
         run = db.scalars(select(TaskRun)).one()
         assert run.status == "failed" and run.exit_reason == "job_dead"
     assert get_task(client, cid, task["id"])["status"] == "ready"  # retry path

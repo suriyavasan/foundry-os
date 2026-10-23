@@ -18,6 +18,7 @@ from app.models.company import CompanyMember
 from app.models.user import User
 from app.runtimes.registry import RuntimeRegistry
 from app.runtimes.scripted import ScriptedRuntime
+from app.skills.env import SkillsEnv
 from tests.helpers import FakeClock
 
 
@@ -39,6 +40,9 @@ def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "COMPANY_OS_EMBEDDED_WORKER",
         "COMPANY_OS_SECRET_KEY",
         "COMPANY_OS_DATA_DIR",
+        "COMPANY_OS_RUNTIME_DIR",
+        "COMPANY_OS_RUNTIME_PYTHON",
+        "COMPANY_OS_GITHUB_TOKEN",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -59,8 +63,11 @@ def db_url(migrated_template: Path, tmp_path: Path) -> str:
 
 
 @pytest.fixture
-def make_settings(db_url: str) -> Callable[..., Settings]:
+def make_settings(db_url: str, tmp_path: Path) -> Callable[..., Settings]:
     def _make(**overrides) -> Settings:
+        # No runtime checkout by default: no Hermes skills and no scanner, so nothing in the
+        # general suite shells out. Skill tests pass their own runtime_dir / scanner.
+        overrides.setdefault("runtime_dir", tmp_path / "no-runtime")
         return Settings(_env_file=None, database_url=db_url, **overrides)
 
     return _make
@@ -72,8 +79,22 @@ def scripted() -> ScriptedRuntime:
 
 
 @pytest.fixture
-def app(make_settings: Callable[..., Settings], scripted: ScriptedRuntime) -> FastAPI:
-    return create_app(make_settings(), runtime_registry=RuntimeRegistry([scripted]))
+def skills_env_override() -> SkillsEnv | None:
+    """Skill-related test modules override this to inject a fake runtime / scanner / GitHub."""
+    return None
+
+
+@pytest.fixture
+def app(
+    make_settings: Callable[..., Settings],
+    scripted: ScriptedRuntime,
+    skills_env_override: SkillsEnv | None,
+) -> FastAPI:
+    return create_app(
+        make_settings(),
+        runtime_registry=RuntimeRegistry([scripted]),
+        skills_env=skills_env_override,
+    )
 
 
 @pytest.fixture
@@ -166,6 +187,7 @@ def engine(app: FastAPI, make_settings: Callable[..., Settings], clock: FakeCloc
         keys=app.state.keys,
         storage=app.state.storage,
         clock=clock,
+        skills=app.state.skills,
     )
 
 
@@ -180,4 +202,41 @@ def scheduler(engine):
 def worker(engine):
     from app.engine.worker import Worker
 
-    return Worker(engine, worker_id="test-worker", monitor_interval=0.01)
+    # Only run executions: the skill-library seed job (enqueued with every company) has its own tests.
+    return Worker(engine, worker_id="test-worker", monitor_interval=0.01, kinds=("execute_run",))
+
+
+# ------------------------------------------------------------------ skills & HR fixtures
+
+
+@pytest.fixture
+def fake_scanner():
+    from tests.helpers import FakeScanner
+
+    return FakeScanner()
+
+
+@pytest.fixture
+def fake_runtime(tmp_path: Path) -> Path:
+    """A tiny runtime checkout holding a minimal skill for every Hermes skill the built-in role
+    templates reference (half bundled, half optional)."""
+    from app.roles import loader
+    from tests.helpers import write_skill
+
+    root = tmp_path / "fake-runtime"
+    (root / "company_agent").mkdir(parents=True)
+    (root / "company_agent" / "__init__.py").write_text(
+        'UPSTREAM_COMMIT = "db1fa153fe24a051af44ef8ee862b93e27998060"\n'
+    )
+    company = set(loader.company_seed_slugs())
+    for i, slug in enumerate(s for s in loader.seed_skill_slugs() if s not in company):
+        sub = "skills" if i % 2 == 0 else "optional-skills"
+        write_skill(root / sub / "general", slug, tags=[slug, "general"], category="general")
+    return root
+
+
+@pytest.fixture
+def fake_skills_env(make_settings: Callable[..., Settings], fake_runtime: Path, fake_scanner):
+    from app.skills.env import build_skills_env
+
+    return build_skills_env(make_settings(runtime_dir=fake_runtime), scanner=fake_scanner)

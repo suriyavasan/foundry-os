@@ -85,6 +85,30 @@ class ValidationFailed(AppError):
     default_message = "Validation failed"
 
 
+class LicenseRefused(AppError):
+    """A skill's license is missing or not on the allowlist."""
+
+    status_code = 422
+    code = "license_not_allowed"
+    default_message = "The skill's license is not allowed"
+
+
+class ScannerUnavailable(AppError):
+    """Non-builtin skills cannot be imported without the runtime's security scanner."""
+
+    status_code = 503
+    code = "scanner_unavailable"
+    default_message = "The skill security scanner is not available"
+
+
+class UpstreamError(AppError):
+    """An external source (GitHub) failed."""
+
+    status_code = 502
+    code = "upstream_error"
+    default_message = "The upstream source failed"
+
+
 def envelope(code: str, message: str, details: Any = None) -> dict[str, Any]:
     return {"error": {"code": code, "message": message, "details": details}}
 

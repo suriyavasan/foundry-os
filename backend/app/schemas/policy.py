@@ -36,6 +36,8 @@ class Policy(ApiModel):
     heartbeat_interval_seconds: int
     default_run_reservation_micros: int
     allowed_model_providers: list[str]
+    auto_activate_hires: bool = True
+    hire_default_monthly_budget_micros: int | None = None
     created_at: Timestamp
     updated_at: Timestamp
 
@@ -55,6 +57,8 @@ class PolicyUpdate(RequestModel):
     heartbeat_interval_seconds: int | None = Field(default=None, ge=60, le=86_400)
     default_run_reservation_micros: int | None = Field(default=None, ge=0, le=MAX_BUDGET_MICROS)
     allowed_model_providers: list[str] | None = None
+    auto_activate_hires: bool | None = None
+    hire_default_monthly_budget_micros: int | None = Field(default=None, ge=0, le=MAX_BUDGET_MICROS)
 
     @field_validator(
         "autonomy_mode",
@@ -69,6 +73,7 @@ class PolicyUpdate(RequestModel):
         "heartbeat_interval_seconds",
         "default_run_reservation_micros",
         "allowed_model_providers",
+        "auto_activate_hires",
     )
     @classmethod
     def _not_null(cls, v):  # only the two budget caps are nullable (null = no limit)

@@ -10,7 +10,7 @@ Skill format = SKILL.md with YAML frontmatter (`name`, `description`, `version`,
 requires_toolsets, requires_tools}`, `required_environment_variables`, …). Hermes finds
 skills by recursive search for `SKILL.md` under `HERMES_HOME/skills` (any depth).
 
-## 1. Data model (migration `0004_skills_and_roles`, after M3b's migration)
+## 1. Data model (migration `0003_skills_and_roles`; M3b's migration follows as 0004)
 
 ### SkillBlob (global, content-addressed, not tenant data)
 `sha256` (PK), `size_bytes`, `file_count`, `created_at`. Content on disk at

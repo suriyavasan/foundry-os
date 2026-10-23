@@ -126,6 +126,198 @@ export interface paths {
         patch: operations["update_department_api_companies__company_id__departments__department_id__patch"];
         trace?: never;
     };
+    "/api/companies/{company_id}/skills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Skills */
+        get: operations["list_skills_api_companies__company_id__skills_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/skills/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Skill Catalog */
+        get: operations["skill_catalog_api_companies__company_id__skills_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/skills/install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Install Skill */
+        post: operations["install_skill_api_companies__company_id__skills_install_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/skills/seed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Seed Library
+         * @description Queue the library seeding job (202); ``?wait=true`` runs it inline and returns the result.
+         */
+        post: operations["seed_library_api_companies__company_id__skills_seed_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/skills/{skill_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Skill */
+        get: operations["get_skill_api_companies__company_id__skills__skill_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/skills/{skill_id}/files/{path}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Skill File */
+        get: operations["get_skill_file_api_companies__company_id__skills__skill_id__files__path__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/skills/{skill_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive Skill */
+        post: operations["archive_skill_api_companies__company_id__skills__skill_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/skills/{skill_id}/unquarantine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Unquarantine Skill */
+        post: operations["unquarantine_skill_api_companies__company_id__skills__skill_id__unquarantine_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/agents/{agent_id}/skills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Agent Skills */
+        get: operations["list_agent_skills_api_companies__company_id__agents__agent_id__skills_get"];
+        put?: never;
+        /** Assign Agent Skills */
+        post: operations["assign_agent_skills_api_companies__company_id__agents__agent_id__skills_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/agents/{agent_id}/skills/{skill_ref}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Agent Skill */
+        delete: operations["remove_agent_skill_api_companies__company_id__agents__agent_id__skills__skill_ref__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/role-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Role Templates */
+        get: operations["list_role_templates_api_companies__company_id__role_templates_get"];
+        put?: never;
+        /** Create Role Template */
+        post: operations["create_role_template_api_companies__company_id__role_templates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/companies/{company_id}/agents": {
         parameters: {
             query?: never;
@@ -1001,6 +1193,164 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agent/v1/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Find Colleagues
+         * @description Colleague search (any agent). ``skill_tags``: comma-separated, all must match.
+         */
+        get: operations["find_colleagues_api_agent_v1_agents_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/v1/agents/{agent_id}/skills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Agent Skills */
+        get: operations["agent_skills_api_agent_v1_agents__agent_id__skills_get"];
+        put?: never;
+        /** Assign Skills */
+        post: operations["assign_skills_api_agent_v1_agents__agent_id__skills_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/v1/skills/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Skill Catalog */
+        get: operations["skill_catalog_api_agent_v1_skills_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/v1/skills/install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Install Skill */
+        post: operations["install_skill_api_agent_v1_skills_install_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/v1/skills/author": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Author Skill */
+        post: operations["author_skill_api_agent_v1_skills_author_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/v1/agents/{agent_id}/skills/{skill_ref}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Unassign Skill */
+        delete: operations["unassign_skill_api_agent_v1_agents__agent_id__skills__skill_ref__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/v1/role-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Role Templates */
+        get: operations["list_role_templates_api_agent_v1_role_templates_get"];
+        put?: never;
+        /** Create Role Template */
+        post: operations["create_role_template_api_agent_v1_role_templates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/v1/hires": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Hire */
+        post: operations["hire_api_agent_v1_hires_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/v1/hiring-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Hiring Request */
+        post: operations["hiring_request_api_agent_v1_hiring_requests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1051,6 +1401,14 @@ export interface components {
             monthly_budget_micros: number | null;
             /** Daily Budget Micros */
             daily_budget_micros: number | null;
+            /** Role Template */
+            role_template?: string | null;
+            /**
+             * Role Family
+             * @default generic
+             * @enum {string}
+             */
+            role_family?: "founder" | "hr" | "engineering" | "design" | "marketing" | "sales" | "customer_success" | "research" | "qa" | "operations" | "finance" | "generic";
             /** Created At */
             created_at: string;
             /** Updated At */
@@ -1073,7 +1431,7 @@ export interface components {
             policy: components["schemas"]["CtxPolicy"];
             /**
              * Skills Available
-             * @default false
+             * @default true
              */
             skills_available?: boolean;
         };
@@ -1121,6 +1479,10 @@ export interface components {
             monthly_budget_micros?: number | null;
             /** Daily Budget Micros */
             daily_budget_micros?: number | null;
+            /** Role Template */
+            role_template?: string | null;
+            /** Skill Slugs */
+            skill_slugs?: string[] | null;
         };
         /** AgentDecideBody */
         AgentDecideBody: {
@@ -1148,6 +1510,19 @@ export interface components {
             summary: string | null;
             /** Since */
             since: string | null;
+        };
+        /** AgentSkill */
+        AgentSkill: {
+            skill: components["schemas"]["Skill"];
+            /**
+             * Assigned By Type
+             * @enum {string}
+             */
+            assigned_by_type: "human" | "agent" | "system";
+            /** Assigned By Id */
+            assigned_by_id: string | null;
+            /** Assigned At */
+            assigned_at: string;
         };
         /** AgentStatusCounts */
         AgentStatusCounts: {
@@ -1295,6 +1670,10 @@ export interface components {
             decision_note: string | null;
             /** Consumed At */
             consumed_at: string | null;
+            /** Subject Type */
+            subject_type?: string | null;
+            /** Subject Id */
+            subject_id?: string | null;
             /** Created At */
             created_at: string;
             /** Updated At */
@@ -1520,6 +1899,73 @@ export interface components {
             /** Created At */
             created_at: string;
         };
+        /** CatalogItem */
+        CatalogItem: {
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /** Tags */
+            tags: string[];
+            /** License */
+            license: string | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "library" | "hermes" | "github";
+            /** Source Kind */
+            source_kind: string | null;
+            /** Source Ref */
+            source_ref: string;
+            /**
+             * Item Type
+             * @default skill
+             * @enum {string}
+             */
+            item_type?: "skill" | "repository";
+            /** Installed */
+            installed: boolean;
+            /** Skill Id */
+            skill_id?: string | null;
+            /** Status */
+            status?: string | null;
+            /** Stars */
+            stars?: number | null;
+        };
+        /** Colleague */
+        Colleague: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Role Title */
+            role_title: string;
+            /**
+             * Role Family
+             * @enum {string}
+             */
+            role_family: "founder" | "hr" | "engineering" | "design" | "marketing" | "sales" | "customer_success" | "research" | "qa" | "operations" | "finance" | "generic";
+            /** Role Template */
+            role_template: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "founder" | "lead" | "specialist" | "reviewer";
+            /** Status */
+            status: string;
+            /** Department Id */
+            department_id: string | null;
+            /** Skills */
+            skills: string[];
+            /** Skill Tags */
+            skill_tags: string[];
+            /** Open Tasks */
+            open_tasks: number;
+        };
         /** Company */
         Company: {
             /** Id */
@@ -1639,6 +2085,18 @@ export interface components {
             model_provider?: string | null;
             /** Model Name */
             model_name?: string | null;
+            /** Role Family */
+            role_family?: string | null;
+            /**
+             * Skills
+             * @default []
+             */
+            skills?: string[];
+            /**
+             * Skill Tags
+             * @default []
+             */
+            skill_tags?: string[];
         };
         /** CtxArtifactBrief */
         CtxArtifactBrief: {
@@ -1974,6 +2432,67 @@ export interface components {
             /** Auth Mode */
             auth_mode: string;
         };
+        /** HireCreate */
+        HireCreate: {
+            /** Role Template */
+            role_template: string;
+            /** Name */
+            name: string;
+            /** Role Title */
+            role_title?: string | null;
+            /** Manager Agent Id */
+            manager_agent_id: string;
+            /** Department */
+            department?: string | null;
+            /** Skill Slugs */
+            skill_slugs?: string[];
+            /** Model Provider */
+            model_provider?: string | null;
+            /** Model Name */
+            model_name?: string | null;
+            /** Monthly Budget Micros */
+            monthly_budget_micros?: number | null;
+            /** Reason */
+            reason: string;
+            /** Task Id */
+            task_id: string;
+        };
+        /** HireResult */
+        HireResult: {
+            agent: components["schemas"]["Agent"];
+            /** Auto Activated */
+            auto_activated: boolean;
+            /** Approval Id */
+            approval_id: string | null;
+            /** Approver */
+            approver: ("human" | "founder") | null;
+            /** Reasons Not Auto Activated */
+            reasons_not_auto_activated: string[];
+            /** Skills */
+            skills: string[];
+            /** Skipped Default Skills */
+            skipped_default_skills: string[];
+        };
+        /** HiringRequestCreate */
+        HiringRequestCreate: {
+            /** Required Skills */
+            required_skills: string[];
+            /** Role Hint */
+            role_hint?: string | null;
+            /** Reason */
+            reason: string;
+            /** Task Id */
+            task_id: string;
+        };
+        /** HiringRequestResult */
+        HiringRequestResult: {
+            /** Hiring Task Id */
+            hiring_task_id: string;
+            /** Created */
+            created: boolean;
+            /** Status */
+            status: string;
+        };
         /** LifecycleAction */
         LifecycleAction: {
             /** Reason */
@@ -2050,6 +2569,13 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** Page[AgentSkill] */
+        Page_AgentSkill_: {
+            /** Items */
+            items: components["schemas"]["AgentSkill"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
         /** Page[Agent] */
         Page_Agent_: {
             /** Items */
@@ -2075,6 +2601,20 @@ export interface components {
         Page_AuditEvent_: {
             /** Items */
             items: components["schemas"]["AuditEvent"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** Page[CatalogItem] */
+        Page_CatalogItem_: {
+            /** Items */
+            items: components["schemas"]["CatalogItem"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** Page[Colleague] */
+        Page_Colleague_: {
+            /** Items */
+            items: components["schemas"]["Colleague"][];
             /** Next Cursor */
             next_cursor?: string | null;
         };
@@ -2113,10 +2653,24 @@ export interface components {
             /** Next Cursor */
             next_cursor?: string | null;
         };
+        /** Page[RoleTemplate] */
+        Page_RoleTemplate_: {
+            /** Items */
+            items: components["schemas"]["RoleTemplate"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
         /** Page[Schedule] */
         Page_Schedule_: {
             /** Items */
             items: components["schemas"]["Schedule"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** Page[Skill] */
+        Page_Skill_: {
+            /** Items */
+            items: components["schemas"]["Skill"][];
             /** Next Cursor */
             next_cursor?: string | null;
         };
@@ -2171,6 +2725,13 @@ export interface components {
             default_run_reservation_micros: number;
             /** Allowed Model Providers */
             allowed_model_providers: string[];
+            /**
+             * Auto Activate Hires
+             * @default true
+             */
+            auto_activate_hires?: boolean;
+            /** Hire Default Monthly Budget Micros */
+            hire_default_monthly_budget_micros?: number | null;
             /** Created At */
             created_at: string;
             /** Updated At */
@@ -2206,6 +2767,10 @@ export interface components {
             default_run_reservation_micros?: number | null;
             /** Allowed Model Providers */
             allowed_model_providers?: string[] | null;
+            /** Auto Activate Hires */
+            auto_activate_hires?: boolean | null;
+            /** Hire Default Monthly Budget Micros */
+            hire_default_monthly_budget_micros?: number | null;
         };
         /** ProgressBody */
         ProgressBody: {
@@ -2295,6 +2860,80 @@ export interface components {
             decision: "accept" | "request_revision";
             /** Note */
             note?: string | null;
+        };
+        /** RoleTemplate */
+        RoleTemplate: {
+            /** Slug */
+            slug: string;
+            /**
+             * Family
+             * @enum {string}
+             */
+            family: "founder" | "hr" | "engineering" | "design" | "marketing" | "sales" | "customer_success" | "research" | "qa" | "operations" | "finance" | "generic";
+            /** Title */
+            title: string;
+            /** Description */
+            description: string;
+            /**
+             * Default Kind
+             * @enum {string}
+             */
+            default_kind: "founder" | "lead" | "specialist" | "reviewer";
+            /** Default Department */
+            default_department: string | null;
+            /** Instructions */
+            instructions: string;
+            /** Default Toolsets */
+            default_toolsets: string[];
+            /** Default Skill Slugs */
+            default_skill_slugs: string[];
+            /** Required Skill Tags */
+            required_skill_tags: string[];
+            /** Builtin */
+            builtin: boolean;
+            /** Id */
+            id?: string | null;
+            /** Created By Type */
+            created_by_type?: string | null;
+            /** Created By Id */
+            created_by_id?: string | null;
+        };
+        /** RoleTemplateCreate */
+        RoleTemplateCreate: {
+            /** Slug */
+            slug: string;
+            /**
+             * Family
+             * @default generic
+             * @enum {string}
+             */
+            family?: "founder" | "hr" | "engineering" | "design" | "marketing" | "sales" | "customer_success" | "research" | "qa" | "operations" | "finance" | "generic";
+            /** Title */
+            title: string;
+            /**
+             * Description
+             * @default
+             */
+            description?: string;
+            /**
+             * Default Kind
+             * @default specialist
+             * @enum {string}
+             */
+            default_kind?: "founder" | "lead" | "specialist" | "reviewer";
+            /** Default Department */
+            default_department?: string | null;
+            /**
+             * Instructions
+             * @default
+             */
+            instructions?: string;
+            /** Default Toolsets */
+            default_toolsets?: string[];
+            /** Default Skill Slugs */
+            default_skill_slugs?: string[];
+            /** Required Skill Tags */
+            required_skill_tags?: string[];
         };
         /** RoutinesOverview */
         RoutinesOverview: {
@@ -2463,6 +3102,247 @@ export interface components {
             /** Enabled */
             enabled?: boolean | null;
         };
+        /** Skill */
+        Skill: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string;
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /** Category */
+            category: string | null;
+            /** Tags */
+            tags: string[];
+            /** Version */
+            version: string | null;
+            /** Author */
+            author: string | null;
+            /** License */
+            license: string | null;
+            /**
+             * Source Kind
+             * @enum {string}
+             */
+            source_kind: "hermes_bundled" | "hermes_optional" | "github" | "company_authored" | "uploaded";
+            /** Source Ref */
+            source_ref: string;
+            /** Blob Sha256 */
+            blob_sha256: string;
+            /**
+             * Trust
+             * @enum {string}
+             */
+            trust: "builtin" | "trusted" | "community";
+            /**
+             * Scan Verdict
+             * @enum {string}
+             */
+            scan_verdict: "safe" | "caution" | "dangerous" | "unscanned";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "quarantined" | "archived";
+            /** Requires Toolsets */
+            requires_toolsets: string[];
+            /** Required Env */
+            required_env: string[];
+            /**
+             * Created By Type
+             * @enum {string}
+             */
+            created_by_type: "human" | "agent" | "system";
+            /** Created By Id */
+            created_by_id: string | null;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /** SkillAssignedAgent */
+        SkillAssignedAgent: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Role Title */
+            role_title: string;
+            /** Status */
+            status: string;
+        };
+        /** SkillAuthor */
+        SkillAuthor: {
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /** Tags */
+            tags?: string[];
+            /** Body Markdown */
+            body_markdown: string;
+            /** Files */
+            files?: components["schemas"]["SkillAuthorFile"][];
+        };
+        /** SkillAuthorFile */
+        SkillAuthorFile: {
+            /** Path */
+            path: string;
+            /** Content */
+            content: string;
+        };
+        /** SkillDetail */
+        SkillDetail: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string;
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /** Category */
+            category: string | null;
+            /** Tags */
+            tags: string[];
+            /** Version */
+            version: string | null;
+            /** Author */
+            author: string | null;
+            /** License */
+            license: string | null;
+            /**
+             * Source Kind
+             * @enum {string}
+             */
+            source_kind: "hermes_bundled" | "hermes_optional" | "github" | "company_authored" | "uploaded";
+            /** Source Ref */
+            source_ref: string;
+            /** Blob Sha256 */
+            blob_sha256: string;
+            /**
+             * Trust
+             * @enum {string}
+             */
+            trust: "builtin" | "trusted" | "community";
+            /**
+             * Scan Verdict
+             * @enum {string}
+             */
+            scan_verdict: "safe" | "caution" | "dangerous" | "unscanned";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "quarantined" | "archived";
+            /** Requires Toolsets */
+            requires_toolsets: string[];
+            /** Required Env */
+            required_env: string[];
+            /**
+             * Created By Type
+             * @enum {string}
+             */
+            created_by_type: "human" | "agent" | "system";
+            /** Created By Id */
+            created_by_id: string | null;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+            /** Scan Report */
+            scan_report: {
+                [key: string]: unknown;
+            };
+            /** Frontmatter */
+            frontmatter: {
+                [key: string]: unknown;
+            };
+            /** Files */
+            files: components["schemas"]["SkillFileInfo"][];
+            /** Assigned Agents */
+            assigned_agents: components["schemas"]["SkillAssignedAgent"][];
+        };
+        /** SkillFileContent */
+        SkillFileContent: {
+            /** Path */
+            path: string;
+            /** Content */
+            content: string;
+            /** Truncated */
+            truncated: boolean;
+        };
+        /** SkillFileInfo */
+        SkillFileInfo: {
+            /** Path */
+            path: string;
+            /** Size Bytes */
+            size_bytes: number;
+        };
+        /** SkillInstall */
+        SkillInstall: {
+            /** Source Ref */
+            source_ref: string;
+            /** Slug */
+            slug?: string | null;
+        };
+        /** SkillInstallResult */
+        SkillInstallResult: {
+            skill: components["schemas"]["Skill"];
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "installed" | "updated" | "unchanged";
+            /** Quarantined */
+            quarantined: boolean;
+            /** Scan */
+            scan: {
+                [key: string]: unknown;
+            };
+        };
+        /** SkillNote */
+        SkillNote: {
+            /** Note */
+            note?: string | null;
+        };
+        /** SkillRefs */
+        SkillRefs: {
+            /** Skill Ids */
+            skill_ids?: string[];
+            /** Slugs */
+            slugs?: string[];
+        };
+        /** SkillSeedAccepted */
+        SkillSeedAccepted: {
+            /** Job Id */
+            job_id: string | null;
+            /** Status */
+            status: string;
+        };
+        /** SkillSeedResult */
+        SkillSeedResult: {
+            /** Installed */
+            installed: string[];
+            /** Updated */
+            updated: string[];
+            /** Unchanged */
+            unchanged: string[];
+            /** Quarantined */
+            quarantined: string[];
+            /** Missing */
+            missing: string[];
+            /** Agents Equipped */
+            agents_equipped: string[];
+        };
         /** SpendPeriod */
         SpendPeriod: {
             /** Spent Micros */
@@ -2546,6 +3426,8 @@ export interface components {
             output_refs: string[];
             /** Review Note */
             review_note: string | null;
+            /** Blocked Reason */
+            blocked_reason?: string | null;
             /**
              * Created By Type
              * @enum {string}
@@ -3101,6 +3983,450 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Department"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_skills_api_companies__company_id__skills_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                source_kind?: string | null;
+                tag?: string | null;
+                q?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_Skill_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    skill_catalog_api_companies__company_id__skills_catalog_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                source?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_CatalogItem_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    install_skill_api_companies__company_id__skills_install_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SkillInstall"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillInstallResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    seed_library_api_companies__company_id__skills_seed_post: {
+        parameters: {
+            query?: {
+                wait?: boolean;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillSeedAccepted"] | components["schemas"]["SkillSeedResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_skill_api_companies__company_id__skills__skill_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                skill_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_skill_file_api_companies__company_id__skills__skill_id__files__path__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                skill_id: string;
+                path: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillFileContent"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_skill_api_companies__company_id__skills__skill_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                skill_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SkillNote"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Skill"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unquarantine_skill_api_companies__company_id__skills__skill_id__unquarantine_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                skill_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SkillNote"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Skill"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_agent_skills_api_companies__company_id__agents__agent_id__skills_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_AgentSkill_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assign_agent_skills_api_companies__company_id__agents__agent_id__skills_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SkillRefs"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_AgentSkill_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_agent_skill_api_companies__company_id__agents__agent_id__skills__skill_ref__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+                skill_ref: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_role_templates_api_companies__company_id__role_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_RoleTemplate_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_role_template_api_companies__company_id__role_templates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleTemplateCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleTemplate"];
                 };
             };
             /** @description Validation Error */
@@ -5228,6 +6554,354 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Approval"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    find_colleagues_api_agent_v1_agents_get: {
+        parameters: {
+            query?: {
+                skill_tags?: string | null;
+                family?: string | null;
+                status?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_Colleague_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    agent_skills_api_agent_v1_agents__agent_id__skills_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_AgentSkill_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assign_skills_api_agent_v1_agents__agent_id__skills_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SkillRefs"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_AgentSkill_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    skill_catalog_api_agent_v1_skills_catalog_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                source?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_CatalogItem_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    install_skill_api_agent_v1_skills_install_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SkillInstall"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillInstallResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    author_skill_api_agent_v1_skills_author_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SkillAuthor"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillInstallResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unassign_skill_api_agent_v1_agents__agent_id__skills__skill_ref__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+                skill_ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_role_templates_api_agent_v1_role_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_RoleTemplate_"];
+                };
+            };
+        };
+    };
+    create_role_template_api_agent_v1_role_templates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleTemplateCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleTemplate"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    hire_api_agent_v1_hires_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HireCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HireResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    hiring_request_api_agent_v1_hiring_requests_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HiringRequestCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HiringRequestResult"];
                 };
             };
             /** @description Validation Error */

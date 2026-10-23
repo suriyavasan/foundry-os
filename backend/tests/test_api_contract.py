@@ -138,7 +138,7 @@ def test_activity_pagination_newest_first_no_dupes(client, company):
         client.post(f"/api/companies/{cid}/departments", json={"name": f"D{i}"})
     url = f"/api/companies/{cid}/activity"
     full = client.get(url, params={"limit": 200}).json()
-    assert full["next_cursor"] is None and len(full["items"]) == 7
+    assert full["next_cursor"] is None and len(full["items"]) == 9  # + HR agent and People dept
     stamps = [e["created_at"] for e in full["items"]]
     assert [e["action"] for e in full["items"]][-1] == "company.created"
     assert [e["summary"] for e in full["items"]][0] == "Created department D5"
@@ -157,7 +157,7 @@ def test_activity_pagination_newest_first_no_dupes(client, company):
             break
     assert pages == 3
     assert seen == [e["id"] for e in full["items"]]
-    assert len(set(seen)) == 7
+    assert len(set(seen)) == 9
     assert stamps == sorted(stamps, reverse=True)
 
 
@@ -198,18 +198,18 @@ def test_overview_aggregates_are_real_and_empty_for_a_new_company(client, compan
     assert ov["company"]["id"] == cid
     assert ov["founder"]["kind"] == "founder" and ov["founder"]["status"] == "active"
     assert ov["agents"] == {
-        "total": 1,
+        "total": 2,  # the founder and the HR partner
         "by_status": {
             "proposed": 0,
-            "active": 1,
+            "active": 2,
             "paused": 0,
             "retiring": 0,
             "retired": 0,
             "rejected": 0,
         },
     }
-    assert ov["departments"] == {"total": 0}
-    assert [e["action"] for e in ov["recent_activity"]] == ["company.created"]
+    assert ov["departments"] == {"total": 1}  # People
+    assert "company.created" in [e["action"] for e in ov["recent_activity"]]
 
 
 def test_overview_counts_and_recent_limit(client, company):
@@ -221,11 +221,11 @@ def test_overview_counts_and_recent_limit(client, company):
     for i in range(12):
         client.post(f"/api/companies/{cid}/departments", json={"name": f"D{i}"})
     ov = client.get(f"/api/companies/{cid}/overview").json()
-    assert ov["agents"]["total"] == 3
+    assert ov["agents"]["total"] == 4
     assert ov["agents"]["by_status"]["paused"] == 1
     assert ov["agents"]["by_status"]["proposed"] == 1
-    assert ov["agents"]["by_status"]["active"] == 1
-    assert ov["departments"]["total"] == 12
+    assert ov["agents"]["by_status"]["active"] == 2  # founder + HR
+    assert ov["departments"]["total"] == 13  # + People
     assert len(ov["recent_activity"]) == 10
 
 

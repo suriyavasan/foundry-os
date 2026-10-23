@@ -9,6 +9,21 @@ from app.schemas.common import ApiModel, RequestModel, Timestamp
 AgentKindLiteral = Literal["founder", "lead", "specialist", "reviewer"]
 AgentStatusLiteral = Literal["proposed", "active", "paused", "retiring", "retired", "rejected"]
 
+RoleFamilyLiteral = Literal[
+    "founder",
+    "hr",
+    "engineering",
+    "design",
+    "marketing",
+    "sales",
+    "customer_success",
+    "research",
+    "qa",
+    "operations",
+    "finance",
+    "generic",
+]
+
 MAX_BUDGET_MICROS = 10**15  # $1B; guards against absurd values / overflow
 
 
@@ -57,6 +72,8 @@ class Agent(ApiModel):
     tool_permissions: list[str]
     monthly_budget_micros: int | None
     daily_budget_micros: int | None
+    role_template: str | None = None  # M4: role template slug this employee was created from
+    role_family: RoleFamilyLiteral = "generic"  # avatar type the canvas draws
     created_at: Timestamp
     updated_at: Timestamp
     status_changed_at: Timestamp
@@ -92,6 +109,10 @@ class AgentCreate(RequestModel):
     tool_permissions: list[str] = Field(default_factory=list)
     monthly_budget_micros: int | None = Field(default=None, ge=0, le=MAX_BUDGET_MICROS)
     daily_budget_micros: int | None = Field(default=None, ge=0, le=MAX_BUDGET_MICROS)
+    # M4: apply a role template's defaults (kind, department, responsibilities, instructions,
+    # tools, skills) for every field not given explicitly. Humans only.
+    role_template: str | None = Field(default=None, min_length=1, max_length=64)
+    skill_slugs: list[str] | None = Field(default=None, max_length=40)
 
     _tools = field_validator("tool_permissions")(_clean_tools)
 

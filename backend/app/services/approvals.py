@@ -19,7 +19,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.core.errors import Conflict, Forbidden, InvalidTransition, NotFound, ValidationFailed
-from app.core.principal import CompanyContext, Role
+from app.core.principal import CompanyContext, Principal, Role
 from app.core.time import utcnow
 from app.models.agent import Agent
 from app.models.enums import (
@@ -102,44 +102,81 @@ def create_approval(
     task_id = data.task_id or default_task_id
     if task_id:
         get_task_or_404(db, ctx.company_id, task_id)
-    limits = policy.load_policy(db, ctx.company_id)
-    approver = derive_approver(limits, data.kind)
-    approval = Approval(
+    approval = create_approval_record(
+        db,
         company_id=ctx.company_id,
+        principal=ctx.principal,
         kind=data.kind,
-        status=ApprovalStatus.PENDING,
-        approver=approver,
-        requested_by_agent_id=ctx.principal.id if ctx.principal.is_agent else None,
-        task_id=task_id,
         title=data.title,
         reason=data.reason,
         amount_micros=data.amount_micros,
         vendor=data.vendor,
         recurrence=data.recurrence,
         risk=data.risk,
-        evidence=dict(data.evidence),
-        scope=dict(data.scope),
-        scope_hash=compute_scope_hash(data.scope),
+        evidence=data.evidence,
+        scope=data.scope,
+        task_id=task_id,
+    )
+    db.commit()
+    return approval
+
+
+def create_approval_record(
+    db: Session,
+    *,
+    company_id: str,
+    principal: Principal,
+    kind: str,
+    title: str,
+    reason: str | None = None,
+    amount_micros: int | None = None,
+    vendor: str | None = None,
+    recurrence: str | None = None,
+    risk: str = "low",
+    evidence: dict[str, Any] | None = None,
+    scope: dict[str, Any] | None = None,
+    task_id: str | None = None,
+    subject: tuple[str, str] | None = None,
+) -> Approval:
+    """Insert an approval (derived approver, audit, event). No commit. ``subject`` is set only
+    by services (e.g. the hiring service): it is what a decision on the approval acts on."""
+    limits = policy.load_policy(db, company_id)
+    approver = derive_approver(limits, kind)
+    scope = dict(scope or {})
+    approval = Approval(
+        company_id=company_id,
+        kind=kind,
+        status=ApprovalStatus.PENDING,
+        approver=approver,
+        requested_by_agent_id=principal.id if principal.is_agent else None,
+        task_id=task_id,
+        title=title,
+        reason=reason,
+        amount_micros=amount_micros,
+        vendor=vendor,
+        recurrence=recurrence,
+        risk=risk,
+        evidence=dict(evidence or {}),
+        scope=scope,
+        scope_hash=compute_scope_hash(scope),
+        subject_type=subject[0] if subject else None,
+        subject_id=subject[1] if subject else None,
     )
     db.add(approval)
     db.flush()
     audit.record(
         db,
-        company_id=ctx.company_id,
-        principal=ctx.principal,
+        company_id=company_id,
+        principal=principal,
         action="approval.requested",
         target_type="approval",
         target_id=approval.id,
         summary=f"Requested {approval.kind} approval: {approval.title}",
-        data={
-            "kind": approval.kind,
-            "approver": approver.value,
-            "amount_micros": data.amount_micros,
-        },
+        data={"kind": approval.kind, "approver": approver.value, "amount_micros": amount_micros},
     )
     events.emit(
         db,
-        ctx.company_id,
+        company_id,
         "approval.created",
         {
             "approval_id": approval.id,
@@ -149,7 +186,6 @@ def create_approval(
             "status": approval.status,
         },
     )
-    db.commit()
     return approval
 
 
@@ -208,6 +244,10 @@ def decide(
             "decided_by_type": principal.type.value,
         },
     )
+    if approval.subject_type == "agent_hire":
+        from app.services import hiring  # local: hiring depends on this module
+
+        hiring.apply_hire_decision(db, ctx, approval, decision)
     db.commit()
     return approval
 

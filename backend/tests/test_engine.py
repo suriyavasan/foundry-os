@@ -88,7 +88,7 @@ def test_ready_task_runs_to_done_with_events_and_usage(app, client, company, sch
         assert res.run_id == run["id"] and res.amount_micros == 50_000
     # the job queue is drained and the dedupe key is the run id
     with app.state.session_factory() as db:
-        [job] = db.scalars(select(Job))
+        [job] = db.scalars(select(Job).where(Job.kind == "execute_run"))
         assert job.status == "done" and job.dedupe_key == run["id"] and job.attempts == 1
 
 
