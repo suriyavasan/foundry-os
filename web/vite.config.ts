@@ -33,6 +33,8 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
+    // Full-canvas / onboarding integration tests take 3-6 s on CI runners; the 5 s default flakes there.
+    testTimeout: 20_000,
     css: false,
   },
 })
