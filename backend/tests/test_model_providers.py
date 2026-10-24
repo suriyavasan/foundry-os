@@ -481,7 +481,7 @@ def test_anthropic_probe_uses_its_own_headers(app, client, company):
     ).json()
     client.post(api(cid, f"/model-providers/{p['id']}/test"))
     assert (
-        seen["url"] == "https://api.anthropic.com/v1/models"
+        seen["url"] == "https://api.anthropic.com/v1/models?limit=1000"
         and seen["key"] == "sk-ant-0123456789abcdef"
     )
     assert seen["ver"] and seen["messages_url"] == "https://api.anthropic.com/v1/messages"
