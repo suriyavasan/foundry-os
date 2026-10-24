@@ -7,6 +7,8 @@ GitHub Release notes.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-24
+
 ### Added
 
 - First public release of Foundry AI OS: a self-hosted operating system for an autonomous company of AI
