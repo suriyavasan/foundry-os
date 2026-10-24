@@ -1,14 +1,16 @@
-import { useState, type ReactNode } from 'react'
+import { lazy, Suspense, useState, type ReactNode } from 'react'
 import { isUnauthenticated, useAuthSession, useMe } from '@/api'
 import { authStatusOf } from '@/lib/auth'
 import { ErrorState, LoadingState } from '@/components/ui'
 import { LoginGate } from './LoginGate'
 import { LoginPage } from './LoginPage'
-import { SetupWizard } from './SetupWizard'
+
+// The onboarding (animations included) is a separate chunk: the canvas never pays for it.
+const OnboardingFlow = lazy(() => import('@/features/onboarding/OnboardingFlow').then((m) => ({ default: m.OnboardingFlow })))
 
 /**
  * Holds the whole app behind a session. `GET /auth/session` decides:
- *   setup_required  -> the first-run wizard (stays up until the person finishes it, even though step 1 signs them in)
+ *   setup_required  -> the first-run onboarding (six full-screen steps) (stays up until the person finishes it, even though step 1 signs them in)
  *   unauthenticated -> the login page
  *   authenticated   -> the app
  * A backend that predates M7 answers 404 there; the gate then behaves exactly as it did under M3b-sec
@@ -21,7 +23,13 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   // Entering setup is remembered, so signing in as the new owner in step 1 does not unmount the wizard mid-way.
   if (status.kind === 'setup_required' && !setup) setSetup({ tokenRequired: status.setupTokenRequired })
-  if (setup) return <SetupWizard setupTokenRequired={setup.tokenRequired} onDone={() => setSetup(null)} />
+  if (setup) {
+    return (
+      <Suspense fallback={<FullPage><LoadingState label="Starting setup" rows={3} /></FullPage>}>
+        <OnboardingFlow mode="setup" setupTokenRequired={setup.tokenRequired} onDone={() => setSetup(null)} />
+      </Suspense>
+    )
+  }
 
   switch (status.kind) {
     case 'loading':

@@ -1,6 +1,6 @@
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Outlet } from 'react-router'
-import { ApiError, useCompany } from '@/api'
+import { ApiError, useAiSetup, useCompany } from '@/api'
 import { StreamProvider } from '@/api/stream'
 import { ErrorState, LoadingState } from '@/components/ui'
 import { CanvasProvider } from '@/features/canvas/CanvasContext'
@@ -10,9 +10,13 @@ import { PanelHost } from '@/features/canvas/PanelHost'
 import { ConnectAccountHost } from '@/features/integrations/ConnectAccountHost'
 import { EmergencyStopDialog } from '@/features/guardrails/EmergencyStop'
 import { TopBar } from '@/features/canvas/TopBar'
+import { aiGateState } from '@/lib/aiSetup'
 import { setLastCompanyId } from '@/lib/storage'
 import { NotFound } from './NotFound'
 import { useCompanyId } from './useCompanyId'
+
+// The AI gate is the onboarding's AI steps; its chunk loads only when a company really is not ready.
+const AiGate = lazy(() => import('@/features/onboarding/AiGate').then((m) => ({ default: m.AiGate })))
 
 /**
  * Resolves the company in the URL and renders the one persistent shell: top bar, the routed page
@@ -21,6 +25,16 @@ import { useCompanyId } from './useCompanyId'
 export function CompanyLayout() {
   const companyId = useCompanyId()
   const company = useCompany(companyId)
+  // Asked in parallel with the company. Only an explicit `ready: false` blocks (a 404 from an older backend does not).
+  const aiSetup = useAiSetup(companyId)
+  // "Loading" means the FIRST answer for this company is outstanding. A failed query that is looked at again goes back to
+  // `pending`; that must not unmount the canvas (it would remount, refetch, and loop), so the first answer is latched.
+  const [aiSettledFor, setAiSettledFor] = useState<string | null>(null)
+  if (!aiSetup.isPending && aiSettledFor !== companyId) setAiSettledFor(companyId)
+  const gate = aiGateState({ isPending: aiSettledFor !== companyId, data: aiSetup.data })
+  // Once the gate showed, it stays until its own steps are finished (saving the model flips `ready` before the work-mode step).
+  const [gating, setGating] = useState<string | null>(null)
+  if (gate === 'blocked' && gating !== companyId) setGating(companyId)
 
   useEffect(() => {
     if (company.data) setLastCompanyId(company.data.id)
@@ -33,7 +47,7 @@ export function CompanyLayout() {
       </div>
     )
   }
-  if (company.isPending) {
+  if (company.isPending || (gate === 'loading' && !company.isError)) {
     return (
       <div className="mx-auto max-w-md pt-24">
         <LoadingState label="Loading company" rows={4} />
@@ -45,6 +59,22 @@ export function CompanyLayout() {
       <div className="mx-auto max-w-md pt-24">
         <ErrorState error={company.error} onRetry={() => company.refetch()} retrying={company.isFetching} />
       </div>
+    )
+  }
+
+  if (gating === companyId) {
+    return (
+      <StreamProvider key={companyId} companyId={companyId}>
+        <Suspense
+          fallback={
+            <div className="mx-auto max-w-md pt-24">
+              <LoadingState label="Opening AI setup" rows={3} />
+            </div>
+          }
+        >
+          <AiGate companyId={companyId} onDone={() => setGating(null)} />
+        </Suspense>
+      </StreamProvider>
     )
   }
 

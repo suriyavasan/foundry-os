@@ -32,10 +32,10 @@ const ACTION_ICON: Record<string, LucideIcon> = {
 }
 
 /** The records the AI Co-founder created from a note, each a link into its panel. */
-export function ActionChips({ chips, onOpen, className }: { chips: ActionChip[]; onOpen: (p: Panel) => void; className?: string }) {
+export function ActionChips({ chips, onOpen, className, label = 'Created from this note' }: { chips: ActionChip[]; onOpen: (p: Panel) => void; className?: string; label?: string }) {
   if (chips.length === 0) return null
   return (
-    <ul aria-label="Created from this note" className={className ?? 'flex flex-wrap gap-1'}>
+    <ul aria-label={label} className={className ?? 'flex flex-wrap gap-1'}>
       {chips.map((c) => {
         const Icon = ACTION_ICON[c.type] ?? Link2
         const inner = (

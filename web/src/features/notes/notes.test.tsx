@@ -12,11 +12,14 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllGlobals())
 
-const widget = () => screen.getByRole('region', { name: "Founder's notes" })
-/** Render the canvas and wait until the notes widget is on screen (the company loads first). */
-async function renderNotes(route?: string) {
+// M10 replaced the Founder's-notes widget on the canvas with the Command Center. The notes themselves (list, composer,
+// triage chips, threads) live on in the Notes panel, so those behaviours are exercised there, with the same assertions.
+const widget = () => screen.getByRole('dialog', { name: "Founder's notes" })
+/** Render the canvas with the Notes panel open (or another route) and wait until it is on screen. */
+async function renderNotes(route = '/c/c1?panel=notes') {
   const r = renderCanvas(route)
-  await screen.findByRole('region', { name: "Founder's notes" })
+  await screen.findByRole('main')
+  if (route.endsWith('panel=notes')) await screen.findByRole('dialog', { name: "Founder's notes" })
   return r
 }
 const composer = () => screen.getByRole('textbox', { name: 'Write a note to the AI Co-founder' })
@@ -41,7 +44,7 @@ const triaged = makeNote({
 })
 const fresh = makeNote({ id: 'n2', body: 'Pricing feels low', created_at: '2026-10-24T10:00:00Z' })
 
-describe('Founder’s notes widget: listing', () => {
+describe('Founder’s notes (Notes panel): listing', () => {
   const routes = { ...baseRoutes, '/companies/c1/notes': page([triaged, fresh]), '/companies/c1/goals': page([{ id: 'g1', company_id: 'c1', title: 'Launch in Lisbon', description: null, status: 'active', priority: 'high', owner_agent_id: null, target_date: null, created_by_type: 'agent', created_by_id: 'f1', created_at: '2026-10-24T09:05:00Z', updated_at: '2026-10-24T09:05:00Z' }]) }
 
   it('lists notes newest first with status and category chips', async () => {
@@ -69,14 +72,16 @@ describe('Founder’s notes widget: listing', () => {
     vi.stubGlobal('fetch', mockApi(routes).impl)
     await renderNotes()
     const user = userEvent.setup()
-    const chips = await within(widget()).findByRole('list', { name: 'Created from this note' })
-    expect(within(chips).getByRole('button', { name: 'Open goal: Launch in Lisbon' })).toBeInTheDocument() // name resolved from the goals list
-    await user.click(within(chips).getByRole('button', { name: 'Open task: Draft the launch plan' }))
-    expect(loc()).toBe('?panel=task:t1')
-    await user.click(within(chips).getByRole('button', { name: 'Open goal: Launch in Lisbon' }))
-    expect(loc()).toBe('?panel=goals')
-    await user.click(within(chips).getByRole('button', { name: 'Open schedule' }))
-    expect(loc()).toBe('?panel=routines')
+    const chipsOf = async () => within(await within(widget()).findByRole('list', { name: 'Created from this note' }))
+    expect((await chipsOf()).getByRole('button', { name: 'Open goal: Launch in Lisbon' })).toBeInTheDocument() // name resolved from the goals list
+    // Each chip replaces the Notes panel with its own; closing that panel unwinds back to the notes.
+    for (const [name, panel] of [['Open task: Draft the launch plan', '?panel=task:t1'], ['Open goal: Launch in Lisbon', '?panel=goals'], ['Open schedule', '?panel=routines']] as const) {
+      await user.click((await chipsOf()).getByRole('button', { name }))
+      await waitFor(() => expect(loc()).toBe(panel))
+      await user.keyboard('{Escape}')
+      await waitFor(() => expect(loc()).toBe('?panel=notes'))
+      await screen.findByRole('dialog', { name: "Founder's notes" })
+    }
   })
 
   it('opens the thread panel from the note text, and reading the reply clears the unread badge', async () => {
@@ -86,8 +91,11 @@ describe('Founder’s notes widget: listing', () => {
     const user = userEvent.setup()
     const row = (await within(widget()).findAllByTestId('note-row'))[1]!
     await user.click(within(row).getByRole('button', { name: /Open note: We should launch/ }))
-    expect(loc()).toBe('?panel=note:n1')
+    await waitFor(() => expect(loc()).toBe('?panel=note:n1'))
     await screen.findByRole('dialog', { name: 'Note' })
+    // Back to the list: the thread drawer replaced it, and closing it unwinds to the Notes panel.
+    await user.keyboard('{Escape}')
+    await screen.findByRole('dialog', { name: "Founder's notes" })
     await waitFor(() => expect(within(widget()).queryByLabelText('Unread reply from the AI Co-founder')).not.toBeInTheDocument())
     expect(within(widget()).queryByText(/unread repl/)).not.toBeInTheDocument()
   })

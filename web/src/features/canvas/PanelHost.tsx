@@ -27,6 +27,11 @@ const IntegrationsPanel = lazy(() => import('@/features/integrations/Integration
 const SkillDetailPanel = lazy(() => import('@/features/skills/SkillDetailPanel').then((m) => ({ default: m.SkillDetailPanel })))
 const SkillsPanel = lazy(() => import('@/features/skills/SkillsPanel').then((m) => ({ default: m.SkillsPanel })))
 const ReachabilityPanel = lazy(() => import('@/features/reachability/ReachabilityPanel').then((m) => ({ default: m.ReachabilityPanel })))
+const AiPanel = lazy(() => import('@/features/ai/AiPanel').then((m) => ({ default: m.AiPanel })))
+const ReflectionsPanel = lazy(() => import('@/features/reflections/ReflectionsPanel').then((m) => ({ default: m.ReflectionsPanel })))
+const ReflectionThreadPanel = lazy(() => import('@/features/reflections/ReflectionThreadPanel').then((m) => ({ default: m.ReflectionThreadPanel })))
+const StandardsPanel = lazy(() => import('@/features/reflections/StandardsPanel').then((m) => ({ default: m.StandardsPanel })))
+const CommandCenterPanel = lazy(() => import('@/features/commandcenter/CommandCenterPanel').then((m) => ({ default: m.CommandCenterPanel })))
 const SettingsPanel = lazy(() => import('@/features/settings/SettingsPanel').then((m) => ({ default: m.SettingsPanel })))
 
 /** Renders the drawer for the panel named in the URL. Remounts when the panel changes. */
@@ -89,6 +94,16 @@ function PanelSwitch({ panel }: { panel: NonNullable<ReturnType<typeof useCanvas
       return <MyWorkPanel key={key} />
     case 'reachability':
       return <ReachabilityPanel key={key} />
+    case 'ai':
+      return <AiPanel key={key} />
+    case 'reflections':
+      return <ReflectionsPanel key={key} />
+    case 'standards':
+      return <StandardsPanel key={key} />
+    case 'command-center':
+      return <CommandCenterPanel key={key} />
+    case 'reflection':
+      return <ReflectionThreadPanel key={key} reflectionId={panel.id} />
     case 'note':
       return <NoteThreadPanel key={key} noteId={panel.id} />
     case 'skill':

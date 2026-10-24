@@ -8,6 +8,9 @@ export function shouldRetry(count: number, error: unknown): boolean {
   return count < 2
 }
 
+/** The server refuses company work until the AI setup is ready (409 `ai_setup_required`, spec M10 §1). */
+export const isAiSetupRequired = (error: unknown): boolean => error instanceof ApiError && error.status === 409 && error.code === 'ai_setup_required'
+
 export const isUnauthenticated = (error: unknown): boolean => error instanceof ApiError && error.status === 401
 
 /**
@@ -17,6 +20,8 @@ export const isUnauthenticated = (error: unknown): boolean => error instanceof A
  */
 export function createQueryClient(): QueryClient {
   const onUnauthenticated = (error: unknown, key?: readonly unknown[]) => {
+    // Something the UI believed was ready is not: re-read the readiness so the AI gate takes over.
+    if (isAiSetupRequired(error)) void client.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'company' && q.queryKey[2] === 'ai-setup' })
     if (!isUnauthenticated(error)) return
     // `/me` itself failing with 401 is already what the gate reads.
     if (key && (key[0] === qk.me[0] || (key[0] === qk.authSession[0] && key[1] === qk.authSession[1]))) return

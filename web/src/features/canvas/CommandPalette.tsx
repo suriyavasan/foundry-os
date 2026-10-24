@@ -1,13 +1,13 @@
 import * as RadixDialog from '@radix-ui/react-dialog'
 import { Bot, ListChecks, PanelRight, Search, Zap, type LucideIcon } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
-import { errorMessage, isNotDeployed, useAllTasks, useCompanyControl, useNotes, useReachability, useSystemStatus, useWakeCofounder } from '@/api'
+import { errorMessage, isNotDeployed, useAllTasks, useCommandFeed, useCompanyControl, useNotes, useReachability, useSystemStatus, useWakeCofounder } from '@/api'
 import type { Company } from '@/api/types'
 import { useTheme } from '@/components/layout/ThemeProvider'
 import { drawerOverlay, useToast } from '@/components/ui'
 import { wakeResultText } from '@/lib/cofounder'
 import { publicUrlOf } from '@/lib/reachability'
-import { WIDGET_COMPOSER_ID } from '@/features/notes/NoteComposer'
+import { COMMAND_INPUT_ID } from '@/features/commandcenter/CommandInput'
 import { buildCommands, filterCommands, type CommandGroup, type PaletteCommand } from '@/lib/commands'
 import { useCanvas } from './CanvasContext'
 import { useAgentMap } from './hooks'
@@ -21,6 +21,7 @@ export function CommandPalette({ company }: { company: Company }) {
   const tasksQ = useAllTasks(companyId)
   const control = useCompanyControl(companyId)
   const notesQ = useNotes(companyId)
+  const commandQ = useCommandFeed(companyId)
   const systemQ = useSystemStatus()
   const reachQ = useReachability()
   const wake = useWakeCofounder(companyId)
@@ -44,8 +45,8 @@ export function CommandPalette({ company }: { company: Company }) {
   }, [paletteOpen, setPaletteOpen])
 
   const commands = useMemo(
-    () => buildCommands({ agents, tasks: tasksQ.data ?? [], companyStatus: company.status, workEngine: !isNotDeployed(tasksQ.error), autonomy: !isNotDeployed(notesQ.error), guardrails: !isNotDeployed(systemQ.error), reachability: !isNotDeployed(reachQ.error) }),
-    [agents, tasksQ.data, tasksQ.error, notesQ.error, systemQ.error, reachQ.error, company.status],
+    () => buildCommands({ agents, tasks: tasksQ.data ?? [], companyStatus: company.status, workEngine: !isNotDeployed(tasksQ.error), autonomy: !isNotDeployed(notesQ.error), guardrails: !isNotDeployed(systemQ.error), reachability: !isNotDeployed(reachQ.error), commandCenter: !isNotDeployed(commandQ.error) }),
+    [agents, tasksQ.data, tasksQ.error, notesQ.error, systemQ.error, reachQ.error, commandQ.error, company.status],
   )
   const results = useMemo(() => filterCommands(commands, query), [commands, query])
   const active = Math.min(cursor, Math.max(0, results.length - 1))
@@ -73,10 +74,10 @@ export function CommandPalette({ company }: { company: Company }) {
       case 'theme':
         toggleTheme()
         break
-      case 'compose-note':
-        // The palette's dialog is closing and returns focus to the page; focus the composer after that.
+      case 'focus-command-center':
+        // The palette's dialog is closing and returns focus to the page; focus the command input after that.
         setTimeout(() => {
-          const box = document.getElementById(WIDGET_COMPOSER_ID)
+          const box = document.getElementById(COMMAND_INPUT_ID)
           box?.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
           box?.focus()
         }, 80)

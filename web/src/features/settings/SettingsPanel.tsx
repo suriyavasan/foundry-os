@@ -7,6 +7,7 @@ import { useTheme } from '@/components/layout/ThemeProvider'
 import { PanelFrame } from '@/features/canvas/PanelFrame'
 import { useCanvas } from '@/features/canvas/CanvasContext'
 import { PolicySection } from './PolicySection'
+import { AiLinkCard } from '@/features/ai/AiLinkCard'
 import { ReachabilityLinkCard } from '@/features/reachability/ReachabilityLinkCard'
 import {
   Badge,
@@ -56,6 +57,7 @@ export function SettingsPanel() {
           <div className="space-y-4">
             <StatusCard company={company.data} />
             <AppearanceCard />
+            <AiLinkCard />
             <ReachabilityLinkCard />
             <AboutCard />
           </div>

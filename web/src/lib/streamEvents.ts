@@ -90,6 +90,13 @@ export const KNOWN_EVENT_TYPES = [
   'domain.updated',
   'mailbox.updated',
   'hosted_ui.updated',
+  // M10 reflections, standards, command center (docs/specs/m10 §4-§5)
+  'reflection.created',
+  'reflection.updated',
+  'reflection.responded',
+  'standard.adopted',
+  'standard.updated',
+  'command.updated',
 ] as const
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null)
@@ -167,7 +174,8 @@ export function effectsForEvent(cid: string, ev: CompanyEvent): CacheEffect[] {
       return [inv(qk.activityAll(cid))]
     case 'budget.changed':
     case 'policy.updated':
-      return [inv(qk.policy(cid)), inv(qk.usageAll(cid)), inv(qk.financeAll(cid)), inv(qk.tasksAll(cid))]
+      // The AI setup (management model, work mode) lives in the policy: the gate re-reads it.
+      return [inv(qk.policy(cid)), inv(qk.usageAll(cid)), inv(qk.financeAll(cid)), inv(qk.tasksAll(cid)), inv(qk.aiSetup(cid))]
     case 'company.updated':
       return [inv(qk.companyDetail(cid)), inv(qk.companies)]
     case 'skill.installed':
@@ -235,6 +243,18 @@ export function effectsForEvent(cid: string, ev: CompanyEvent): CacheEffect[] {
       return [inv(qk.emailAll(cid)), inv(qk.approvalsAll(cid)), inv(qk.activityAll(cid))]
     case 'hosted_ui.updated':
       return [inv(qk.hostedUi(cid)), inv(qk.approvalsAll(cid)), inv(qk.activityAll(cid))]
+    case 'reflection.created':
+    case 'reflection.updated':
+      return [inv(qk.reflectionsAll(cid)), inv(qk.activityAll(cid))]
+    case 'reflection.responded': {
+      const id = str(p.reflection_id) ?? str(obj(p.reflection)?.id)
+      return [inv(qk.reflectionsAll(cid)), ...(id ? [inv(qk.reflection(cid, id))] : []), inv(qk.activityAll(cid))]
+    }
+    case 'standard.adopted':
+    case 'standard.updated':
+      return [inv(qk.standardsAll(cid)), inv(qk.reflectionsAll(cid)), inv(qk.activityAll(cid))]
+    case 'command.updated':
+      return [inv(qk.commandFeed(cid)), inv(qk.notesAll(cid))]
     default:
       return []
   }
@@ -352,6 +372,12 @@ export function feedItemForEvent(ev: CompanyEvent, now: string = new Date().toIS
       const byHuman = str(p.author_type) === 'human'
       return { ...base, agentId: byHuman ? null : agentId, kind: 'note', tone: 'neutral', text: byHuman ? 'The Founder replied on a note' : 'The AI Co-founder replied to a note', panel: notePanel(p) ?? { kind: 'notes' } }
     }
+    case 'reflection.created': {
+      const rid = str(p.reflection_id) ?? str(p.id)
+      return { ...base, kind: 'note', tone: 'accent', text: title ? `The AI Co-founder shared a reflection: ${title}` : 'The AI Co-founder shared a reflection', panel: rid && ID_RE.test(rid) ? { kind: 'reflection', id: rid } : { kind: 'reflections' } }
+    }
+    case 'standard.adopted':
+      return { ...base, agentId: null, kind: 'note', tone: 'success', text: title ? `Standard adopted: ${title}` : 'A company standard was adopted', panel: { kind: 'standards' } }
     case 'alert.raised': {
       const sev = str(p.severity)
       return { ...base, kind: 'alert', tone: sev === 'critical' ? 'danger' : sev === 'info' ? 'neutral' : 'warning', text: title ? `Alert: ${title}` : 'An alert was raised', panel: null }

@@ -87,6 +87,10 @@ function invalidateLive(qc: QueryClient, cid: string) {
     qk.cofounder(cid),
     qk.notificationsAll,
     qk.membersAll(cid),
+    qk.aiSetup(cid),
+    qk.reflectionsAll(cid),
+    qk.standardsAll(cid),
+    qk.commandFeed(cid),
   ]) {
     void qc.invalidateQueries({ queryKey: key })
   }

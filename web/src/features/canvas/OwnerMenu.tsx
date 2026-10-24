@@ -1,5 +1,5 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import { ClipboardList, Globe, LogOut, Plug, Settings, UserRound, Users } from 'lucide-react'
+import { ClipboardList, Globe, LogOut, Plug, Settings, Sparkles, UserRound, Users } from 'lucide-react'
 import { useAuthStatus, useLogout, useMe } from '@/api'
 import { Avatar } from '@/components/avatar'
 import { useCanvas } from './CanvasContext'
@@ -47,6 +47,9 @@ export function OwnerMenu({ companyId }: { companyId: string }) {
           )}
           <DropdownMenu.Item className={item} onSelect={() => openPanel({ kind: 'settings' })}>
             <Settings className="size-4 text-fg-2" aria-hidden /> Settings & policy
+          </DropdownMenu.Item>
+          <DropdownMenu.Item className={item} onSelect={() => openPanel({ kind: 'ai' })}>
+            <Sparkles className="size-4 text-fg-2" aria-hidden /> AI settings
           </DropdownMenu.Item>
           <DropdownMenu.Item className={item} onSelect={() => openPanel({ kind: 'reachability' })}>
             <Globe className="size-4 text-fg-2" aria-hidden /> Reachability

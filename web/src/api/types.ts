@@ -2003,3 +2003,248 @@ export interface ProviderCheck {
   account_label: string | null
   scopes: string[]
 }
+
+/* ======================================================================== *
+ * Milestone 10 (docs/specs/m10-ai-setup-cli-reflections.md): the AI readiness gate, coding-CLI runtimes,
+ * Reflections with company standards, and the Command Center.
+ * ASSUMPTION: the M10 backend is built in parallel. Paths and fields follow the spec literally and fill the gaps
+ * conservatively; contract.check.ts compares them with schema.d.ts as soon as a schema with the same name appears.
+ *   GET/PUT /companies/{cid}/ai-setup                    GET /companies/{cid}/model-providers/{id}/models
+ *   POST /companies/{cid}/model-providers/{id}/test      (now returns checks[])
+ *   GET /cli-runtimes (installation level; no company)   POST /cli-runtimes/{id}/install {confirm: true}
+ *   GET /cli-runtimes/{id}/install-log                   PUT /cli-runtimes/{id}/auth     POST /cli-runtimes/{id}/test
+ *   GET /companies/{cid}/reflections[?status=]           GET /companies/{cid}/reflections/{id}
+ *   POST /companies/{cid}/reflections/{id}/responses     POST /companies/{cid}/reflections/{id}/archive
+ *   GET/POST /companies/{cid}/standards                  PATCH /companies/{cid}/standards/{id}
+ *   POST /companies/{cid}/command                        GET /companies/{cid}/command-center/feed?cursor=
+ *   POST /companies/{cid}/command-center/{id}/retry
+ * Stream events: reflection.created|updated|responded, standard.adopted|updated, command.updated.
+ * ======================================================================== */
+
+/** Provider test (spec §1): `POST /model-providers/{id}/test`, also embedded in `AiSetupStatus.management.last_test`. */
+export type ProviderCheckName = 'reachable' | 'auth' | 'tool_calling' | 'context' | 'model_exists'
+export interface ProviderTestCheck {
+  name: ProviderCheckName | (string & {})
+  ok: boolean
+  detail: string | null
+}
+export interface ProviderTest {
+  ok: boolean
+  checks: ProviderTestCheck[]
+  served_context: number | null
+  latency_ms: number | null
+  tested_at: Timestamp | null
+}
+
+export type AiBlockingReason = 'no_tested_provider' | 'provider_test_failed' | 'no_default_model'
+export type WorkMode = 'api' | 'hybrid'
+export type CliRuntimeId = 'claude_code' | 'codex' | 'opencode'
+export type WorkRuntime = 'company_agent' | 'cli:claude_code' | 'cli:codex' | 'cli:opencode'
+export type CliAuthMode = 'own_login' | 'api_key'
+export type CliSandboxKind = 'os' | 'docker' | 'none'
+
+export interface CliLastTest {
+  ok: boolean
+  detail: string | null
+  tested_at: Timestamp | null
+}
+
+/** `GET /api/cli-runtimes` (installation level). The API key itself is never returned. */
+export interface CliRuntimeStatus {
+  id: CliRuntimeId | (string & {})
+  display_name: string
+  installed: boolean
+  binary_path: string | null
+  version: string | null
+  auth_modes: CliAuthMode[]
+  auth: {
+    mode: CliAuthMode | null
+    configured: boolean
+    credential_id: Uuid | null
+    last_test: CliLastTest | null
+    /** OpenCode only: the company model provider (endpoint and key) and model it runs against. */
+    model_provider_id?: Uuid | null
+    model?: string | null
+  }
+  sandbox: { available: boolean; kind: CliSandboxKind; detail: string | null }
+  install: { available: boolean; command: string | null; requires: string[] }
+  login_hint: string | null
+  warnings: string[]
+}
+
+export interface AiSetupManagement {
+  provider_id: Uuid | null
+  provider_name: string | null
+  kind: ProviderKind | (string & {}) | null
+  model: string | null
+  last_test: ProviderTest | null
+}
+
+/** `GET /companies/{cid}/ai-setup`. */
+export interface AiSetupStatus {
+  ready: boolean
+  blocking_reason: AiBlockingReason | null
+  management: AiSetupManagement
+  work_mode: WorkMode
+  work_runtime: WorkRuntime | null
+  clis: CliRuntimeStatus[]
+}
+
+/** `PUT /companies/{cid}/ai-setup` (owner/admin). 409 `ai_not_ready` carries the reason. */
+export interface AiSetupUpdate {
+  management_provider_id: Uuid
+  management_model: string
+  work_mode: WorkMode
+  work_runtime: WorkRuntime | null
+}
+
+export interface CliAuthUpdate {
+  mode: CliAuthMode
+  credential_id?: Uuid
+  /** OpenCode only. */
+  model_provider_id?: Uuid
+  model?: string
+}
+
+/** `GET /cli-runtimes/{id}/install-log` (shape assumed; read defensively by lib/aiSetup `normalizeInstallLog`). */
+export interface CliInstallLog {
+  state: 'idle' | 'running' | 'succeeded' | 'failed'
+  lines: string[]
+  exit_code: number | null
+}
+
+/* ---------------------------------- reflections --------------------------------- */
+
+export type ReflectionKind = 'observation' | 'standard_proposal' | 'retro' | 'risk' | 'praise'
+export type ReflectionStatus = 'open' | 'endorsed' | 'revised' | 'rejected' | 'adopted' | 'archived'
+export type ReflectionReaction = 'endorse' | 'challenge' | 'refine' | 'comment'
+
+/** A reference to a record the reflection is about (task, artifact, run, project). */
+export interface ReflectionEvidence {
+  type: string
+  id: string
+  label?: string | null
+}
+
+export interface Reflection {
+  id: Uuid
+  company_id: Uuid
+  author_agent_id: Uuid | null
+  author_name?: string | null
+  kind: ReflectionKind
+  title: string
+  /** Markdown, at most 6 KB. */
+  body: string
+  evidence: ReflectionEvidence[]
+  /** At most 500 characters. Present on standard proposals. */
+  proposed_standard: string | null
+  status: ReflectionStatus
+  /** The standard this reflection was adopted as, once a human endorsed it. */
+  standard_id?: Uuid | null
+  response_count?: number
+  last_response?: ReflectionResponse | null
+  created_at: Timestamp
+  updated_at: Timestamp
+}
+
+export interface ReflectionResponse {
+  id: Uuid
+  reflection_id: Uuid
+  author_type: 'human' | 'agent'
+  author_id: Uuid | null
+  author_name?: string | null
+  reaction: ReflectionReaction
+  body: string | null
+  created_at: Timestamp
+  /** What this response did: the reflection's status afterwards, and the standard it adopted (an endorsed proposal). */
+  reflection_status?: ReflectionStatus | null
+  standard_id?: Uuid | null
+}
+
+/** An earlier version of a reflection (the AI Co-founder revised it after a response). Shape assumed. */
+export interface ReflectionRevision {
+  id?: Uuid
+  title: string
+  body: string
+  proposed_standard: string | null
+  created_at: Timestamp
+}
+
+export interface ReflectionDetail extends Reflection {
+  responses: ReflectionResponse[]
+  revisions?: ReflectionRevision[]
+}
+
+export interface ReflectionResponseCreate {
+  reaction: ReflectionReaction
+  /** Optional for an endorsement; required for challenge, refine and comment. */
+  body?: string
+}
+
+export type StandardStatus = 'active' | 'retired'
+
+export interface CompanyStandard {
+  id: Uuid
+  company_id: Uuid
+  title: string
+  statement: string
+  source_reflection_id: Uuid | null
+  adopted_by_user_id: Uuid | null
+  adopted_at: Timestamp
+  status: StandardStatus
+  /** Role families / tags the standard is about. Empty = everyone. */
+  applies_to: string[]
+}
+
+export interface CompanyStandardCreate {
+  title: string
+  statement: string
+  applies_to?: string[]
+}
+
+export type CompanyStandardUpdate = Partial<{ title: string; statement: string; applies_to: string[]; status: StandardStatus }>
+
+/* ------------------------------- command center -------------------------------- */
+
+export type CommandInputKind = 'command' | 'note'
+export type CommandStatus = 'done' | 'pending' | 'processing' | 'answered' | 'failed'
+export type CommandOutputKind = 'text' | 'table' | 'list' | 'error'
+
+export interface CommandOutputLink {
+  label: string
+  /** A panel as it appears in the URL: `tasks`, `task:<id>`, ... */
+  panel: string
+}
+
+/** Structured output. `rows` are arrays (in `columns` order) or objects keyed by column; list rows may be plain strings. */
+export interface CommandOutput {
+  kind: CommandOutputKind
+  title: string | null
+  text: string | null
+  columns?: string[] | null
+  rows?: Array<Array<string | number | boolean | null> | Record<string, unknown> | string> | null
+  links?: CommandOutputLink[] | null
+}
+
+export interface CommandAction {
+  type: string
+  ref_id: string | null
+  label: string | null
+}
+
+export interface CommandRequest {
+  input: string
+}
+
+export interface CommandExchange {
+  id: Uuid
+  input: string
+  input_kind: CommandInputKind
+  created_at: Timestamp
+  status: CommandStatus
+  output: CommandOutput | null
+  note_id: Uuid | null
+  run_id: Uuid | null
+  actions: CommandAction[]
+  updated_at: Timestamp
+}

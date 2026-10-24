@@ -92,6 +92,17 @@ export const qk = {
   emailAll: (cid: string) => ['company', cid, 'email'] as const,
   email: (cid: string) => ['company', cid, 'email', 'identity'] as const,
   mailboxes: (cid: string) => ['company', cid, 'email', 'mailboxes'] as const,
+  // M10 AI setup, CLI runtimes, reflections, command center. Everything company scoped lives under ['company', cid, ...].
+  aiSetup: (cid: string) => ['company', cid, 'ai-setup'] as const,
+  providerModels: (cid: string, providerId: string) => ['company', cid, 'model-providers', 'models', providerId] as const,
+  cliRuntimes: ['cli-runtimes'] as const,
+  cliInstallLog: (id: string) => ['cli-runtimes', 'install-log', id] as const,
+  reflectionsAll: (cid: string) => ['company', cid, 'reflections'] as const,
+  reflections: (cid: string, status: string = 'all') => ['company', cid, 'reflections', 'list', status] as const,
+  reflection: (cid: string, id: string) => ['company', cid, 'reflections', 'detail', id] as const,
+  standardsAll: (cid: string) => ['company', cid, 'standards'] as const,
+  standards: (cid: string) => ['company', cid, 'standards', 'list'] as const,
+  commandFeed: (cid: string) => ['company', cid, 'command-center', 'feed'] as const,
   // The emergency stop is global (all companies).
   systemStatus: ['system', 'status'] as const,
 }

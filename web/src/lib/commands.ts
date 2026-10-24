@@ -9,7 +9,7 @@ export type CommandAction =
   | { type: 'create'; what: 'task' | 'goal' | 'project' | 'hire' }
   | { type: 'company'; do: 'pause' | 'resume' }
   | { type: 'theme' }
-  | { type: 'compose-note' }
+  | { type: 'focus-command-center' }
   | { type: 'wake-cofounder' }
   | { type: 'emergency-stop' }
   | { type: 'copy-public-url' }
@@ -88,6 +88,8 @@ export interface CommandContext {
   workEngine: boolean
   /** false when the M5 notes / AI Co-founder endpoints are not deployed: their actions are hidden, not faked. */
   autonomy?: boolean
+  /** false when the M10 Command Center is not deployed: its action is hidden, not faked. */
+  commandCenter?: boolean
   /** false when the M6 system endpoints are not deployed: the emergency stop is hidden, not faked. */
   guardrails?: boolean
   /** false when the M8 reachability endpoints are not deployed: its actions are hidden, not faked. */
@@ -104,9 +106,18 @@ export function buildCommands(ctx: CommandContext): PaletteCommand[] {
       { id: 'act:project', group: 'Actions', label: 'Create project', keywords: ['new', 'add'], action: { type: 'create', what: 'project' } },
     )
   }
+  if (ctx.commandCenter !== false) {
+    out.push({
+      id: 'act:focus-command-center',
+      group: 'Actions',
+      label: 'Focus command center',
+      hint: `Commands and messages for the ${AI_COFOUNDER_LABEL}`,
+      keywords: ['note', 'write', 'type', 'tell', 'message', 'thought', 'idea', 'slash', 'founder'],
+      action: { type: 'focus-command-center' },
+    })
+  }
   if (ctx.autonomy !== false) {
     out.push(
-      { id: 'act:note', group: 'Actions', label: `Write a note to the ${AI_COFOUNDER_LABEL}`, hint: 'Founder\u2019s notes', keywords: ['thought', 'idea', 'tell', 'message', 'founder'], action: { type: 'compose-note' } },
       { id: 'act:wake', group: 'Actions', label: `Wake ${AI_COFOUNDER_LABEL}`, hint: 'Start a planning run', keywords: ['run', 'plan', 'now', 'founder'], action: { type: 'wake-cofounder' } },
     )
   }

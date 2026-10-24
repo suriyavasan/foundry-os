@@ -35,16 +35,29 @@ describe('buildCommands', () => {
     expect(none.some((c) => c.id === 'act:hire')).toBe(true)
   })
   it('offers the AI Co-founder commands, and hides them while the M5 backend is missing', () => {
-    expect(cmds.find((c) => c.id === 'act:note')).toMatchObject({ label: 'Write a note to the AI Co-founder', action: { type: 'compose-note' } })
     expect(cmds.find((c) => c.id === 'act:wake')).toMatchObject({ label: 'Wake AI Co-founder', action: { type: 'wake-cofounder' } })
     const none = buildCommands({ agents: [], tasks: [], companyStatus: 'active', workEngine: true, autonomy: false })
-    expect(none.some((c) => c.id === 'act:note' || c.id === 'act:wake')).toBe(false)
+    expect(none.some((c) => c.id === 'act:wake')).toBe(false)
+  })
+  it('M10: focuses the command center (where the old "write a note" lives), hidden while it is missing', () => {
+    // M10 replaced the Founder's-notes widget: free text typed in the Command Center is still stored as a note.
+    expect(cmds.find((c) => c.id === 'act:focus-command-center')).toMatchObject({ label: 'Focus command center', action: { type: 'focus-command-center' } })
+    expect(labels('focus command')[0]).toBe('Focus command center')
+    expect(labels('write note')[0]).toBe('Focus command center')
+    const none = buildCommands({ agents: [], tasks: [], companyStatus: 'active', workEngine: true, commandCenter: false })
+    expect(none.some((c) => c.id === 'act:focus-command-center')).toBe(false)
+  })
+  it('M10: opens the AI settings, reflections, standards and the command center panels', () => {
+    expect(labels('open ai settings')[0]).toBe('Open AI settings')
+    expect(cmds.find((c) => c.id === 'panel:ai')?.action).toEqual({ type: 'panel', panel: { kind: 'ai' } })
+    expect(labels('open reflections')).toContain('Open Reflections')
+    expect(labels('open standards')).toContain('Open Standards')
+    expect(labels('open command center')).toContain('Open Command Center')
   })
   it('opens memory and notes from the palette', () => {
     expect(labels('open memory')).toContain('Open Memory')
     expect(labels('open notes')).toContain('Open Notes')
     expect(cmds.find((c) => c.id === 'panel:cofounder')?.label).toBe('Open AI Co-founder')
-    expect(labels('write note')[0]).toBe('Write a note to the AI Co-founder')
     expect(labels('wake')[0]).toBe('Wake AI Co-founder')
   })
   it('offers Open guardrails, Open finance and Emergency stop, and hides the stop while M6 is missing', () => {

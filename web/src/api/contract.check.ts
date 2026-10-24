@@ -179,3 +179,37 @@ check<WhenInSchema<'ConnectedAccount', Same<T.ConnectedAccountStatus, M<'Connect
 check<WhenInSchema<'Mailbox', Same<T.MailboxStatus, M<'Mailbox'>['status']>>>()
 check<WhenInSchema<'HostedUiDeployment', Same<T.HostedUiStatus, M<'HostedUiDeployment'>['status']>>>()
 check<WhenInSchema<'DomainPlan', Same<T.DomainStatus, M<'DomainPlan'>['status']>>>()
+
+// ---- Milestone 10 (AI setup, coding-CLI runtimes, reflections, command center) ----
+// The M10 backend is built in parallel; types.ts "Milestone 10" documents the assumed paths and shapes. The schema names below
+// are the expected ones (docs/specs/m10-ai-setup-cli-reflections.md). Each check switches itself on when a schema with that
+// name appears after `pnpm gen:api`, and then fails typecheck on any drift.
+check<WhenInSchema<'CliRuntimeStatus', Accepts<T.CliRuntimeStatus, M<'CliRuntimeStatus'>>>>()
+check<WhenInSchema<'AiSetupStatus', Accepts<T.AiSetupStatus, M<'AiSetupStatus'>>>>()
+check<WhenInSchema<'AiSetupUpdate', Accepts<M<'AiSetupUpdate'>, T.AiSetupUpdate>>>()
+check<WhenInSchema<'CliAuthUpdate', Accepts<M<'CliAuthUpdate'>, T.CliAuthUpdate>>>()
+// `ProviderTest` already exists in the schema with the pre-M10 shape (status/message); the check switches on once it carries `checks`.
+check<'ProviderTest' extends keyof S ? ('checks' extends keyof M<'ProviderTest'> ? Accepts<T.ProviderTest, M<'ProviderTest'>> : true) : true>()
+check<WhenInSchema<'CommandRequest', Accepts<M<'CommandRequest'>, T.CommandRequest>>>()
+check<WhenInSchema<'CommandExchange', Accepts<T.CommandExchange, M<'CommandExchange'>>>>()
+check<WhenInSchema<'CommandOutput', Accepts<T.CommandOutput, M<'CommandOutput'>>>>()
+check<WhenInSchema<'Reflection', Accepts<T.Reflection, M<'Reflection'>>>>()
+check<WhenInSchema<'ReflectionDetail', Accepts<T.ReflectionDetail, M<'ReflectionDetail'>>>>()
+check<WhenInSchema<'ReflectionResponse', Accepts<T.ReflectionResponse, M<'ReflectionResponse'>>>>()
+check<WhenInSchema<'ReflectionResponseCreate', Accepts<M<'ReflectionResponseCreate'>, T.ReflectionResponseCreate>>>()
+check<WhenInSchema<'CompanyStandard', Accepts<T.CompanyStandard, M<'CompanyStandard'>>>>()
+check<WhenInSchema<'CompanyStandardCreate', Accepts<M<'CompanyStandardCreate'>, T.CompanyStandardCreate>>>()
+check<WhenInSchema<'CompanyStandardUpdate', Accepts<M<'CompanyStandardUpdate'>, T.CompanyStandardUpdate>>>()
+// The enums the UI switches on must be exactly the server's, once the schema carries them.
+check<WhenInSchema<'Reflection', Same<T.ReflectionKind, M<'Reflection'>['kind']>>>()
+check<WhenInSchema<'Reflection', Same<T.ReflectionStatus, M<'Reflection'>['status']>>>()
+check<WhenInSchema<'ReflectionResponse', Same<T.ReflectionReaction, M<'ReflectionResponse'>['reaction']>>>()
+check<WhenInSchema<'CompanyStandard', Same<T.StandardStatus, M<'CompanyStandard'>['status']>>>()
+check<WhenInSchema<'CommandExchange', Same<T.CommandStatus, M<'CommandExchange'>['status']>>>()
+check<WhenInSchema<'CommandExchange', Same<T.CommandInputKind, M<'CommandExchange'>['input_kind']>>>()
+check<WhenInSchema<'CommandOutput', Same<T.CommandOutputKind, M<'CommandOutput'>['kind']>>>()
+check<WhenInSchema<'AiSetupStatus', Same<T.WorkMode, M<'AiSetupStatus'>['work_mode']>>>()
+check<WhenInSchema<'AiSetupUpdate', Same<T.WorkRuntime, NonNullable<M<'AiSetupUpdate'>['work_runtime']>>>>()
+check<WhenInSchema<'AiSetupStatus', Same<T.AiBlockingReason, NonNullable<M<'AiSetupStatus'>['blocking_reason']>>>>()
+check<WhenInSchema<'CliRuntimeStatus', Same<T.CliAuthMode, M<'CliRuntimeStatus'>['auth_modes'][number]>>>()
+check<WhenInSchema<'CliRuntimeStatus', Same<T.CliRuntimeId, M<'CliRuntimeStatus'>['id']>>>()

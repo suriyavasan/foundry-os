@@ -23,10 +23,14 @@ export const SIMPLE_PANELS = [
   'team',
   'my-work',
   'reachability',
+  'ai',
+  'reflections',
+  'standards',
+  'command-center',
 ] as const
 export type SimplePanel = (typeof SIMPLE_PANELS)[number]
 
-export const ID_PANELS = ['agent', 'task', 'artifact', 'skill', 'note'] as const
+export const ID_PANELS = ['agent', 'task', 'artifact', 'skill', 'note', 'reflection'] as const
 export type IdPanel = (typeof ID_PANELS)[number]
 
 export type Panel =
@@ -36,6 +40,7 @@ export type Panel =
   | { kind: 'artifact'; id: string }
   | { kind: 'skill'; id: string }
   | { kind: 'note'; id: string }
+  | { kind: 'reflection'; id: string }
 
 export const ID_RE = /^[A-Za-z0-9_-]{1,64}$/
 
@@ -61,7 +66,7 @@ export function parsePanel(search: string | URLSearchParams): Panel | null {
     const run = params.get(RUN_PARAM)
     return run && ID_RE.test(run) ? { kind: 'task', id, run } : { kind: 'task', id }
   }
-  return { kind: kind as 'agent' | 'artifact' | 'skill' | 'note', id }
+  return { kind: kind as 'agent' | 'artifact' | 'skill' | 'note' | 'reflection', id }
 }
 
 /** Value of the `panel` query parameter. */
@@ -111,6 +116,10 @@ export const PANEL_TITLE: Record<SimplePanel, string> = {
   team: 'Team',
   'my-work': 'My work',
   reachability: 'Reachability',
+  ai: 'AI settings',
+  reflections: 'Reflections',
+  standards: 'Standards',
+  'command-center': 'Command Center',
 }
 
 const LEGACY_AREAS: Record<string, SimplePanel | null> = {

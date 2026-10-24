@@ -111,3 +111,23 @@ describe('legacyPanelFor', () => {
     expect(legacyPanelFor('nonsense')).toBeUndefined()
   })
 })
+
+describe('M10 panels', () => {
+  it('parses the AI, reflections, standards and command-center panels and the reflection thread', () => {
+    expect(parsePanel('?panel=ai')).toEqual({ kind: 'ai' })
+    expect(parsePanel('?panel=reflections')).toEqual({ kind: 'reflections' })
+    expect(parsePanel('?panel=standards')).toEqual({ kind: 'standards' })
+    expect(parsePanel('?panel=command-center')).toEqual({ kind: 'command-center' })
+    expect(parsePanel('?panel=reflection:rf_1')).toEqual({ kind: 'reflection', id: 'rf_1' })
+    expect(parsePanel('?panel=reflection:../x')).toBeNull()
+    expect(parsePanel('?panel=reflection')).toBeNull()
+  })
+
+  it('round-trips through the URL', () => {
+    for (const p of [{ kind: 'ai' }, { kind: 'command-center' }, { kind: 'reflection', id: 'abc' }] as const) {
+      expect(parsePanel(withPanel('', p))).toEqual(p)
+      expect(serializePanel(p)).toBe('id' in p ? `${p.kind}:${p.id}` : p.kind)
+    }
+    expect(withPanel('', { kind: 'reflection', id: 'rf1' })).toBe('?panel=reflection:rf1')
+  })
+})

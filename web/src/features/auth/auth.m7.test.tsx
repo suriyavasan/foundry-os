@@ -45,8 +45,12 @@ describe('AuthGate on an M7 backend', () => {
   it('shows the setup wizard on a fresh install', async () => {
     vi.stubGlobal('fetch', mockApi({ '/auth/session': { state: 'setup_required', user: null } }).impl)
     renderGate()
+    // M10: the onboarding opens on a welcome screen; the account form is the second of six steps.
+    expect(await screen.findByRole('heading', { name: 'A company that runs itself.' })).toBeInTheDocument()
+    expect(screen.getByText(/Step 1 of 6/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /Start/ }))
     expect(await screen.findByRole('heading', { name: 'Create your account' })).toBeInTheDocument()
-    expect(screen.getByText(/Step 1 of 3/)).toBeInTheDocument()
+    expect(screen.getByText(/Step 2 of 6/)).toBeInTheDocument()
   })
 
   it('keeps the owner-token flow on a backend without /auth/session', async () => {
@@ -192,15 +196,26 @@ describe('setup wizard', () => {
     return api
   }
 
-  async function fillAccount() {
+  /** Past the welcome screen to the account form. */
+  async function yourName() {
+    await userEvent.click(await screen.findByRole('button', { name: /Start/ }))
+    return screen.findByLabelText(/Your name/)
+  }
+
+  async function fillAccountFields() {
     await userEvent.type(await screen.findByLabelText(/Your name/), 'Maya Chen')
     await userEvent.type(screen.getByLabelText(/^Password/), PASSWORD)
     await userEvent.type(screen.getByLabelText(/Confirm password/), PASSWORD)
   }
 
+  async function fillAccount() {
+    await userEvent.click(await screen.findByRole('button', { name: /Start/ }))
+    await fillAccountFields()
+  }
+
   it('suggests a username from the name until the person edits it', async () => {
     setup()
-    await userEvent.type(await screen.findByLabelText(/Your name/), 'Maya Chen')
+    await userEvent.type(await yourName(), 'Maya Chen')
     expect(screen.getByLabelText(/^Username/)).toHaveValue('maya.chen')
     await userEvent.clear(screen.getByLabelText(/^Username/))
     await userEvent.type(screen.getByLabelText(/^Username/), 'mc')
@@ -210,7 +225,7 @@ describe('setup wizard', () => {
 
   it('shows a strength meter and the common-password warning, and blocks submitting it', async () => {
     const api = setup()
-    await userEvent.type(await screen.findByLabelText(/Your name/), 'Maya Chen')
+    await userEvent.type(await yourName(), 'Maya Chen')
     await userEvent.type(screen.getByLabelText(/^Password/), 'password1234')
     const meter = screen.getByRole('meter', { name: 'Password strength' })
     expect(meter).toHaveAttribute('aria-valuetext', expect.stringMatching(/Very weak|Weak/))
@@ -223,7 +238,7 @@ describe('setup wizard', () => {
 
   it('requires 12 characters and matching confirmation', async () => {
     setup()
-    await userEvent.type(await screen.findByLabelText(/Your name/), 'Maya Chen')
+    await userEvent.type(await yourName(), 'Maya Chen')
     await userEvent.type(screen.getByLabelText(/^Password/), 'short')
     await userEvent.type(screen.getByLabelText(/Confirm password/), 'shorty')
     await userEvent.click(screen.getByRole('button', { name: 'Create account' }))
@@ -242,6 +257,7 @@ describe('setup wizard', () => {
 
   it('shows the setup token field, with where to find it, only when the server requires it', async () => {
     setup({ tokenRequired: true })
+    await yourName()
     expect(await screen.findByLabelText(/Setup token/)).toBeInTheDocument()
     expect(screen.getByText('data/owner.token')).toBeInTheDocument()
     expect(screen.getByText(/terminal where the backend started/)).toBeInTheDocument()
@@ -249,7 +265,7 @@ describe('setup wizard', () => {
 
   it('hides the setup token field on loopback', async () => {
     setup({ tokenRequired: false })
-    await screen.findByLabelText(/Your name/)
+    await yourName()
     expect(screen.queryByLabelText(/Setup token/)).not.toBeInTheDocument()
   })
 
@@ -261,9 +277,27 @@ describe('setup wizard', () => {
     expect(screen.getByText(/Enter the setup token printed by the server/)).toBeInTheDocument()
   })
 
-  it('sends the token, then walks company -> local model -> the app, staying in the wizard after sign-in', async () => {
-    const api = setup({ tokenRequired: true })
+  /** Account + company on a backend that predates the AI setup (every /ai-setup answers 404). */
+  async function toAiStep(opts: { idea?: string } = {}) {
     await fillAccount()
+    await userEvent.click(screen.getByRole('button', { name: 'Create account' }))
+    await userEvent.type(await screen.findByLabelText(/Company name/), 'Acme')
+    if (opts.idea) await userEvent.type(screen.getByLabelText(/What is it going to do/), opts.idea)
+    await userEvent.click(screen.getByRole('button', { name: 'Create company' }))
+    await screen.findByRole('heading', { name: 'Connect your AI' })
+  }
+
+  async function throughAiAndWork() {
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    await screen.findByRole('heading', { name: 'How should work get done?' })
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    await screen.findByRole('heading', { name: 'Meet your team' })
+  }
+
+  it('sends the token, then walks company -> AI -> work -> team -> the app, staying in the onboarding after sign-in', async () => {
+    const api = setup({ tokenRequired: true })
+    await userEvent.click(await screen.findByRole('button', { name: /Start/ }))
+    await fillAccountFields()
     await userEvent.type(screen.getByLabelText(/Setup token/), '  tok-123  ')
     await userEvent.type(screen.getByLabelText(/^Email/), 'maya@example.com')
     await userEvent.click(screen.getByRole('button', { name: 'Create account' }))
@@ -282,49 +316,40 @@ describe('setup wizard', () => {
     await userEvent.type(screen.getByLabelText(/What is it going to do/), 'A newsletter about research papers')
     await userEvent.click(screen.getByRole('button', { name: 'Create company' }))
 
-    expect(await screen.findByRole('heading', { name: 'Connect a local model' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Connect your AI' })).toBeInTheDocument()
     const created = api.calls.find((c) => c.method === 'POST' && c.path === '/companies')!
     expect(created.body).toMatchObject({ name: 'Acme', founder: { name: 'Atlas' } })
     expect(typeof (created.body as { timezone: string }).timezone).toBe('string')
-    expect(api.calls.find((c) => c.path === '/companies/c9/notes')!.body).toEqual({ body: 'A newsletter about research papers' })
+    // The server refuses notes until the AI works, so the idea waits until the work step is done.
+    expect(api.calls.some((c) => c.path === '/companies/c9/notes')).toBe(false)
     expect(api.calls.some((c) => c.method === 'PATCH')).toBe(false)
 
-    // Detection only runs when asked; skipping finishes.
-    expect(api.calls.some((c) => c.path.endsWith('/model-providers/detect'))).toBe(false)
-    await userEvent.click(screen.getByRole('button', { name: 'Skip for now' }))
+    await throughAiAndWork()
+    expect(api.calls.find((c) => c.path === '/companies/c9/notes')!.body).toEqual({ body: 'A newsletter about research papers' })
+    expect(api.calls.some((c) => c.method === 'PATCH')).toBe(false)
+    await userEvent.click(screen.getByRole('button', { name: /Launch/ }))
     expect(await screen.findByText('the app')).toBeInTheDocument()
   })
 
   it('does not post a note when no idea was written', async () => {
     const api = setup()
-    await fillAccount()
-    await userEvent.click(screen.getByRole('button', { name: 'Create account' }))
-    await userEvent.type(await screen.findByLabelText(/Company name/), 'Acme')
-    await userEvent.click(screen.getByRole('button', { name: 'Create company' }))
-    await screen.findByRole('heading', { name: 'Connect a local model' })
+    await toAiStep()
+    await throughAiAndWork()
     expect(api.calls.some((c) => c.path.endsWith('/notes'))).toBe(false)
   })
 
   it('keeps the idea as the strategic goal when the backend has no notes yet', async () => {
     const api = setup({ notes: false })
-    await fillAccount()
-    await userEvent.click(screen.getByRole('button', { name: 'Create account' }))
-    await userEvent.type(await screen.findByLabelText(/Company name/), 'Acme')
-    await userEvent.type(screen.getByLabelText(/What is it going to do/), 'Sell lemonade')
-    await userEvent.click(screen.getByRole('button', { name: 'Create company' }))
-    await screen.findByRole('heading', { name: 'Connect a local model' })
+    await toAiStep({ idea: 'Sell lemonade' })
+    await throughAiAndWork()
     expect(api.calls.find((c) => c.method === 'PATCH' && c.path === '/companies/c9')!.body).toEqual({ strategic_goal: 'Sell lemonade' })
   })
 
-  it('reuses the existing local-model detection', async () => {
-    const api = setup()
-    await fillAccount()
-    await userEvent.click(screen.getByRole('button', { name: 'Create account' }))
-    await userEvent.type(await screen.findByLabelText(/Company name/), 'Acme')
-    await userEvent.click(screen.getByRole('button', { name: 'Create company' }))
-    await userEvent.click(await screen.findByRole('button', { name: 'Detect local models' }))
-    expect(await screen.findByRole('status', { name: 'Local Ollama detection' })).toHaveTextContent(/not built yet/)
-    expect(api.calls.some((c) => c.path === '/companies/c9/model-providers/detect')).toBe(true)
+  it('says plainly that this backend has no AI setup yet, and lets the person go on', async () => {
+    setup()
+    await toAiStep()
+    expect(await screen.findByText(/AI setup is not available on this server yet/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled()
   })
 
   it('offers sign-in when someone else finished setup first', async () => {

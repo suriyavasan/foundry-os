@@ -46,3 +46,21 @@ export function readSeenReplies(cid: string): Record<string, string> {
 export function writeSeenReplies(cid: string, seen: Record<string, string>) {
   safeSet(seenKey(cid), JSON.stringify(seen))
 }
+
+/* Command Center: what this browser typed there, newest last, for ↑/↓. Per company, kept only in this browser. */
+const cmdHistoryKey = (cid: string) => `company-os.command-history.${cid}`
+
+export function readCommandHistory(cid: string): string[] {
+  const raw = safeGet(cmdHistoryKey(cid))
+  if (!raw) return []
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string').slice(-50) : []
+  } catch {
+    return []
+  }
+}
+
+export function writeCommandHistory(cid: string, items: string[]) {
+  safeSet(cmdHistoryKey(cid), JSON.stringify(items.slice(-50)))
+}

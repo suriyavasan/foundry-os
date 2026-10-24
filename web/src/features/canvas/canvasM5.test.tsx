@@ -15,34 +15,48 @@ afterEach(() => vi.unstubAllGlobals())
 const m5 = { ...baseRoutes, '/companies/c1/notes': page([makeNote({ id: 'n1', body: 'Hello' })]) }
 
 describe('canvas layout', () => {
-  it('puts the Founder’s notes immediately right of the organization (8 + 4 columns, same height) and live activity on the next row', async () => {
+  it('puts Reflections and the Command Center next to the organization (6 + 3 + 3 columns, same tall height); below 1440 px the organization is full width', async () => {
     vi.stubGlobal('fetch', mockApi(m5).impl)
     renderCanvas()
-    await screen.findByRole('region', { name: "Founder's notes" })
+    await screen.findByRole('region', { name: 'Command Center' })
     const main = screen.getByRole('main')
     const sections = [...main.querySelectorAll(':scope > div > section')]
     const names = sections.map((s) => within(s as HTMLElement).getAllByRole('heading', { level: 2 })[0]!.textContent)
-    expect(names.slice(0, 3)).toEqual(['Organization', "Founder's notes", 'Live activity'])
+    expect(names.slice(0, 4)).toEqual(['Organization', 'Reflections', 'Command Center', 'Live activity'])
 
-    const org = sections[0] as HTMLElement
-    const notes = sections[1] as HTMLElement
-    const live = sections[2] as HTMLElement
-    expect(org.className).toContain('xl:col-span-8')
-    expect(notes.className).toContain('xl:col-span-4')
-    // 8 + 4 fill the twelve columns: same row. Live activity does not share it.
-    expect(live.className).toContain('xl:col-span-8')
-    // same height token (both are the tall widget)
+    const [org, reflections, cc, live] = sections as HTMLElement[]
+    // >= 1440 px: 6 + 3 + 3 fill the twelve columns on one row.
+    expect(org!.className).toContain('min-[1440px]:col-span-6')
+    expect(reflections!.className).toContain('min-[1440px]:col-span-3')
+    expect(cc!.className).toContain('min-[1440px]:col-span-3')
+    // 1280-1439 px: organization alone on a row, Reflections and Command Center side by side under it.
+    expect(org!.className).toContain('xl:col-span-12')
+    expect(reflections!.className).toContain('xl:col-span-6')
+    expect(cc!.className).toContain('xl:col-span-6')
+    // tablet: organization spans both columns, the other two share a row; phone: one column (no span set).
+    expect(org!.className).toContain('md:col-span-2')
+    expect(reflections!.className).not.toContain('md:col-span-2')
+    expect(cc!.className).not.toContain('md:col-span-2')
+    // Live activity does not share row one.
+    expect(live!.className).toContain('xl:col-span-8')
+    // all three are the tall widget
     const tall = (el: HTMLElement) => el.className.includes('--widget-h-tall')
-    expect(tall(org)).toBe(true)
-    expect(tall(notes)).toBe(true)
+    expect([org, reflections, cc].every((el) => tall(el!))).toBe(true)
+  })
+
+  it('no longer has the Founder’s-notes widget on the canvas (the Notes panel is unchanged)', async () => {
+    vi.stubGlobal('fetch', mockApi(m5).impl)
+    renderCanvas()
+    await screen.findByRole('region', { name: 'Command Center' })
+    expect(screen.queryByRole('region', { name: "Founder's notes" })).not.toBeInTheDocument()
   })
 
   it('keeps every widget in the same frame', async () => {
     vi.stubGlobal('fetch', mockApi(m5).impl)
     renderCanvas()
-    await screen.findByRole('region', { name: "Founder's notes" })
+    await screen.findByRole('region', { name: 'Command Center' })
     const titles = within(screen.getByRole('main')).getAllByRole('heading', { level: 2 }).map((h) => h.textContent)
-    for (const t of ['Organization', "Founder's notes", 'Live activity', 'Goals & plan', 'Work', 'Approvals', 'Spend', 'Artifacts', 'Routines', 'Skills']) expect(titles).toContain(t)
+    for (const t of ['Organization', 'Reflections', 'Command Center', 'Live activity', 'Goals & plan', 'Work', 'Approvals', 'Spend', 'Artifacts', 'Routines', 'Skills']) expect(titles).toContain(t)
   })
 })
 
@@ -109,16 +123,19 @@ describe('reaching the AI Co-founder view', () => {
 })
 
 describe('command palette', () => {
-  it('writes a note: focuses the composer', async () => {
-    vi.stubGlobal('fetch', mockApi(m5).impl)
+  const cc = { ...m5, '/companies/c1/command-center/feed': page([]) }
+  const input = () => screen.getByRole('combobox', { name: /Command or message for the AI Co-founder/ })
+
+  it('focus command center: puts the cursor in the Command Center input (where a note is now written)', async () => {
+    vi.stubGlobal('fetch', mockApi(cc).impl)
     renderCanvas()
     const user = userEvent.setup()
-    await screen.findByRole('textbox', { name: 'Write a note to the AI Co-founder' })
+    await screen.findByRole('combobox', { name: /Command or message for the AI Co-founder/ })
     await user.keyboard('{Control>}k{/Control}')
-    await user.type(await screen.findByRole('combobox', { name: 'Search commands' }), 'write a note')
-    expect(screen.getByRole('option', { name: /Write a note to the AI Co-founder/ })).toBeInTheDocument()
+    await user.type(await screen.findByRole('combobox', { name: 'Search commands' }), 'focus command')
+    expect(screen.getByRole('option', { name: /Focus command center/ })).toBeInTheDocument()
     await user.keyboard('{Enter}')
-    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Write a note to the AI Co-founder' })).toHaveFocus(), { timeout: 2000 })
+    await waitFor(() => expect(input()).toHaveFocus(), { timeout: 2000 })
   })
 
   it('wakes the AI Co-founder', async () => {
@@ -126,7 +143,7 @@ describe('command palette', () => {
     vi.stubGlobal('fetch', api.impl)
     renderCanvas()
     const user = userEvent.setup()
-    await screen.findByRole('textbox', { name: 'Write a note to the AI Co-founder' })
+    await screen.findByText('Atlas')
     await user.keyboard('{Control>}k{/Control}')
     await user.type(await screen.findByRole('combobox', { name: 'Search commands' }), 'wake')
     await user.click(screen.getByRole('option', { name: /Wake AI Co-founder/ }))
@@ -138,7 +155,7 @@ describe('command palette', () => {
     vi.stubGlobal('fetch', mockApi(m5).impl)
     renderCanvas()
     const user = userEvent.setup()
-    await screen.findByRole('textbox', { name: 'Write a note to the AI Co-founder' })
+    await screen.findByText('Atlas')
     await user.keyboard('{Control>}k{/Control}')
     await user.type(await screen.findByRole('combobox', { name: 'Search commands' }), 'open memory')
     await user.keyboard('{Enter}')
@@ -146,14 +163,30 @@ describe('command palette', () => {
     expect(loc()).toBe('?panel=memory')
   })
 
-  it('hides the note and wake commands while the M5 backend is missing', async () => {
+  it.each([
+    ['open ai settings', 'ai'],
+    ['open reflections', 'reflections'],
+    ['open standards', 'standards'],
+    ['open command center', 'command-center'],
+  ])('M10: the palette command "%s" opens ?panel=%s', async (query, panel) => {
+    vi.stubGlobal('fetch', mockApi(m5).impl)
+    renderCanvas()
+    const user = userEvent.setup()
+    await screen.findByText('Atlas')
+    await user.keyboard('{Control>}k{/Control}')
+    await user.type(await screen.findByRole('combobox', { name: 'Search commands' }), query)
+    await user.keyboard('{Enter}')
+    await waitFor(() => expect(loc()).toBe(`?panel=${panel}`))
+  }, 15_000)
+
+  it('hides the focus-command-center and wake commands while the backend is missing', async () => {
     vi.stubGlobal('fetch', mockApi({ ...baseRoutes, '/companies/c1/tasks': page([makeTask({ id: 't1' })]) }).impl)
     renderCanvas()
     const user = userEvent.setup()
     await screen.findByText('Atlas')
-    await waitFor(() => expect(screen.getAllByText(/Arrives in M5/).length).toBeGreaterThan(0))
+    await waitFor(() => expect(screen.getAllByText(/Arrives in M10/).length).toBeGreaterThan(0)) // Command Center and Reflections: not built here
     await user.keyboard('{Control>}k{/Control}')
-    await user.type(await screen.findByRole('combobox', { name: 'Search commands' }), 'note')
-    expect(screen.queryByRole('option', { name: /Write a note/ })).not.toBeInTheDocument()
+    await user.type(await screen.findByRole('combobox', { name: 'Search commands' }), 'focus')
+    expect(screen.queryByRole('option', { name: /Focus command center/ })).not.toBeInTheDocument()
   })
 })
