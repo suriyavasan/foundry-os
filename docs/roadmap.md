@@ -34,6 +34,7 @@ reachable from anywhere — without approving each step.*
 | M7 | Accounts, login & team | Username/password onboarding, sessions, roles, email/link invitations, humans in the org tree with assignable tasks, notifications | done |
 | M8 | Reachability & identity | Landing "how to reach" (LAN + public), tunnel, free-domain flows, optional paid domain (approval), Vercel-hosted control UI, company email identity, connected-accounts vault | done |
 | M9 | OS packaging & hardening | `companyos` CLI, single-port serve, Docker Compose, backups, security review, final verification | done for the local install (CLI, `companyos up`, single-port serve + CSP, backup/restore, security review, `scripts/verify.sh`: 10/10 items passed on 2026-10-24 on macOS + SQLite + local qwen2.5:7b); **Docker image/Compose and PostgreSQL written but not verified** - see "Final verification" |
+| M10 | AI setup, coding-CLI workforce, Reflections, Command Center | Mandatory working-API onboarding gate (OpenRouter / Anthropic / OpenAI / OpenAI-compatible); optional Claude Code / Codex / OpenCode work runtimes (API manages the company, CLIs do the work) with isolation + MCP company tools; animated single-screen onboarding; Reflections + human-set company standards; Command Center where every input gets an output | in progress |
 
 Order: M3b ∥ M4-UI → M5 → M6 → M7 → M8 → M9. UI for each milestone ships with it.
 
