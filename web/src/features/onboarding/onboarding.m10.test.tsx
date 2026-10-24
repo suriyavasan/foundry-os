@@ -160,12 +160,13 @@ describe('Connect your AI: key, test, model, ready', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Test connection' }))
     await screen.findByRole('listitem', { name: 'Model available: failed' })
     // the provider now exists, so its model list is offered as a picker
-    const model = screen.getByLabelText(/^Model\b/, { selector: 'input' })
-    await userEvent.clear(model)
-    await userEvent.click(model)
+    // Re-query the input at every step: it re-renders once the model list arrives (slow CI runners hit this).
+    const modelInput = () => screen.getByLabelText(/^Model\b/, { selector: 'input' })
+    await userEvent.clear(modelInput())
+    await userEvent.click(modelInput())
     const option = await screen.findByRole('option', { name: /openai\/gpt-4\.1/ })
     await userEvent.click(option)
-    expect(model).toHaveValue('openai/gpt-4.1')
+    await waitFor(() => expect(modelInput()).toHaveValue('openai/gpt-4.1'))
     await userEvent.click(screen.getByRole('button', { name: 'Test connection' })) // a changed model clears the old result
     await waitFor(() => expect(api.calls.some((c) => c.method === 'PUT')).toBe(true))
     expect(api.calls.filter((c) => c.method === 'POST' && c.path === '/companies/c1/credentials')).toHaveLength(1)
