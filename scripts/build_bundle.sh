@@ -70,8 +70,9 @@ case $PLATFORM in
 esac
 HOST_ARCH=$(uname -m)
 [ "$HOST_ARCH" = aarch64 ] && HOST_ARCH=arm64
-[ "$(uname -s)" = "$WANT_OS" ] && [ "$HOST_ARCH" = "$WANT_ARCH" ] ||
+if [ "$(uname -s)" != "$WANT_OS" ] || [ "$HOST_ARCH" != "$WANT_ARCH" ]; then
     die "$PLATFORM bundles must be built on a $PLATFORM machine (this one is $(uname -s)/$(uname -m)): the bundle's interpreters are executed during the build"
+fi
 
 command -v "$UV" >/dev/null 2>&1 || die "uv is required to build bundles (https://docs.astral.sh/uv/)"
 have_uv=$("$UV" --version | awk '{print $2}')
