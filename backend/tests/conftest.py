@@ -48,26 +48,6 @@ def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _no_release_network(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The update check and the updater never reach GitHub from the suite: every HTTP client they
-    build is offline unless a test installs its own (``tests/m11_helpers.py``)."""
-    import httpx
-
-    from app.ops import updatecheck, updater
-
-    def offline() -> httpx.Client:
-        def refuse(request: httpx.Request) -> httpx.Response:
-            raise httpx.ConnectError("offline in tests", request=request)
-
-        return httpx.Client(transport=httpx.MockTransport(refuse))
-
-    monkeypatch.setattr(updatecheck, "http_client_factory", offline)
-    monkeypatch.setattr(updater, "download_client_factory", offline)
-    monkeypatch.delenv("FOUNDRYOS_DOWNLOAD_BASE", raising=False)
-    monkeypatch.delenv("FOUNDRYOS_LAUNCHER", raising=False)
-
-
-@pytest.fixture(autouse=True)
 def _ai_gate(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
     """The AI readiness gate (M10) is off for the general suite (most tests build companies without a
     model provider); tests marked ``ai_gate`` run with it enforced exactly as in production."""
