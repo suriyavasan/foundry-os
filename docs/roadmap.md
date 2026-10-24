@@ -30,9 +30,9 @@ reachable from anywhere — without approving each step.*
 | M3b | Runtime integration | Adapter, model providers, encrypted credentials, HR tools in runtime, local-owner auth gate, real E2E task | done |
 | M4 | Skills & HR | Skill library (Hermes + GitHub), scan/quarantine, role templates, HR agent, hiring, gap detection; skills UI | done |
 | M5 | Autonomous operating model | Layered loops (strategic/management/execution/support), Founder's notes + AI Co-founder triage, event triggers, self-healing, lessons, company memory, schedules | backend + runtime done (UI done earlier); live run on a local 7B only partly autonomous - see status notes |
-| M6 | Guardrails & governance | Action risk tiers + policy engine, rate limits, maker-checker for external actions, outbound DLP, injection defenses, stall/runaway detection, emergency stop, mid-run budgets, free-first routing, finance views, guardrail audit | planned |
-| M7 | Accounts, login & team | Username/password onboarding, sessions, roles, email/link invitations, humans in the org tree with assignable tasks, notifications | planned |
-| M8 | Reachability & identity | Landing "how to reach" (LAN + public), tunnel, free-domain flows, optional paid domain (approval), Vercel-hosted control UI, company email identity, connected-accounts vault | planned |
+| M6 | Guardrails & governance | Action risk tiers + policy engine, rate limits, maker-checker for external actions, outbound DLP, injection defenses, stall/runaway detection, emergency stop, mid-run budgets, free-first routing, finance views, guardrail audit | UI done · backend in progress |
+| M7 | Accounts, login & team | Username/password onboarding, sessions, roles, email/link invitations, humans in the org tree with assignable tasks, notifications | UI done · backend planned |
+| M8 | Reachability & identity | Landing "how to reach" (LAN + public), tunnel, free-domain flows, optional paid domain (approval), Vercel-hosted control UI, company email identity, connected-accounts vault | UI done · backend planned |
 | M9 | OS packaging & hardening | `companyos` CLI, single-port serve, Docker Compose, backups, security review, final verification | planned |
 
 Order: M3b ∥ M4-UI → M5 → M6 → M7 → M8 → M9. UI for each milestone ships with it.
@@ -64,6 +64,13 @@ detection, circuit breaker and emergency stop. Agents can never change their own
   require the Founder's approval by default (configurable).
 
 ## Status notes
+
+- **M5 live run (2026-10-24, local qwen2.5:7b):** one Founder's note → triaged as a
+  directive + reply, a goal and a project, HR hired a project lead and a researcher ($5/mo
+  each), 16 runs (12 ok), 7 artifacts (plan, audience and market analyses); positioning and
+  page copy not reached in 30 min. Bottlenecks: 1–6 min per 7B run and over-decomposition.
+  A stronger model (free OpenRouter models or a cloud key, routed by M6) is the biggest
+  lever for end-to-end autonomy.
 
 - **M3b live proof (2026-10-24, local qwen2.5:7b, 32K context):** a research-analyst hire
   executed a real task end to end (15 events, artifact with the requested 5 bullets,
