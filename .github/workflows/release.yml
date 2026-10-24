@@ -142,7 +142,7 @@ jobs:
       - name: SHA256SUMS
         run: |
           packaging/sums.sh release
-          [ "$(grep -c 'foundry-os-.*\.tar\.gz' release/SHA256SUMS)" = 4 ] || { echo "::error::expected 4 bundles"; exit 1; }
+          [ "$(grep -c 'foundry-os-.*\.tar\.gz' release/SHA256SUMS)" = 3 ] || { echo "::error::expected 3 bundles (darwin-arm64, linux-arm64, linux-x86_64)"; exit 1; }
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
