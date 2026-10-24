@@ -130,7 +130,10 @@ class OwnerTokenProvider:
                 self.path,
             )
             return
-        lines = ["", "  Company OS owner login (open this link in your browser; keep it secret):"]
+        lines = [
+            "",
+            "  Foundry AI OS owner login (open this link in your browser; keep it secret):",
+        ]
         lines += [f"    {url}" for url in self.login_urls()]
         lines += [f"  The token is stored in {self.path} (mode 0600).", ""]
         print("\n".join(lines), file=sys.stderr, flush=True)
@@ -140,7 +143,7 @@ class OwnerTokenProvider:
         force = self._settings.print_login_url
         if force is False or (force is None and not sys.stderr.isatty()):
             logger.warning(
-                "Company OS needs its first-run setup. Open the app and create your account; "
+                "Foundry AI OS needs its first-run setup. Open the app and create your account; "
                 "from another device you need the setup token in %s (mode 0600).",
                 self.path,
             )
@@ -148,7 +151,7 @@ class OwnerTokenProvider:
         base = self._settings.public_url.rstrip("/")
         lines = [
             "",
-            "  Company OS first-run setup: open the app and create your account.",
+            "  Foundry AI OS first-run setup: open the app and create your account.",
             f"    {base}",
             "  From another device you also need this setup token (not needed on this machine):",
             f"    {self.ensure()}",

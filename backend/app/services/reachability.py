@@ -413,7 +413,7 @@ def status(db: Session, ic: IntegrationContext, principal: Principal) -> dict[st
 
 def set_lan(db: Session, ic: IntegrationContext, principal: Principal, enabled: bool) -> None:
     """Persist the bind preference. The listening socket belongs to the launcher: the process must
-    be restarted (``python -m app.serve`` / ``companyos up``) to rebind, which ``restart_required``
+    be restarted (``python -m app.serve`` / ``foundryos up``) to rebind, which ``restart_required``
     reports. Switching it on needs the exposure gate; switching it off never does."""
     require_installation_owner(db, principal)
     if enabled:

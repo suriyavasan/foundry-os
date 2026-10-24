@@ -7,7 +7,7 @@ export function Wordmark() {
       <span aria-hidden className="relative flex size-8 items-center justify-center rounded-md bg-accent-subtle">
         <span className="size-2.5 rotate-45 rounded-[2px] bg-accent" />
       </span>
-      <span className="text-[13px] font-semibold tracking-wide text-fg-2">Company OS</span>
+      <span className="text-[13px] font-semibold tracking-wide text-fg-2">Foundry AI OS</span>
     </div>
   )
 }

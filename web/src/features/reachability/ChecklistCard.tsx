@@ -31,7 +31,7 @@ export function ChecklistCard({ status, accounts, email, canManage }: { status: 
     <Card aria-label="Your one-time steps">
       <CardHeader
         title="Your one-time steps"
-        description="You connect each service once. Company OS never creates accounts for you; the AI Co-founder takes it from there."
+        description="You connect each service once. Foundry AI OS never creates accounts for you; the AI Co-founder takes it from there."
         actions={
           <Badge tone={progress.complete ? 'success' : 'neutral'}>
             {progress.done} of {progress.total} done

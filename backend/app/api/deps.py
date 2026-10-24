@@ -150,7 +150,7 @@ def _enforce_token_scope(token: ApiToken, request: Request) -> None:
 def _unauthenticated(settings: Settings) -> Unauthenticated:
     if settings.auth_mode == "local":
         return Unauthenticated(
-            "Owner credential required. Open Company OS from the login link printed in the "
+            "Owner credential required. Open Foundry AI OS from the login link printed in the "
             "terminal where the backend runs (see backend/README.md).",
             details={"reason": "owner_credential_required", "login_path": "/api/auth/local"},
         )

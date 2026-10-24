@@ -435,7 +435,7 @@ def _deliver_invitation(db, ctx, ic, inv, raw, email, now):
     name = company.name if company else "the company"
     url = f"{mail_dispatch.base_url(ic)}/invite/{raw}"
     body = (
-        f"{ctx.principal.label} invited you to join {name} on Company OS as {inv.role}.\n\n"
+        f"{ctx.principal.label} invited you to join {name} on Foundry AI OS as {inv.role}.\n\n"
         f"Accept the invitation: {url}\n\n"
         f"The link works once and expires on {inv.expires_at:%Y-%m-%d}. If you did not expect "
         "this, ignore this message."

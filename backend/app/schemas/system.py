@@ -123,3 +123,21 @@ class Overview(BaseModel):
     artifacts: ArtifactsOverview
     routines: RoutinesOverview
     recent_activity: list[AuditEvent]
+
+
+class UpdateStatus(BaseModel):
+    """Is a newer release known? (cached, at most one GitHub request a day; owner only)"""
+
+    enabled: bool  # the daily check is on
+    current_version: str
+    latest_version: str | None
+    update_available: bool
+    checked_at: str | None
+    release_url: str | None
+    install_kind: Literal["source", "installer", "homebrew", "bundle", "docker"]
+    update_command: str  # what the owner types to update this kind of install
+    error: str | None
+
+
+class UpdateSettingsRequest(BaseModel):
+    enabled: bool

@@ -71,7 +71,7 @@ export function OnboardingPage() {
     <div className="min-h-screen bg-canvas px-4 py-10">
       <div className="mx-auto max-w-2xl">
         <div className="mb-6">
-          <p className="text-[11px] font-semibold tracking-[0.12em] text-fg-3 uppercase">Company OS</p>
+          <p className="text-[11px] font-semibold tracking-[0.12em] text-fg-3 uppercase">Foundry AI OS</p>
           <h1 className="mt-1 text-[22px] font-semibold tracking-tight text-fg">Create your company</h1>
           <p className="mt-1 max-w-xl text-[13px] text-fg-3">
             You are the Founder. Setting up a company also creates its AI Co-founder, who manages every other agent and reports to you.

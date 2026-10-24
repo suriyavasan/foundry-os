@@ -515,7 +515,7 @@ def author_skill(
         raise Conflict(f"The slug {data.slug!r} belongs to an installed skill; choose another")
     tags = normalize_tags(data.tags)
     version = _bump(existing.version) if existing is not None else "1.0.0"
-    label = ctx.principal.label if ctx.principal.is_agent else "Company OS"
+    label = ctx.principal.label if ctx.principal.is_agent else "Foundry AI OS"
     frontmatter = {
         "name": data.slug,
         "description": " ".join(data.description.split()),

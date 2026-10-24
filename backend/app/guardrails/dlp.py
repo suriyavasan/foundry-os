@@ -2,9 +2,9 @@
 
 Findings carry a kind, a severity, a description and a count -- NEVER the matched text, so they can
 be shown to a reviewer, stored on the approval and logged without leaking the very thing they
-caught. What is scanned: credential-shaped strings, the exact secrets Company OS itself holds (run
-tokens, the owner token, stored credential values), e-mail addresses and phone numbers beyond the
-allowlist (the recipients and human-configured domains), and verbatim passages from verified
+caught. What is scanned: credential-shaped strings, the exact secrets Foundry AI OS itself holds
+(run tokens, the owner token, stored credential values), e-mail addresses and phone numbers beyond
+the allowlist (the recipients and human-configured domains), and verbatim passages from verified
 company memory tagged internal.
 """
 
@@ -127,7 +127,7 @@ def scan_text(
             Finding(
                 "own_token",
                 "high",
-                "A Company OS run or owner token appears in the text",
+                "A Foundry AI OS run or owner token appears in the text",
                 own_tokens,
             )
         )

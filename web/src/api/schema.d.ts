@@ -98,6 +98,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/system/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Update Status
+         * @description Installation owner only. Is a newer release known? Asks GitHub at most once a day.
+         */
+        get: operations["update_status_api_system_update_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/update/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Settings
+         * @description Installation owner only. Switch the daily update check on or off (audited).
+         */
+        put: operations["update_settings_api_system_update_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/local": {
         parameters: {
             query?: never;
@@ -9529,6 +9569,38 @@ export interface components {
             /** Next Run At */
             next_run_at: string | null;
         };
+        /** UpdateSettingsRequest */
+        UpdateSettingsRequest: {
+            /** Enabled */
+            enabled: boolean;
+        };
+        /**
+         * UpdateStatus
+         * @description Is a newer release known? (cached, at most one GitHub request a day; owner only)
+         */
+        UpdateStatus: {
+            /** Enabled */
+            enabled: boolean;
+            /** Current Version */
+            current_version: string;
+            /** Latest Version */
+            latest_version: string | null;
+            /** Update Available */
+            update_available: boolean;
+            /** Checked At */
+            checked_at: string | null;
+            /** Release Url */
+            release_url: string | null;
+            /**
+             * Install Kind
+             * @enum {string}
+             */
+            install_kind: "source" | "installer" | "homebrew" | "bundle" | "docker";
+            /** Update Command */
+            update_command: string;
+            /** Error */
+            error: string | null;
+        };
         /** UsageRow */
         UsageRow: {
             /** Key */
@@ -9693,6 +9765,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EmergencyStopStatus"];
+                };
+            };
+        };
+    };
+    update_status_api_system_update_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateStatus"];
+                };
+            };
+        };
+    };
+    update_settings_api_system_update_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -858,7 +858,7 @@ def _normalize_changes(
         if type_ not in RECORD_TYPES:
             raise ValidationFailed(
                 f"DNS type {type_!r} is not supported here ({', '.join(RECORD_TYPES)}); "
-                "nameserver and SOA changes are never made by Company OS"
+                "nameserver and SOA changes are never made by Foundry AI OS"
             )
         name = str(change.get("name", "")).strip().lower().rstrip(".")
         if zone_name is not None:

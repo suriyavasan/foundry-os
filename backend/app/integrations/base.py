@@ -20,7 +20,7 @@ from app.services.secrets_scan import scrub
 
 DEFAULT_TIMEOUT = 20.0
 MAX_ERROR_CHARS = 300
-USER_AGENT = "company-os/0.1 (+https://github.com/company-os)"
+USER_AGENT = "foundry-os/0.1 (+https://github.com/suriyavasan/foundry-os)"
 
 
 class ProviderError(AppError):

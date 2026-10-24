@@ -148,7 +148,7 @@ function SkillDetail({ skill, onBack }: { skill: SkillDetail; onBack: () => void
                 { label: 'Scan', value: <VerdictBadge verdict={skill.scan_verdict} /> },
                 { label: 'Source', value: <span>{sourceKindLabel(skill.source_kind)}</span> },
                 { label: 'Source reference', value: <span className="font-mono text-[12px] break-all">{skill.source_ref}</span> },
-                { label: 'Trust', value: <span title="builtin: Hermes and Company OS skills. trusted: a few named GitHub orgs. community: everything else.">{trustLabel(skill.trust)}</span> },
+                { label: 'Trust', value: <span title="builtin: Hermes and Foundry AI OS skills. trusted: a few named GitHub orgs. community: everything else.">{trustLabel(skill.trust)}</span> },
                 { label: 'License', value: skill.license ?? <span className="text-fg-3">none declared</span> },
                 { label: 'Version', value: skill.version ?? <span className="text-fg-3">not set</span> },
                 { label: 'Author', value: skill.author ?? <span className="text-fg-3">not set</span> },

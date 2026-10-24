@@ -1,4 +1,4 @@
-"""Security scan of skills through the runtime's own skills guard, plus Company OS' install policy.
+"""Security scan of skills through the runtime's own skills guard, plus the install policy.
 
 The guard runs as a subprocess under the runtime's virtualenv (``python -m
 company_agent.skills_scan <dir>``); the backend never imports Hermes code.
@@ -140,7 +140,7 @@ def parse_scan_output(returncode: int, stdout: str) -> ScanReport:
 
 
 def allowed_by_policy(trust: str, verdict: str) -> bool:
-    """Company OS install policy: may a skill of this trust level with this verdict be active?"""
+    """Foundry AI OS install policy: may a skill of this trust level with this verdict be active?"""
     if verdict == ScanVerdict.UNSCANNED:
         return trust == SkillTrust.BUILTIN
     return INSTALL_POLICY[SkillTrust(trust)][_INDEX[ScanVerdict(verdict)]]

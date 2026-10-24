@@ -12,7 +12,7 @@ Isolation (docs/cli-runtimes.md):
 * ``api_key`` mode: ``HOME`` is ``data/agents/<id>/cli-home``; the key is injected into the child's
   environment only. Strongest isolation.
 * ``own_login`` mode: the real ``HOME`` (the CLI must find its own login). Weaker, shown as a warning.
-  Company OS never reads, copies or logs a CLI's credential files.
+  Foundry AI OS never reads, copies or logs a CLI's credential files.
 * Never ``bypassPermissions``, ``--dangerously-skip-permissions``, ``--auto``, ``danger-full-access``
   (``catalog.assert_safe_argv`` runs before every spawn).
 """

@@ -182,7 +182,7 @@ function InstallBlock({ binary, canManage }: { binary: TunnelBinary; canManage: 
       )}
       {binary.download_offered && (
         <div>
-          <SectionLabel>Or let Company OS download it</SectionLabel>
+          <SectionLabel>Or let Foundry AI OS download it</SectionLabel>
           <p className="mt-1 text-[12.5px] text-fg-2">
             The file is checked against a SHA-256 checksum before it is used.
             {binary.download_sha256 && (
@@ -215,7 +215,7 @@ function InstallBlock({ binary, canManage }: { binary: TunnelBinary; canManage: 
                 from <code className="font-mono text-[12px] break-all">{binary.download_url}</code>
               </>
             ) : null}{' '}
-            and installs it for Company OS only. It is rejected if the checksum does not match.
+            and installs it for Foundry AI OS only. It is rejected if the checksum does not match.
           </>
         }
         onConfirm={() => install.mutate(undefined, { onSuccess: () => { setConfirming(false); toast.success(`${binary.name} installed and verified`) }, onError: () => undefined })}

@@ -58,7 +58,7 @@ def test_registry_and_free_provider_catalogues_state_their_rules_honestly(client
     free = client.get(api(cid, "/domain/free-providers")).json()["items"]
     assert free[0]["id"] == "digitalplat" and "dpdns.org" in free[0]["suffixes"]
     assert free[0]["dashboard_url"].startswith("https://dash.domain.digitalplat.org")
-    assert any("Company OS never signs up for you" in step for step in free[0]["steps"])
+    assert any("Foundry AI OS never signs up for you" in step for step in free[0]["steps"])
 
 
 def test_the_registry_name_rules(client):

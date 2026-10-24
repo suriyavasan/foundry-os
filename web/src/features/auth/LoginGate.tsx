@@ -15,13 +15,13 @@ export function LoginGate({ onRetry, retrying }: { onRetry: () => void; retrying
           <span className="flex size-8 items-center justify-center rounded-md bg-accent-subtle text-accent-fg">
             <KeyRound className="size-4" aria-hidden />
           </span>
-          <span className="text-[13px] font-semibold tracking-wide text-fg-2">Company OS</span>
+          <span className="text-[13px] font-semibold tracking-wide text-fg-2">Foundry AI OS</span>
         </div>
 
         <div className="rounded-md border border-line bg-surface p-6">
-          <h1 className="text-[20px] leading-7 font-semibold text-fg">Open Company OS from the login link printed in your terminal</h1>
+          <h1 className="text-[20px] leading-7 font-semibold text-fg">Open Foundry AI OS from the login link printed in your terminal</h1>
           <p className="mt-2 text-[13.5px] text-fg-2">
-            This browser is not signed in. Company OS has no password: when the backend starts it prints a private, one-time sign-in link to its terminal, and opening that link signs this browser in.
+            This browser is not signed in. Foundry AI OS has no password: when the backend starts it prints a private, one-time sign-in link to its terminal, and opening that link signs this browser in.
           </p>
 
           <ol className="mt-5 space-y-4 text-[13px] text-fg-2">
@@ -42,7 +42,7 @@ export function LoginGate({ onRetry, retrying }: { onRetry: () => void; retrying
             <li className="flex gap-3">
               <Step n={3} />
               <p>
-                Later, <code className="rounded-sm bg-raised px-1 py-0.5 font-mono text-[12px] text-fg">companyos up</code> will start everything and print the link for you. That command does not exist yet.
+                Later, <code className="rounded-sm bg-raised px-1 py-0.5 font-mono text-[12px] text-fg">foundryos up</code> starts everything and prints the link for you.
               </p>
             </li>
           </ol>

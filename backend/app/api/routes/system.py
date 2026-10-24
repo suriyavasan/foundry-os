@@ -1,15 +1,24 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
-from app.api.deps import CurrentPrincipal, DbSession
+from app.api.deps import CurrentPrincipal, DbSession, human_only
 from app.core.config import APP_VERSION
 from app.core.errors import Forbidden
 from app.schemas.guardrails import EmergencyStopRequest, EmergencyStopStatus, SystemStatus
-from app.schemas.system import Health, Me, MeMembership, MeUser
-from app.services import emergency, users
+from app.schemas.system import (
+    Health,
+    Me,
+    MeMembership,
+    MeUser,
+    UpdateSettingsRequest,
+    UpdateStatus,
+)
+from app.services import emergency, system_update, users
 
 router = APIRouter(tags=["system"])
 
@@ -72,3 +81,26 @@ def emergency_stop(
 def resume(principal: CurrentPrincipal, db: DbSession):
     """Owner only. Lifts the emergency stop. Agents never can (403, run tokens included)."""
     return emergency.resume(db, principal)
+
+
+# ------------------------------------------------------------ Milestone 11: updates
+
+UpdateGate = Annotated[object, Depends(human_only("system.update"))]
+
+
+@router.get("/system/update", response_model=UpdateStatus)
+def update_status(request: Request, principal: CurrentPrincipal, db: DbSession, _: UpdateGate):
+    """Installation owner only. Is a newer release known? Asks GitHub at most once a day."""
+    return system_update.get_status(db, request.app.state.settings, principal)
+
+
+@router.put("/system/update/settings", response_model=UpdateStatus)
+def update_settings(
+    body: UpdateSettingsRequest,
+    request: Request,
+    principal: CurrentPrincipal,
+    db: DbSession,
+    _: UpdateGate,
+):
+    """Installation owner only. Switch the daily update check on or off (audited)."""
+    return system_update.set_enabled(db, request.app.state.settings, principal, body.enabled)

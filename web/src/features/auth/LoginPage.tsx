@@ -4,7 +4,7 @@ import { AuthShell } from './AuthShell'
 import { LoginForm } from './LoginForm'
 
 /** The reset command named on the login page. It belongs to the CLI (M9), which does not exist yet. */
-export const RESET_PASSWORD_COMMAND = 'companyos auth reset-password'
+export const RESET_PASSWORD_COMMAND = 'foundryos auth reset-password'
 
 export function LoginPage() {
   const [forgot, setForgot] = useState(false)
@@ -28,7 +28,7 @@ export function LoginPage() {
         </button>
         {forgot && (
           <div id="forgot-password" className="mt-2 space-y-2 text-[12.5px] text-fg-2">
-            <p>A password is reset from the computer that runs Company OS, with the command line:</p>
+            <p>A password is reset from the computer that runs Foundry AI OS, with the command line:</p>
             <pre className="overflow-x-auto rounded-md border border-line bg-raised px-3 py-2 font-mono text-[12px] text-fg">{RESET_PASSWORD_COMMAND} &lt;username&gt;</pre>
             <p className="text-fg-3">That command ships with the CLI in M9 and does not exist yet. Until then, a password can only be reset by whoever administers this install.</p>
           </div>

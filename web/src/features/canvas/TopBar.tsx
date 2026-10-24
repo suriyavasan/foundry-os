@@ -5,6 +5,7 @@ import { CompanySwitcher } from '@/components/layout/CompanySwitcher'
 import { Badge, Dot, IconButton, Tooltip } from '@/components/ui'
 import { EmergencyBanner } from '@/features/guardrails/EmergencyStop'
 import { NotificationBell } from '@/features/notifications/NotificationBell'
+import { UpdateBanner } from '@/features/system/UpdateBanner'
 import { ReachabilityIndicator } from '@/features/reachability/ReachabilityIndicator'
 import { ConnectionIndicator } from './ConnectionIndicator'
 import { useCanvas } from './CanvasContext'
@@ -25,6 +26,7 @@ export function TopBar({ company }: { company: Company }) {
   return (
     <header className="sticky top-0 z-30 bg-surface">
       <EmergencyBanner />
+      <UpdateBanner />
       <div className="flex h-(--topbar-height) items-center gap-2 border-b border-line px-3">
         <CompanySwitcher companyId={company.id} companyName={company.name} />
         <Badge tone={active ? 'success' : 'warning'} className="hidden sm:inline-flex" aria-label={`Company status: ${active ? 'active' : 'paused'}`}>

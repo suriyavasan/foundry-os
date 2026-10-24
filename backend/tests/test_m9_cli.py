@@ -132,7 +132,7 @@ def test_not_signed_in_exits_3_with_a_hint(app, client, cfg_dir, monkeypatch, tm
     monkeypatch.setattr(context, "http_factory", lambda url: client)
     r = CliRunner().invoke(cli_app, ["status"])
     assert r.exit_code == 3
-    assert "companyos login" in r.stderr
+    assert "foundryos login" in r.stderr
 
 
 def test_unreachable_server_exits_7(cfg_dir, monkeypatch):
@@ -426,8 +426,8 @@ def test_pause_resume_and_global_emergency_stop(cli, client, company):
     assert client.get(f"/api/companies/{cid}").json()["status"] == "paused"
     cli("pause", expect=6)  # already paused
     assert cli("resume", "--json").json()["status"] == "active"
-    # `stop` without --all is refused: it is the instance-wide kill switch
-    assert "--all" in cli("stop", expect=2).err
+    # --reason without --all is refused: the reason belongs to the instance-wide kill switch
+    assert "--all" in cli("stop", "--reason", "drill", expect=2).err
     stopped = cli("stop", "--all", "--reason", "drill", "--json").json()
     assert stopped["active"] is True and stopped["reason"] == "drill"
     assert cli("status", "--json").json()["emergency_stop"]["active"] is True

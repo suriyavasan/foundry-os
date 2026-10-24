@@ -1,8 +1,9 @@
-# Deploying and operating Company OS (M9)
+# Deploying and operating Foundry AI OS (M9, M11)
 
 This is the operator guide: run it on your own machine, in Docker, upgrade it, back it up, configure it.
 Network access from other devices and the public internet is a separate guide: `docs/deploy-reachability.md`.
 What was and was not verified is listed in section 10 and in `docs/roadmap.md` ("Final verification").
+Installed copies (Homebrew, the one-line installer, Docker) are covered in section 11; this page's other sections describe the same program run from a source checkout.
 
 ## 1. Requirements
 
@@ -12,27 +13,27 @@ What was and was not verified is listed in section 10 and in `docs/roadmap.md` (
 | Node | 20+ and `pnpm` (only to build the web UI; not needed if `web/dist` is already built) |
 | Agent runtime | `runtime/` has its own virtualenv (Hermes fork, Python 3.14, ~180 MB). Without it the API and UI run, but agents cannot execute and non-built-in skills cannot be scanned |
 | A model | a local [Ollama](https://ollama.com) (free) or a cloud key (OpenRouter, Anthropic, OpenAI, any OpenAI-compatible endpoint) |
-| Disk | a few hundred MB plus your data; `companyos doctor` warns below 2 GB free |
+| Disk | a few hundred MB plus your data; `foundryos doctor` warns below 2 GB free |
 
-## 2. Run it locally: `companyos up`
+## 2. Run it locally: `foundryos up`
 
 ```bash
 git clone <this repo> company-os && cd company-os
 
-cd backend && uv sync && cd ..                                        # the control plane + the `companyos` command
+cd backend && uv sync && cd ..                                        # the control plane + the `foundryos` command (alias `companyos`)
 cd runtime && uv sync --frozen --no-install-project \
       --extra anthropic --extra ddgs --python 3.14 && cd ..           # the agent runtime (optional but recommended)
 cd web && pnpm install --frozen-lockfile && cd ..                     # only needed to build the UI
 
 cd backend
-uv run companyos doctor                  # what is missing on this machine, and the fix for each item
-uv run companyos up                      # http://127.0.0.1:8700
+uv run foundryos doctor                  # what is missing on this machine, and the fix for each item
+uv run foundryos up                      # http://127.0.0.1:8700
 ```
 
-`companyos up` does, in order:
+`foundryos up` does, in order:
 
 1. refuses to start if the port is busy;
-2. migrates the database to the current version (`alembic upgrade head`; creates it on first run);
+2. migrates the database to the current version (`alembic upgrade head`; creates it on first run). When the program version changed since the last start, or migrations are pending, it first takes an automatic `pre-<version>-<time>.tar.gz` backup (section 5) and refuses to start if that backup or the migration fails;
 3. builds `web/dist` with `pnpm build` when it is missing or older than the sources (skip with `--no-build`; a
    failed build is reported and the API still starts);
 4. starts the API through `python -m app.serve`, which applies your saved **Local network access** preference
@@ -43,11 +44,11 @@ uv run companyos up                      # http://127.0.0.1:8700
 6. prints the local, network and public URLs and, on the first run, the setup URL.
 
 `Ctrl-C` (or `SIGTERM`) stops the worker first, then the API (each gets 20 s to finish before it is killed).
-If the API itself dies, everything stops and `companyos up` exits non-zero.
+If the API itself dies, everything stops and `foundryos up` exits non-zero.
 
 | flag | meaning |
 |---|---|
-| `--port 8700` | port for API + UI (the worker is told the same port for its agent API calls) |
+| `--port 8700` | port for API + UI (default: `FOUNDRYOS_PORT`, else 8700; the worker is told the same port for its agent API calls) |
 | `--host H` | override the bind address (still held to the exposure gate); default is the saved preference |
 | `--no-worker` | API only (run `companyos-worker` yourself, e.g. in another terminal or container) |
 | `--dev` | start the Vite dev server (hot reload, proxying `/api` to this API) instead of serving the built UI; open the URL Vite prints |
@@ -56,11 +57,11 @@ If the API itself dies, everything stops and `companyos up` exits non-zero.
 
 **First run.** Open the printed URL on this machine and create your account (username + password; no setup token is
 needed from the machine itself). From another device you also need the **setup token** (it proves you control the
-server): `companyos auth setup-token` on the server prints it while setup is pending; it is also in
-`<data dir>/owner.token` (mode 0600). `companyos up` prints it only when it is on a terminal **and** the server is
+server): `foundryos auth setup-token` on the server prints it while setup is pending; it is also in
+`<data dir>/owner.token` (mode 0600). `foundryos up` prints it only when it is on a terminal **and** the server is
 reachable beyond this machine (network bind or a running tunnel); it is never written to a log.
 
-Data lives in `data/` at the repository root by default (`company_os.db`, `secret.key`, `owner.token`, `artifacts/`,
+Data lives in `data/` at the repository root by default in a source checkout (an installed copy uses the per-user folder, section 11) (`company_os.db`, `secret.key`, `owner.token`, `artifacts/`,
 `skills/`, `agents/`, `workspaces/`). Change it with `COMPANY_OS_DATABASE_URL` / `COMPANY_OS_DATA_DIR` (section 7).
 
 You can still run the pieces yourself: `uv run alembic upgrade head`, `uv run python -m app.serve --port 8700`,
@@ -69,22 +70,22 @@ M2-M8 dev setup did).
 
 ### Ollama
 
-Company OS talks to Ollama's OpenAI-compatible endpoint, which **ignores `num_ctx`**. Start Ollama with the context
+Foundry AI OS talks to Ollama's OpenAI-compatible endpoint, which **ignores `num_ctx`**. Start Ollama with the context
 size the agents need or long prompts are silently truncated:
 
 ```bash
 OLLAMA_CONTEXT_LENGTH=32768 ollama serve          # or: launchctl setenv OLLAMA_CONTEXT_LENGTH 32768 (macOS app)
-companyos providers detect --register              # finds Ollama, picks a tool-capable model, registers it
-companyos providers test "Ollama 127.0.0.1:11434"  # loads the model, reports the served context (warns if < 32K)
+foundryos providers detect --register              # finds Ollama, picks a tool-capable model, registers it
+foundryos providers test "Ollama 127.0.0.1:11434"  # loads the model, reports the served context (warns if < 32K)
 ```
 
-`companyos doctor` shows the served context of any loaded model and prints this fix when it is below 32K.
+`foundryos doctor` shows the served context of any loaded model and prints this fix when it is below 32K.
 A 7B model runs 1-6 minutes per task and follows multi-step tool instructions only partly; a larger local model or a
 cloud key is the biggest lever for quality (the free-first router uses the local model unless told otherwise).
 
 ## 3. The CLI
 
-`companyos` talks to the API over HTTP, so it works from another machine too. Every command accepts `--json`
+`foundryos` talks to the API over HTTP, so it works from another machine too. Every command accepts `--json`
 (machine-readable output; errors then go to stderr as `{"error": {code, message, details}}`).
 
 **Configuration.** `~/.config/companyos/config.toml` (`api_url`, `company_id`; no secrets, mode 0600) and
@@ -99,6 +100,11 @@ never printed (the only place a token is shown is the web app's "create token" d
 
 | command | does |
 |---|---|
+| *(no arguments)* | start in the background if needed, then open the browser (section 11) |
+| `start`, `stop`, `restart`, `open`, `logs [-f]`, `version` | run it as a background program (section 11). `stop --all` is still the instance-wide emergency stop |
+| `serve [--port --host]` | foreground, no browser, never builds the UI: what the background service runs |
+| `service install [--linger] / uninstall / status` | start at login (section 11) |
+| `update [--version X] [--check] [--auto-check/--no-auto-check]`, `rollback [--restore-data]`, `uninstall [--purge]` | installer installs (section 11) |
 | `up [--port --host --no-worker --dev --open --no-build]` | section 2 |
 | `doctor` | Python/uv, web build, database + migrations, agent runtime import, Ollama + served context, Docker, tunnel tools, disk, secret-file permissions, auth mode + exposure gate, running processes. Exit 1 on a failed check |
 | `login [-u USER] [--password-stdin] [--scope read\|write\|admin] [--set-company X]` | username + password -> creates a personal API token (default scope `admin`) and stores it; the password is not kept and the browser-style session is closed again. 2FA accounts are asked for a code (second stdin line with `--password-stdin`) |
@@ -136,7 +142,7 @@ deliberately not an HTTP endpoint: being able to read `owner.token` on the machi
 ```bash
 cp .env.example .env                 # edit: ports, public URL, optional secret key
 docker compose up -d --build         # migrate -> api -> worker
-docker compose exec api companyos auth setup-token      # first run from another device
+docker compose exec api foundryos auth setup-token      # first run from another device
 open http://localhost:8700
 ```
 
@@ -152,7 +158,7 @@ open http://localhost:8700
   the compose port mapping is the only gate; the default maps loopback.
 * **Agent sandbox through the host Docker socket is opt-in and dangerous.** `docker-compose.sandbox.yml` mounts
   `/var/run/docker.sock` into the worker; anyone who controls that container (or a prompt-injected agent that escapes
-  its tools) controls the host. Prefer `companyos up` on a host with Docker, or a rootless/remote daemon. Without it,
+  its tools) controls the host. Prefer `foundryos up` on a host with Docker, or a rootless/remote daemon. Without it,
   agents have no terminal/code-execution tools in the container (the file tools stay jailed to the run workspace).
 * Ollama on the host: register `http://host.docker.internal:11434` as the provider base URL (`extra_hosts` is set on
   the worker).
@@ -163,24 +169,34 @@ open http://localhost:8700
 ## 5. Upgrading
 
 ```bash
-companyos backup create                 # always first
+foundryos backup create                 # optional: the start below also takes one
 git pull
 cd backend && uv sync                   # (and `cd runtime && uv sync ...` / `cd web && pnpm install` if their lockfiles changed)
-uv run companyos up                     # migrates the database to the new version on start, rebuilds a stale UI
+uv run foundryos up                     # migrates the database to the new version on start, rebuilds a stale UI
 ```
 
-Docker: `git pull && docker compose up -d --build` (the `migrate` service runs `alembic upgrade head` before `api`).
+**Every version change takes an automatic backup first.** When `up` / `serve` starts and the version (the `VERSION` file)
+differs from the one that last started successfully, or the database is behind the code, it writes
+`<data dir>/backups/pre-<new version>-<UTC time>.tar.gz` with the same code as `backup create`, keeps the five newest
+`pre-*` archives (manual backups are never deleted), and only then runs `alembic upgrade head`. The last-started version
+is remembered in `<data dir>/state/version.json`. If the backup fails, the migration fails, or the database was last
+used by a *newer* version, the server does not start and prints how to go back (`foundryos rollback` for installer
+installs, otherwise the previous version plus `foundryos backup restore "<the pre- archive>" --force`).
+`FOUNDRYOS_SKIP_PRE_UPGRADE_BACKUP=1` skips the backup (not recommended). PostgreSQL installs are migrated without a file backup.
+
+Docker: `git pull && docker compose up -d --build` (the `migrate` service runs `alembic upgrade head` before `api`; that
+path does not take the automatic backup, so run `backup create` first).
 Migrations only go forward; to go back, restore the backup taken before upgrading. A backup made by a newer
 version than the running code is refused by `restore`.
 
 ## 6. Backup and restore
 
 ```bash
-companyos backup create                          # -> <data dir>/backups/companyos-backup-<UTC time>.tar.gz
-companyos backup create --out /mnt/safe/       # or choose where
-companyos backup restore ARCHIVE --verify-only   # check every checksum, change nothing
-companyos backup restore ARCHIVE                 # into an EMPTY / new data directory
-companyos backup restore ARCHIVE --force         # replace an existing install (asks; --yes answers for scripts)
+foundryos backup create                          # -> <data dir>/backups/companyos-backup-<UTC time>.tar.gz
+foundryos backup create --out /mnt/safe/       # or choose where
+foundryos backup restore ARCHIVE --verify-only   # check every checksum, change nothing
+foundryos backup restore ARCHIVE                 # into an EMPTY / new data directory
+foundryos backup restore ARCHIVE --force         # replace an existing install (asks; --yes answers for scripts)
 ```
 
 * **What is in it:** a consistent snapshot of the database made with SQLite's online backup API (safe while the server is
@@ -191,7 +207,7 @@ companyos backup restore ARCHIVE --force         # replace an existing install (
   is created mode 0600; keep it encrypted wherever you copy it (`age`, `gpg`, an encrypted volume).
 * **Restore is conservative.** It verifies the whole archive against the manifest (and the database's integrity check)
   *before* touching anything, and refuses: damaged, truncated or modified archives (a changed byte, an added or missing
-  file, unsafe paths, links); a data directory a Company OS process is using (API or worker; they register a pid file in
+  file, unsafe paths, links); a data directory a Foundry AI OS process is using (API or worker; they register a pid file in
   `<data dir>/run/`); an archive from a newer version; an existing install without `--force` and a confirmation. With
   `--force` the current data is **moved aside** to `<data dir>.pre-restore-<time>` (never deleted); delete it yourself
   when you are satisfied. `--json` mode never prompts: combine `--force --yes` for scripts.
@@ -206,15 +222,16 @@ All settings are environment variables with the `COMPANY_OS_` prefix (also read 
 
 | variable | default | meaning |
 |---|---|---|
-| `DATABASE_URL` | `sqlite:///../data/company_os.db` | SQLAlchemy URL; relative SQLite paths are relative to `backend/` (use `sqlite:////abs/path.db`). PostgreSQL: `postgresql+psycopg://...` (needs the `postgres` extra; **unverified**) |
-| `DATA_DIR` | the database file's folder, else `<repo>/data` | artifacts, workspaces, skills, agent homes, `secret.key`, `owner.token` |
+| `DATABASE_URL` | `sqlite:///../data/company_os.db` (installed copies: `<data dir>/company_os.db`) | SQLAlchemy URL; relative SQLite paths are relative to `backend/` (use `sqlite:////abs/path.db`). PostgreSQL: `postgresql+psycopg://...` (needs the `postgres` extra; **unverified**) |
+| `DATA_DIR` | `FOUNDRYOS_DATA_DIR`, else (installed copy) the per-user folder, else the database file's folder, else `<repo>/data` | artifacts, workspaces, skills, agent homes, `secret.key`, `owner.token` |
 | `SECRET_KEY` | generated into `data/secret.key` | encrypts stored credentials, signs run tokens and CSRF tokens. Losing it makes stored credentials unreadable |
 | `AUTH_MODE` | `password` | `password` (accounts, sessions) or `local` (**development only**: owner token gate, refuses non-loopback binds and clients) |
-| `BIND_HOST` / `PORT` | `127.0.0.1` / `8700` | what the process is bound to / listens on (set by `app.serve` and `companyos up`; used for the exposure gate and the tunnel) |
+| `BIND_HOST` / `PORT` | `127.0.0.1` / `8700` | what the process is bound to / listens on (set by `app.serve` and `foundryos up`; used for the exposure gate and the tunnel). `FOUNDRYOS_PORT` sets the port the same way |
+| `UPDATE_CHECK` | `true` | look for a newer release at most once a day (`FOUNDRYOS_UPDATE_CHECK=0` or the owner's stored preference turns it off) |
 | `PUBLIC_URL` | `http://localhost:8700` | the address people type; used in printed links |
 | `CORS_ORIGINS` | the Vite dev origins | JSON list of allowed browser origins (credentials allowed) |
 | `COOKIE_SECURE` | auto (https => Secure) | force the Secure flag behind a TLS-terminating proxy |
-| `EMBEDDED_WORKER` | `false` | run worker + scheduler inside the API process (`companyos up` and compose run them separately) |
+| `EMBEDDED_WORKER` | `false` | run worker + scheduler inside the API process (`foundryos up` and compose run them separately) |
 | `WORKER_CONCURRENCY`, `ENGINE_TICK_SECONDS`, `ENGINE_POLL_SECONDS` | `4`, `2.0`, `0.5` | engine tuning |
 | `AGENT_API_URL` | `http://127.0.0.1:8700/api/agent/v1` | where runtimes reach the agent API (`up` derives it from `--port`; compose sets `http://api:8700/...`) |
 | `RUNTIME_DIR`, `RUNTIME_PYTHON` | `<repo>/runtime`, `<runtime>/.venv/bin/python` | agent runtime checkout and its interpreter |
@@ -232,6 +249,14 @@ All settings are environment variables with the `COMPANY_OS_` prefix (also read 
 | `ENABLE_TEST_RUNTIMES` | `false` | registers the deterministic test runtime. **Never in production** |
 | `HERMES_API_URL`, `HERMES_API_KEY` | unset | legacy external Hermes server runtime (no prefix) |
 
+Product-named aliases (a `COMPANY_OS_*` variable that is set wins): `FOUNDRYOS_DATA_DIR`, `FOUNDRYOS_PORT`,
+`FOUNDRYOS_UPDATE_CHECK`. Also read: `FOUNDRYOS_INSTALLED` (`1` forces installed mode, `0` forces source mode; the
+release launcher sets it), `FOUNDRYOS_LOG_FILE` (a log file to rotate and show with `logs`, default
+`<data dir>/logs/foundry-os.log`), `FOUNDRYOS_LAUNCHER` (the command a background start / the service runs, default the
+stable launcher of this install), `FOUNDRYOS_NO_BROWSER=1` (never open a browser), `FOUNDRYOS_DOWNLOAD_BASE`
+(`foundryos update` downloads `foundry-os-<v>-<platform>.tar.gz` and `SHA256SUMS` from there; `file://` works),
+`FOUNDRYOS_SKIP_PRE_UPGRADE_BACKUP`.
+
 Not prefixed: `OLLAMA_HOST` / `OLLAMA_CONTEXT_LENGTH` (Ollama itself); `COMPANYOS_CONFIG_DIR`, `COMPANYOS_API_URL`,
 `COMPANYOS_COMPANY`, `COMPANYOS_TOKEN` (the CLI); compose: `COMPANYOS_PORT`, `COMPANYOS_BIND`, `POSTGRES_PASSWORD`,
 `WITH_RUNTIME`, `WITH_POSTGRES` (see `.env.example`).
@@ -247,7 +272,7 @@ same-origin` (HSTS additionally when the request arrived over https). Details an
 
 ## 9. Troubleshooting
 
-`companyos doctor` first. Common cases: *"Port 8700 is already in use"* - another instance runs (`doctor` lists
+`foundryos doctor` first (it also lists the install kind, the data folder and what the last update check found). Common cases: *"Port 8700 is already in use"* - another instance runs (`doctor` lists
 registered processes); *"Database schema is missing or out of date"* - `uv run alembic upgrade head`;
 *runs fail immediately with a credential error* - the provider needs a credential (`credentials set`, then attach it in
 Integrations); *Ollama prompts truncated* - restart Ollama with `OLLAMA_CONTEXT_LENGTH=32768`; *the UI shows a blank
@@ -259,3 +284,56 @@ See "Final verification" in `docs/roadmap.md` for the dated table produced by `s
 the Docker image build and Compose stack, PostgreSQL (no server was available; migrations are written to be portable but
 the suite has only ever run on SQLite), the Docker-socket sandbox, running behind a TLS proxy, Windows, and Linux
 (everything was run on macOS).
+
+## 11. Installed copies (M11)
+
+The installer, Homebrew and Docker run a self-contained release bundle (its own Python, the agent runtime and the built
+UI). The program is the same; what differs is where things live and how you run, update and remove it.
+
+**How a copy knows what it is.** `foundryos version --json` shows `install_kind`: `source` (a git checkout),
+`installer` (`~/.foundry-os/versions/<v>` + `~/.foundry-os/current`), `homebrew` (inside a Homebrew `Cellar`), `bundle`
+(a release unpacked by hand) or `docker`. Everything below follows from it.
+
+**Data folder** (installed copies; a source checkout keeps `<repo>/data`):
+
+| | |
+|---|---|
+| macOS | `~/Library/Application Support/Foundry AI OS` |
+| Linux | `${XDG_DATA_HOME:-~/.local/share}/foundry-os` |
+| anywhere | `FOUNDRYOS_DATA_DIR` (also moves the database) |
+
+It holds `company_os.db`, `secret.key`, `owner.token`, `artifacts/`, `skills/`, `agents/`, `backups/`, `logs/` (the server log,
+rotated at 10 MB, 5 kept), `run/` (pid files) and `state/` (the last-started version, the update-check cache).
+
+**Running.** `foundryos` (no arguments) starts a detached `foundryos serve` (a pid file in `run/`, output in
+`logs/foundry-os.log`) unless it is already answering on the port, waits for `/api/health` and opens the browser;
+`start`, `stop`, `restart`, `open`, `logs` are the pieces. "Running" means a Foundry health answer on the port; "who
+started it" comes from the run files and the service manager. If the port answers but nothing here started it,
+`stop` says so instead of killing a stranger.
+
+**The service.** `foundryos service install` creates the macOS LaunchAgent `ai.foundry-os` (`RunAtLoad`, `KeepAlive`,
+`ThrottleInterval 10`, logs in the data folder) or the Linux user unit `foundry-os.service` (`Restart=on-failure`, log
+appended to the same file; no `loginctl enable-linger` unless `--linger`). Both run `foundryos serve` through the
+stable launcher path, so an update needs only a restart. Environment baked in: a PATH that includes `~/.local/bin`
+and the usual system folders, and `FOUNDRYOS_DATA_DIR` / `FOUNDRYOS_PORT` / `FOUNDRYOS_UPDATE_CHECK` if they were set
+when you installed it. With Homebrew, the formula's `service do` block (`brew services`) is the only service: `service
+install` defers to it, `start` / `stop` / `restart` drive it through `brew services`, and an existing Homebrew service is
+never duplicated even by an installer copy.
+
+**Updates.** Installer: `foundryos update` / `rollback` (see `docs/guide/updates-backups.md`). Homebrew: `brew upgrade
+foundry-os`. The check for a newer release is cached for 24 hours in `state/update-check.json` and exposed to the owner as
+`GET /api/system/update` (and `PUT /api/system/update/settings {"enabled": bool}`, audited), `foundryos status`, `doctor`
+and a dismissible banner in the web app.
+
+**Uninstall.** `foundryos uninstall [--purge]` (see the same guide). The installer's own `--uninstall` does the same
+without needing a working install.
+
+**What was and was not verified (M11 app side).** Verified by tests: data-folder resolution per OS (monkeypatched),
+service files and the `launchctl` / `systemctl` / `brew` call sequences (fake programs, a temporary HOME; no real agent
+was ever installed), `update` / `rollback` against a fake GitHub API and local tarballs (checksum mismatch, tampered file,
+missing `SHA256SUMS`, wrong version inside, unsafe paths all refused), the update-check cache and opt-outs, the
+pre-migration backup and its retention, uninstall safety, and start / restart / stop against a real detached process.
+Run by hand from a source checkout with a temporary data folder on port 8713: start, status, logs, stop, restart, the
+automatic backup on a version change. **Not verified:** a real LaunchAgent / systemd unit loading (macOS and Linux
+service managers), `brew services`, a real update from a published GitHub release (none exists yet), the bundle launcher
+end to end (owned by the packaging work), Windows.

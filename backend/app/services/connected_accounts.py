@@ -392,7 +392,7 @@ def oauth_start(ctx: CompanyContext, provider: str) -> None:
         raise ValidationFailed(f"{provider!r} does not use OAuth")
     raise NotAvailable(
         f"{spec.label} OAuth is not configured on this install: it needs an OAuth client "
-        "registered by the operator (no client secret ships with Company OS)",
+        "registered by the operator (no client secret ships with Foundry AI OS)",
         milestone="M8",
         details={"provider": provider, "reason": "oauth_not_configured"},
     )

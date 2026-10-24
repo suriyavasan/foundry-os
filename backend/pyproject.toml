@@ -1,7 +1,7 @@
 [project]
 name = "company-os-backend"
 version = "0.1.0"
-description = "Company OS control plane API"
+description = "Foundry AI OS control plane API"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
@@ -30,6 +30,7 @@ dev = [
 ]
 
 [project.scripts]
+foundryos = "app.cli.main:main"
 companyos = "app.cli.main:main"
 companyos-worker = "app.engine.cli:main"
 
@@ -48,6 +49,8 @@ packages = ["app"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+# Keep only the temp dirs of FAILED tests (a full run used to leave ~900 MB behind).
+tmp_path_retention_policy = "failed"
 markers = [
     "ai_gate: run with the AI readiness gate enforced (M10)",
 ]

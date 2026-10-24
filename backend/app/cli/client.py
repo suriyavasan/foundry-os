@@ -1,4 +1,4 @@
-"""A small HTTP client for the Company OS API: error mapping, paging, server-sent events."""
+"""A small HTTP client for the Foundry AI OS API: error mapping, paging, server-sent events."""
 
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ def error_from_response(resp: httpx.Response) -> CliError:
     except ValueError:
         pass
     if resp.status_code == 401:
-        message += " (run `companyos login`)"
+        message += " (run `foundryos login`)"
     return CliError(
         message,
         exit_code=_STATUS_EXIT.get(resp.status_code, EXIT_ERROR),
@@ -98,7 +98,7 @@ class ApiClient:
             resp = self.http.request(method, "/api" + path, **kwargs)
         except httpx.ConnectError as exc:
             raise CliError(
-                f"Cannot reach Company OS at {self.base_url}. Is it running? (`companyos up`)",
+                f"Cannot reach Foundry AI OS at {self.base_url}. Is it running? (`foundryos up`)",
                 exit_code=EXIT_UNREACHABLE,
                 code="unreachable",
             ) from exc
@@ -168,7 +168,7 @@ class ApiClient:
                         data.append(line[5:].lstrip())
         except httpx.ConnectError as exc:
             raise CliError(
-                f"Cannot reach Company OS at {self.base_url}",
+                f"Cannot reach Foundry AI OS at {self.base_url}",
                 exit_code=EXIT_UNREACHABLE,
                 code="unreachable",
             ) from exc

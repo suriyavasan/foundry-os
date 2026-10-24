@@ -138,6 +138,10 @@ def resolve_credential() -> Credential | None:
 def resolve_api_url(explicit: str | None) -> str:
     url = explicit or os.environ.get("COMPANYOS_API_URL") or load_config().get("api_url")
     if not url:
-        port = os.environ.get("COMPANY_OS_PORT") or str(DEFAULT_PORT)
+        port = (
+            os.environ.get("COMPANY_OS_PORT")
+            or os.environ.get("FOUNDRYOS_PORT")
+            or str(DEFAULT_PORT)
+        )
         url = f"http://127.0.0.1:{port}"
     return url.rstrip("/")

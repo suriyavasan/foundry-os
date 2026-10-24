@@ -1,4 +1,4 @@
-"""What Company OS knows about each supported coding CLI (static facts; the verified flags live in
+"""What Foundry AI OS knows about each supported coding CLI (static facts; the verified flags live in
 ``docs/cli-runtimes.md``)."""
 
 from __future__ import annotations
@@ -92,7 +92,7 @@ def sandbox_for(cli_id: str, installed: bool) -> dict[str, object]:
 
     In M10 only Codex is ever given a shell (``--sandbox workspace-write``: Seatbelt on macOS, Landlock
     on Linux, from the documentation -- not exercised here because Codex is not installed). Claude Code's
-    own sandbox cannot be verified by Company OS, so its shell tools stay off; OpenCode has no OS sandbox
+    own sandbox cannot be verified by Foundry AI OS, so its shell tools stay off; OpenCode has no OS sandbox
     (its shell tool is denied by permission rules)."""
     import sys
 
@@ -113,7 +113,7 @@ def sandbox_for(cli_id: str, installed: bool) -> dict[str, object]:
             "available": False,
             "kind": "none",
             "detail": (
-                "Shell tools (Bash) are never enabled: Company OS cannot verify Claude Code's sandbox. "
+                "Shell tools (Bash) are never enabled: Foundry AI OS cannot verify Claude Code's sandbox. "
                 "Only file tools are allowed, confined to the workspace (--restricted)."
             ),
         }

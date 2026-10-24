@@ -144,7 +144,7 @@ async function attempt<T>(path: string, opts: RequestOptions): Promise<T> {
     })
   } catch (e) {
     if (e instanceof DOMException && e.name === 'AbortError') throw e
-    throw new ApiError(0, 'network_error', 'Could not reach the Company OS API. Is the backend running?')
+    throw new ApiError(0, 'network_error', 'Could not reach the Foundry AI OS API. Is the backend running?')
   }
 
   if (res.status === 204) return undefined as T
@@ -183,7 +183,7 @@ async function attempt<T>(path: string, opts: RequestOptions): Promise<T> {
 }
 
 /**
- * Fetch JSON from the Company OS API. Non-2xx responses throw a typed `ApiError`.
+ * Fetch JSON from the Foundry AI OS API. Non-2xx responses throw a typed `ApiError`.
  * With cookie sessions, state-changing requests carry `X-CSRF-Token`; a CSRF 403 refreshes the session once
  * and retries the request once (the body is rebuilt from `opts`, so JSON and multipart are both safe to resend).
  */

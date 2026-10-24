@@ -45,6 +45,19 @@ export interface Health {
   auth_mode: string
 }
 
+/** GET /system/update (installation owner only): is a newer release known? (cached; one GitHub request a day) */
+export interface UpdateStatus {
+  enabled: boolean
+  current_version: string
+  latest_version: string | null
+  update_available: boolean
+  checked_at: string | null
+  release_url: string | null
+  install_kind: 'source' | 'installer' | 'homebrew' | 'bundle' | 'docker'
+  update_command: string
+  error: string | null
+}
+
 export interface User {
   id: Uuid
   email: string

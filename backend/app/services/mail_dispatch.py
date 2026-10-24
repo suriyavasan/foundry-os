@@ -98,7 +98,7 @@ class EmailDispatcher:
             if any(f.kind in ("secret", "own_token") for f in dlp.scan_text(text)):
                 return False
             body = (
-                f"{text}\n\nOpen Company OS: {base_url(ic)}\n\n"
+                f"{text}\n\nOpen Foundry AI OS: {base_url(ic)}\n\n"
                 "You get this e-mail because you turned on e-mail notifications for this kind of "
                 "event. Change it in Settings."
             )

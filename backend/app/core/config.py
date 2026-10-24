@@ -1,18 +1,33 @@
-"""Application settings (pydantic-settings, env prefix ``COMPANY_OS_``)."""
+"""Application settings (pydantic-settings, env prefix ``COMPANY_OS_``).
+
+``FOUNDRYOS_DATA_DIR`` / ``FOUNDRYOS_PORT`` / ``FOUNDRYOS_UPDATE_CHECK`` are the documented,
+product-named aliases; an explicit ``COMPANY_OS_*`` variable always wins over them. Outside a git
+checkout the data
+directory defaults to the per-user platform directory (``app.core.install.platform_data_dir``).
+"""
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import AliasChoices, Field, SecretStr
+from pydantic import AliasChoices, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-BACKEND_DIR = Path(__file__).resolve().parents[2]
-REPO_DIR = BACKEND_DIR.parent
+from app.core.install import (
+    APP_VERSION,
+    BACKEND_DIR,
+    REPO_DIR,
+    bundle_root,
+    installed_mode,
+    platform_data_dir,
+)
+
+__all__ = ["APP_VERSION", "BACKEND_DIR", "REPO_DIR", "Settings", "get_settings"]
+
 DEFAULT_DATABASE_URL = "sqlite:///../data/company_os.db"
-APP_VERSION = "0.1.0"
 
 
 class Settings(BaseSettings):
@@ -118,6 +133,13 @@ class Settings(BaseSettings):
     # Resume a tunnel that was running when the server last stopped.
     tunnel_autoresume: bool = True
 
+    # --- Milestone 11: installed mode -------------------------------------------------------------
+    # Look for a newer release at most once a day (one request to the GitHub releases API, nothing
+    # else
+    # is sent). The owner can also switch it off persistently (Settings / `foundryos update
+    # --no-auto-check`); either one disables it.
+    update_check: bool = True
+
     # --- Milestone 10: coding-CLI runtimes -------------------------------------------------------
     # Extra directories searched (before PATH) for the claude / codex / opencode / npm binaries.
     cli_search_paths: list[str] = []
@@ -129,6 +151,35 @@ class Settings(BaseSettings):
     hermes_api_key: SecretStr | None = Field(
         default=None, validation_alias=AliasChoices("HERMES_API_KEY", "COMPANY_OS_HERMES_API_KEY")
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _foundryos_aliases(cls, data: Any) -> Any:
+        """FOUNDRYOS_* aliases and the installed-mode data directory (fills only what is unset)."""
+        values = dict(data) if isinstance(data, dict) else {}
+        if values.get("data_dir") is None:
+            chosen = os.environ.get("FOUNDRYOS_DATA_DIR", "").strip()
+            if chosen:
+                chosen_path = Path(chosen).expanduser()
+            elif installed_mode() and values.get("database_url") is None:
+                chosen_path = platform_data_dir()
+            else:
+                chosen_path = None
+            if chosen_path is not None:
+                if not chosen_path.is_absolute():
+                    chosen_path = Path.cwd() / chosen_path
+                values["data_dir"] = str(chosen_path)
+                if values.get("database_url") is None:
+                    values["database_url"] = f"sqlite:///{chosen_path / 'company_os.db'}"
+        if values.get("port") is None:
+            port = os.environ.get("FOUNDRYOS_PORT", "").strip()
+            if port:
+                values["port"] = port
+        if values.get("update_check") is None:
+            flag = os.environ.get("FOUNDRYOS_UPDATE_CHECK", "").strip()
+            if flag:
+                values["update_check"] = flag
+        return values
 
     @property
     def resolved_database_url(self) -> str:
@@ -165,7 +216,8 @@ class Settings(BaseSettings):
     @property
     def resolved_web_dist(self) -> Path:
         if self.web_dist_dir is None:
-            return REPO_DIR / "web" / "dist"
+            root = bundle_root()
+            return (root / "web" / "dist") if root else REPO_DIR / "web" / "dist"
         return (
             self.web_dist_dir if self.web_dist_dir.is_absolute() else REPO_DIR / self.web_dist_dir
         )
@@ -181,13 +233,17 @@ class Settings(BaseSettings):
     @property
     def resolved_runtime_dir(self) -> Path:
         if self.runtime_dir is None:
-            return REPO_DIR / "runtime"
+            root = bundle_root()
+            return (root / "app" / "runtime") if root else REPO_DIR / "runtime"
         return self.runtime_dir if self.runtime_dir.is_absolute() else REPO_DIR / self.runtime_dir
 
     @property
     def resolved_runtime_python(self) -> Path:
         if self.runtime_python is not None:
             return self.runtime_python
+        root = bundle_root()
+        if root is not None and self.runtime_dir is None:
+            return root / "python" / "runtime" / "bin" / "python3"
         return self.resolved_runtime_dir / ".venv" / "bin" / "python"
 
     def prepare_data_dir(self) -> None:

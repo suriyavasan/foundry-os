@@ -70,7 +70,7 @@ class RegistryDef:
         lines += [
             "",
             "Opened from the owner's own GitHub account after the owner reviewed this exact "
-            "content in Company OS.",
+            "content in Foundry AI OS.",
         ]
         return "\n".join(lines) + "\n"
 
@@ -144,15 +144,15 @@ DIGITALPLAT = FreeProviderDef(
     eligibility=(
         "Free names under the suffixes listed; you register in the provider's dashboard.",
         "The provider decides who qualifies and can change or remove names; read its terms "
-        "(commercial use is not documented in what Company OS could verify).",
+        "(commercial use is not documented in what Foundry AI OS could verify).",
     ),
     steps=(
-        "Open the dashboard and create your own account (Company OS never signs up for you).",
+        "Open the dashboard and create your own account (Foundry AI OS never signs up for you).",
         "Search for the name you want and register it. Complete any email or identity "
         "verification the provider asks for.",
         "Set the domain's nameservers to the ones Cloudflare shows after you add the domain as "
         "a zone to your Cloudflare account (or add the DNS records below at the provider).",
-        "Come back here and press Verify so Company OS can check DNS and wire the tunnel.",
+        "Come back here and press Verify so Foundry AI OS can check DNS and wire the tunnel.",
     ),
 )
 FREE_PROVIDERS: dict[str, FreeProviderDef] = {DIGITALPLAT.id: DIGITALPLAT}

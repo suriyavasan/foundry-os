@@ -1,4 +1,4 @@
-"""Backup and restore of a Company OS data directory (SQLite installs).
+"""Backup and restore of a Foundry AI OS data directory (SQLite installs).
 
 Archive layout (``.tar.gz``, mode 0600)::
 
@@ -11,7 +11,7 @@ helper binaries), ``run/`` (pid files), ``backups/``, ``*.pid``, caches. **The a
 key and the owner token**: treat it like the secrets themselves (store it encrypted, e.g. age/gpg).
 
 Restore verifies every file against the manifest *before* anything in the data directory is touched,
-refuses when a Company OS process is using the directory, and replaces existing data only with
+refuses when a Foundry AI OS process is using the directory, and replaces existing data only with
 ``force`` plus a confirmation; whatever it replaces is moved aside, not deleted.
 """
 
@@ -273,7 +273,7 @@ def read_manifest(archive: Path) -> dict:
                     break
             else:
                 raise OpsError(
-                    "This is not a Company OS backup: manifest.json is missing.",
+                    "This is not a Foundry AI OS backup: manifest.json is missing.",
                     code="bad_manifest",
                 )
     except (tarfile.TarError, OSError, EOFError) as exc:
@@ -408,7 +408,7 @@ def restore_backup(
     if running:
         who = ", ".join(f"{p['role']} (pid {p['pid']})" for p in running)
         raise OpsError(
-            f"Company OS is running against {data_dir}: {who}. Stop it first (Ctrl-C in `companyos up`). "
+            f"Foundry AI OS is running against {data_dir}: {who}. Stop it first (Ctrl-C in `foundryos up`). "
             f"If that is wrong, delete the stale files in {data_dir / pidfile.RUN_DIR}.",
             exit_code=6,
             code="running",
@@ -448,7 +448,7 @@ def restore_backup(
             known = {s.revision for s in ScriptDirectory.from_config(cfg).walk_revisions()}
             if revision not in known:
                 raise OpsError(
-                    f"The backup was made by a newer Company OS (database revision {revision}). "
+                    f"The backup was made by a newer Foundry AI OS (database revision {revision}). "
                     "Upgrade this install first.",
                     code="newer_backup",
                 )
@@ -458,7 +458,7 @@ def restore_backup(
         if existing:
             if not force:
                 raise OpsError(
-                    f"{data_dir} already holds a Company OS install. Restoring replaces it; "
+                    f"{data_dir} already holds a Foundry AI OS install. Restoring replaces it; "
                     "re-run with --force (the current data is moved aside, not deleted).",
                     exit_code=6,
                     code="exists",

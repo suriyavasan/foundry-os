@@ -2,7 +2,7 @@
 (docs/specs/m10 section 3, docs/cli-runtimes.md).
 
 Everything here is the installation owner's (the account that claimed the install; agents get 403).
-Company OS never reads, copies or logs a CLI's own credential files: *own login* means the CLI finds
+Foundry AI OS never reads, copies or logs a CLI's own credential files: *own login* means the CLI finds
 its login itself; an *API key* lives in the encrypted credential store and is injected into one child
 process's environment.
 
@@ -40,7 +40,7 @@ INSTALL_LOG_LINES = 400
 INSTALL_TIMEOUT_SECONDS = 900
 OWN_LOGIN_WARNING = (
     "Own-login mode uses your real home directory so the CLI can find its login: isolation is weaker "
-    "(an API key gives each agent its own home). Company OS never reads or copies the CLI's "
+    "(an API key gives each agent its own home). Foundry AI OS never reads or copies the CLI's "
     "credential files. Check the tool's terms of service before using a personal subscription for "
     "automated, unattended work."
 )
@@ -113,7 +113,7 @@ def status_of(db: Session, cli_env: CliEnvironment, cli_id: str) -> dict[str, An
         )
     if cli_id == "claude_code":
         warnings.append(
-            "Claude Code's own sandbox is not verified by Company OS, so its shell (Bash) tool is never "
+            "Claude Code's own sandbox is not verified by Foundry AI OS, so its shell (Bash) tool is never "
             "enabled: it works with files in its workspace and the company tools."
         )
     return {

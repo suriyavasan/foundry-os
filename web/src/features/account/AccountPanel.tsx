@@ -254,7 +254,7 @@ function TokensCard() {
         }
       />
       {created && <TokenReveal token={created} onDismiss={() => setCreated(null)} />}
-      <Boundary query={q} milestone="M7" isEmpty={(d) => activeTokens(d).length === 0} empty={{ title: 'No tokens', description: 'Create one when you need to use Company OS from a script.' }} unavailableText="Personal tokens arrive with accounts.">
+      <Boundary query={q} milestone="M7" isEmpty={(d) => activeTokens(d).length === 0} empty={{ title: 'No tokens', description: 'Create one when you need to use Foundry AI OS from a script.' }} unavailableText="Personal tokens arrive with accounts.">
         {(items) => (
           <Table>
             <THead>
@@ -398,7 +398,7 @@ function TokenReveal({ token, onDismiss }: { token: ApiTokenCreated; onDismiss: 
     <div role="alert" className="border-b border-warning/40 bg-warning-subtle px-4 py-3" data-testid="token-reveal">
       <p className="text-[13px] font-semibold text-fg">Copy your new token now</p>
       <p className="mt-0.5 text-[12.5px] text-fg-2">
-        <strong className="font-medium">{token.name}</strong> ({token.scope}). This is the only time it is shown. Company OS stores only a hash, so a lost token cannot be recovered. Create a new one instead.
+        <strong className="font-medium">{token.name}</strong> ({token.scope}). This is the only time it is shown. Foundry AI OS stores only a hash, so a lost token cannot be recovered. Create a new one instead.
       </p>
       <div className="mt-2 flex items-center gap-2">
         <input readOnly aria-label="New API token" value={token.token} onFocus={(e) => e.currentTarget.select()} className="h-8 min-w-0 flex-1 rounded-md border border-line-strong bg-canvas px-2.5 font-mono text-[12px] text-fg" />
@@ -441,7 +441,7 @@ function TwoFactorCard({ enabled }: { enabled: boolean }) {
           />
         ) : enabled ? (
           <>
-            <p className="text-[13px] text-fg-2">Two-step verification is protecting this account. Recommended before you expose Company OS on the internet.</p>
+            <p className="text-[13px] text-fg-2">Two-step verification is protecting this account. Recommended before you expose Foundry AI OS on the internet.</p>
             <Button variant="danger" icon={<ShieldCheck className="size-3.5" />} onClick={() => setDisabling(true)}>
               Turn off
             </Button>

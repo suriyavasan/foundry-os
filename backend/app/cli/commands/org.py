@@ -103,7 +103,7 @@ def register(app: typer.Typer) -> None:
         template: Annotated[
             str,
             typer.Option(
-                "--template", "-t", help="Role template slug (see: companyos agents templates)"
+                "--template", "-t", help="Role template slug (see: foundryos agents templates)"
             ),
         ],
         name: Annotated[str, typer.Option("--name", "-n", help="The new employee's name")],
@@ -272,7 +272,7 @@ def register(app: typer.Typer) -> None:
             render.print_json(items)
             return
         render.render_table(
-            items, skill_cols, empty="No skills installed. Try: companyos skills search <topic>"
+            items, skill_cols, empty="No skills installed. Try: foundryos skills search <topic>"
         )
 
     @command(skills_app, "search")
@@ -325,7 +325,7 @@ def register(app: typer.Typer) -> None:
         skill = result["skill"]
         msg = f"{skill['slug']}: {result['outcome']}"
         if result.get("quarantined"):
-            msg += f" - QUARANTINED ({skill['scan_verdict']}); inspect with: companyos skills show {skill['slug']}"
+            msg += f" - QUARANTINED ({skill['scan_verdict']}); inspect with: foundryos skills show {skill['slug']}"
         render.say(msg, style="yellow" if result.get("quarantined") else None)
 
     @command(skills_app, "show")

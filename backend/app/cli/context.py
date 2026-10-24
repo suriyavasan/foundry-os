@@ -50,7 +50,7 @@ class CliState:
             cred = config.resolve_credential()
             if cred is None:
                 raise CliError(
-                    "Not signed in. Run `companyos login` (or run this on the server machine, "
+                    "Not signed in. Run `foundryos login` (or run this on the server machine, "
                     "where the owner token file is used).",
                     exit_code=EXIT_AUTH,
                     code="unauthenticated",
@@ -77,7 +77,7 @@ class CliState:
                     self._company_id = c["id"]
                     return c["id"]
             raise CliError(
-                f"No company matches {wanted!r}. Run `companyos status` to see your companies.",
+                f"No company matches {wanted!r}. Run `foundryos status` to see your companies.",
                 exit_code=5,
                 code="not_found",
             )
@@ -90,7 +90,7 @@ class CliState:
             )
         names = ", ".join(f"{c['name']} ({c['id'][:8]})" for c in companies)
         raise CliError(
-            f"Several companies: {names}. Pick one with --company or `companyos login --company`.",
+            f"Several companies: {names}. Pick one with --company or `foundryos login --company`.",
             code="ambiguous_company",
         )
 

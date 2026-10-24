@@ -34,7 +34,7 @@ x-foundry-os: &foundry-os
 services:
   migrate:
     <<: *foundry-os
-    command: ["alembic", "upgrade", "head"]
+    command: ["foundryos", "migrate"]   # backs up the data before migrating to a new version
     restart: "no"
 
   api:

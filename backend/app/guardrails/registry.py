@@ -245,6 +245,13 @@ _HUMAN_ONLY_ACTIONS = [
         kind="human_only",
         human_only=True,
     ),
+    _a(
+        "system.update",
+        T.IDENTITY,
+        "See whether a newer release exists, or switch the daily update check on or off",
+        kind="human_only",
+        human_only=True,
+    ),
 ]
 HUMAN_ONLY: dict[str, ActionSpec] = {s.name: s for s in _HUMAN_ONLY_ACTIONS}
 

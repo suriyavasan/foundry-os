@@ -1,6 +1,6 @@
 #!/bin/sh
 # Container entrypoint of the Foundry AI OS image.
-#   serve (default)   apply database migrations, then run the API on :8700; the worker runs inside the same
+#   serve (default)   back up + migrate the database (`foundryos migrate`), then run the API on :8700; the worker runs inside the same
 #                     process unless COMPANY_OS_EMBEDDED_WORKER=false
 #   api               run the API only (docker-compose.yml: migrations are a separate one-shot service)
 #   <anything else>   executed as given, e.g. `companyos-worker`, `alembic upgrade head`, `foundryos doctor`
@@ -13,7 +13,8 @@ serve_api() {
 
 case ${1:-serve} in
     serve)
-        alembic upgrade head
+        # `foundryos migrate` takes a safety backup before migrating to a new version
+        foundryos migrate
         serve_api
         ;;
     api)

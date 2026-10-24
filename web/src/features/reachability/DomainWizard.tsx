@@ -429,7 +429,7 @@ function AssistedView({ companyId, registration, provider }: { companyId: string
   return (
     <div className="space-y-4">
       <h3 className="text-[14px] font-semibold text-fg">Register {registration.domain} yourself</h3>
-      <p className="text-[13px] text-fg-2">You create the account and accept the provider’s terms. Company OS does that for nobody.</p>
+      <p className="text-[13px] text-fg-2">You create the account and accept the provider’s terms. Foundry AI OS does that for nobody.</p>
       {dash && (
         <a href={dash} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-[13px] text-accent-fg hover:underline">
           Open {provider?.name ?? 'the provider'}’s dashboard <ExternalLink className="size-3" aria-hidden />

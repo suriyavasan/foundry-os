@@ -63,7 +63,7 @@ describe('AuthGate on an M7 backend', () => {
   it('says so when the session endpoint itself fails', async () => {
     vi.stubGlobal('fetch', mockApi({ '/auth/session': () => err(500, 'internal_error', 'boom') }).impl)
     renderGate()
-    expect(await screen.findByText('Could not reach Company OS', {}, { timeout: 5000 })).toBeInTheDocument()
+    expect(await screen.findByText('Could not reach Foundry AI OS', {}, { timeout: 5000 })).toBeInTheDocument()
   })
 
   it('treats a 401 from the session probe as signed out', async () => {
@@ -168,7 +168,7 @@ describe('login', () => {
   it('explains the CLI password reset, and that it does not exist yet', async () => {
     setup(() => jsonResponse(authed))
     await userEvent.click(await screen.findByRole('button', { name: /Forgot your password/ }))
-    expect(screen.getByText(/companyos auth reset-password/)).toBeInTheDocument()
+    expect(screen.getByText(/foundryos auth reset-password/)).toBeInTheDocument()
     expect(screen.getByText(/ships with the CLI in M9 and does not exist yet/)).toBeInTheDocument()
   })
 })

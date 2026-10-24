@@ -119,7 +119,7 @@ export function AccountStep({ tokenRequired, onDone }: { tokenRequired: boolean;
             error={errors.setup_token}
             hint={
               <>
-                You are not on the computer that runs Company OS, so the server asks you to prove access. Copy the token printed in the terminal where the backend started, or from the file{' '}
+                You are not on the computer that runs Foundry AI OS, so the server asks you to prove access. Copy the token printed in the terminal where the backend started, or from the file{' '}
                 <code className="rounded-sm bg-canvas px-1 py-0.5 font-mono text-[11.5px] text-fg">{SETUP_TOKEN_FILE}</code> on that computer.
               </>
             }

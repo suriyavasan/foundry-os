@@ -134,7 +134,7 @@ export function ConnectedAccountsSection({ companyId }: { companyId: string }) {
         confirmLabel="Revoke"
         loading={revoke.isPending}
         error={revoke.isError ? errorMessage(revoke.error) : null}
-        description="Company OS stops using this connection, so the AI Co-founder can no longer act through it. The account itself is not touched; to cut off access completely, also revoke the token on the provider’s site."
+        description="Foundry AI OS stops using this connection, so the AI Co-founder can no longer act through it. The account itself is not touched; to cut off access completely, also revoke the token on the provider’s site."
         onConfirm={() => revoking && revoke.mutate(revoking.id, { onSuccess: () => { toast.success(`${revoking.label} revoked`); setRevoking(null) } })}
       />
     </Card>

@@ -33,8 +33,13 @@ def register(app: typer.Typer) -> None:
     def up(
         ctx: typer.Context,
         port: Annotated[
-            int, typer.Option(help="Port for the API and the web UI", min=1, max=65535)
-        ] = 8700,
+            int | None,
+            typer.Option(
+                help="Port for the API and the web UI (default: FOUNDRYOS_PORT or 8700)",
+                min=1,
+                max=65535,
+            ),
+        ] = None,
         host: Annotated[
             str | None,
             typer.Option(help="Bind address (default: the saved Reachability preference)"),
@@ -54,12 +59,13 @@ def register(app: typer.Typer) -> None:
         no_build: Annotated[bool, typer.Option("--no-build", help="Never build web/dist.")] = False,
     ) -> None:
         """Start everything: migrate the database, build the UI if needed, run the API and the worker."""
+        from app.core.config import Settings
         from app.ops.up import UpOptions, run_up
 
         st = state(ctx)
         code = run_up(
             UpOptions(
-                port=port,
+                port=port or Settings().port,
                 host=host,
                 no_worker=no_worker,
                 open_browser=open_browser,
@@ -70,6 +76,20 @@ def register(app: typer.Typer) -> None:
         )
         if st is not None and code:
             raise typer.Exit(code)
+
+    @command(app, "migrate")
+    def migrate(ctx: typer.Context) -> None:
+        """Upgrade the database to this version and exit (taking the automatic safety backup first).
+
+        `up` / `serve` do this on every start; containers and scripts can call it on its own."""
+        from app.core.config import Settings
+        from app.ops import up as up_ops
+        from app.ops import upgrade
+
+        settings = Settings()
+        if not upgrade.upgrade_database(settings, typer.echo, up_ops.ensure_migrated):
+            raise typer.Exit(1)
+        typer.echo("The database is up to date.")
 
     @command(app, "doctor")
     def doctor(ctx: typer.Context, json_out: JsonOpt = False) -> None:
@@ -137,7 +157,7 @@ def register(app: typer.Typer) -> None:
     def backup_restore(
         ctx: typer.Context,
         archive: Annotated[
-            Path, typer.Argument(help="A backup archive made by `companyos backup create`")
+            Path, typer.Argument(help="A backup archive made by `foundryos backup create`")
         ],
         data_dir: Annotated[
             Path | None,
@@ -203,5 +223,5 @@ def register(app: typer.Typer) -> None:
                     f"The previous data was moved to {outcome.replaced_into} (delete it when you are sure)."
                 )
             render.say(
-                "Start it with: companyos up   (the database is migrated to the current version on start)"
+                "Start it with: foundryos up   (the database is migrated to the current version on start)"
             )

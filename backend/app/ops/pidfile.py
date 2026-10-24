@@ -1,4 +1,4 @@
-"""Which Company OS processes are using a data directory right now.
+"""Which Foundry AI OS processes are using a data directory right now.
 
 Each long-running process (API, worker) drops ``<data dir>/run/<role>.<pid>.json`` while it lives.
 ``restore`` refuses to touch a data directory that has a live process; ``doctor`` reports them.
@@ -28,7 +28,9 @@ def _alive(pid: int) -> bool:
     return True
 
 
-def register(data_dir: Path, role: str, *, port: int | None = None) -> Path | None:
+def register(
+    data_dir: Path, role: str, *, port: int | None = None, extra: dict | None = None
+) -> Path | None:
     """Create this process's run file. Best effort: a read-only data dir must not stop the server."""
     try:
         run = data_dir / RUN_DIR
@@ -36,7 +38,13 @@ def register(data_dir: Path, role: str, *, port: int | None = None) -> Path | No
         path = run / f"{role}.{os.getpid()}.json"
         path.write_text(
             json.dumps(
-                {"role": role, "pid": os.getpid(), "port": port, "started_at": int(time.time())}
+                {
+                    "role": role,
+                    "pid": os.getpid(),
+                    "port": port,
+                    "started_at": int(time.time()),
+                    **(extra or {}),
+                }
             ),
             encoding="utf-8",
         )

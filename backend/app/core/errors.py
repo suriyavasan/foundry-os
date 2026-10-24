@@ -250,7 +250,7 @@ class AiSetupRequired(Conflict):
 
     code = "ai_setup_required"
     default_message = (
-        "Connect a working AI model first: Company OS cannot run without one (Settings > AI)"
+        "Connect a working AI model first: Foundry AI OS cannot run without one (Settings > AI)"
     )
 
 

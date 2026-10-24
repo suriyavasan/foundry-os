@@ -4,32 +4,44 @@ Most people never need it. But everything in the screen can also be done from a 
 
 ## Two names, one program
 
-The command is **`foundryos`**. The old name **`companyos`** keeps working as an alias, so existing scripts do not break.
+The command is **`foundryos`**. The old name **`companyos`** keeps working as an alias, so existing scripts do not break (one difference: `companyos` with no arguments still prints the help, because that is what it always did).
 
-> **Today versus v0.1.0.** The installed command is currently called `companyos`, and the examples below use it. The `foundryos` name, the no-argument "just start it" behavior and the install-related commands marked *(v0.1.0)* arrive with the first release. Everywhere this page says `companyos`, `foundryos` will do the same.
+In a copy you run from source, put `uv run` in front inside `backend/` (`uv run foundryos status`). The installer and Homebrew put `foundryos` on your PATH.
 
 ## Starting and stopping
 
+Just type `foundryos`. If Foundry AI OS is not running, it starts in the background, waits until it answers, and opens your browser (on the very first run you land on the setup screen). If it is already running, it only opens the browser.
+
 | Command | Does |
 |---|---|
-| `foundryos` *(v0.1.0)* | Starts Foundry in the background if it is not running and opens your browser |
-| `companyos up` | Starts everything in your terminal at <http://127.0.0.1:8700>. Press Ctrl-C to stop |
-| `foundryos start`, `stop`, `restart` *(v0.1.0)* | Control the background copy |
-| `foundryos open`, `logs [-f]` *(v0.1.0)* | Open the browser; show the log (`-f` follows it) |
-| `foundryos version` *(v0.1.0)* | Print the version |
-| `foundryos service install` / `uninstall` *(v0.1.0)* | Start at login on macOS (LaunchAgent) or Linux (systemd user service). Homebrew installs use `brew services` instead |
-| `foundryos update`, `rollback` *(v0.1.0)* | See [Updates and backups](updates-backups.md) |
-| `foundryos uninstall [--purge]` *(v0.1.0)* | Remove the program. Your data stays unless you add `--purge` and confirm |
-| `companyos doctor` | Checks the machine and prints the fix for each problem. Exits with an error if a check fails |
+| `foundryos` | Starts Foundry AI OS in the background if it is not running, then opens your browser |
+| `foundryos start` | Same, without opening the browser |
+| `foundryos stop` | Stops the background copy (for a background *service*, until you next log in or start it) |
+| `foundryos restart` | Stop, then start |
+| `foundryos open` | Opens the browser (it must be running) |
+| `foundryos logs [-f] [-n 100]` | Shows the end of the server log; `-f` keeps following it |
+| `foundryos version` (or `--version`) | Prints the version; `version --json` also says how it was installed and where the data is |
+| `foundryos status` | The company at a glance (not the process: that is `service status`) |
+| `foundryos service status` | Is it running, how it was started, and whether it starts at login |
+| `foundryos service install` / `uninstall` | Start at login: a LaunchAgent on macOS, a systemd user service on Linux. Homebrew installs use `brew services` instead |
+| `foundryos update`, `rollback` | See [Updates and backups](updates-backups.md) |
+| `foundryos uninstall [--purge]` | Remove the program. Your data stays unless you add `--purge` and confirm |
+| `foundryos serve` | Runs in the foreground without a browser. This is what the background service runs |
+| `foundryos up` | Runs in your terminal at <http://127.0.0.1:8700>. Ctrl-C stops it |
+| `foundryos doctor` | Checks the machine and prints the fix for each problem. Exits with an error if a check fails |
 
 Useful options for `up`: `--port 8700`, `--open` (open the browser), `--no-build`, `--no-worker`.
+
+Where the background copy writes its log: `<data folder>/logs/foundry-os.log` (10 MB per file, the last 5 are kept). A Homebrew service logs to Homebrew's `var/log/foundry-os.log`, which `foundryos logs` also finds.
+
+**Background service in detail.** `foundryos service install` writes `~/Library/LaunchAgents/ai.foundry-os.plist` (macOS) or `~/.config/systemd/user/foundry-os.service` (Linux), starts it, and from then on it starts when you log in and restarts if it crashes. On Linux it runs only while you are logged in, unless you add `--linger` (which uses `loginctl enable-linger` and may ask for permission). If you installed with Homebrew, `service install` does nothing except tell you to use `brew services start foundry-os`: it never creates a second service next to Homebrew's. `foundryos stop` also stops the service (until the next login); `foundryos service uninstall` removes the autostart.
 
 ## Signing in
 
 ```bash
-companyos login        # asks for your username and password, stores a personal token
-companyos whoami
-companyos logout
+foundryos login        # asks for your username and password, stores a personal token
+foundryos whoami
+foundryos logout
 ```
 
 The password is never stored, only a token. Secrets are never accepted as arguments, so they do not end up in your shell history. They come from a hidden prompt or from standard input.
@@ -37,22 +49,22 @@ The password is never stored, only a token. Secrets are never accepted as argume
 ## Everyday commands
 
 ```bash
-companyos status                               # company, spending, approvals, alerts
-companyos note "Build a landing page for our first product"
-companyos notes ls
-companyos goal ls
-companyos goal add "Reach 100 newsletter signups"
-companyos agents ls
-companyos agents templates                     # the job templates HR can hire from
-companyos agents hire -t research-analyst -n Riley
-companyos agents pause Riley                   # also: resume, retire
-companyos tasks ls
-companyos tasks create "Write the pricing page copy" --assignee Riley
-companyos runs tail --agent Riley -f           # watch an employee work, live
-companyos approvals ls
-companyos approvals approve ID                 # or: reject ID --note "why"
-companyos skills search "docker" --github
-companyos reach                                # your local, network and public addresses
+foundryos status                               # company, spending, approvals, alerts
+foundryos note "Build a landing page for our first product"
+foundryos notes ls
+foundryos goal ls
+foundryos goal add "Reach 100 newsletter signups"
+foundryos agents ls
+foundryos agents templates                     # the job templates HR can hire from
+foundryos agents hire -t research-analyst -n Riley
+foundryos agents pause Riley                   # also: resume, retire
+foundryos tasks ls
+foundryos tasks create "Write the pricing page copy" --assignee Riley
+foundryos runs tail --agent Riley -f           # watch an employee work, live
+foundryos approvals ls
+foundryos approvals approve ID                 # or: reject ID --note "why"
+foundryos skills search "docker" --github
+foundryos reach                                # your local, network and public addresses
 ```
 
 IDs can be shortened to a unique start. Agents can be named instead of using IDs. Add `--json` to any command for machine-readable output.
@@ -60,28 +72,28 @@ IDs can be shortened to a unique start. Agents can be named instead of using IDs
 ## Money and limits
 
 ```bash
-companyos budget show
-companyos budget set --monthly 50              # USD
-companyos budget set --monthly 5 --agent Riley
-companyos policy show
+foundryos budget show
+foundryos budget set --monthly 50              # USD
+foundryos budget set --monthly 5 --agent Riley
+foundryos policy show
 ```
 
 ## Emergency controls
 
 ```bash
-companyos pause                  # pause one company
-companyos resume
-companyos stop --all             # emergency stop: every company, every run (owner only)
-companyos resume --all
+foundryos pause                  # pause one company
+foundryos resume
+foundryos stop --all             # emergency stop: every company, every run (owner only)
+foundryos resume --all
 ```
 
 ## Setting up AI
 
 ```bash
-companyos providers detect --register          # find a local Ollama and add it
-companyos providers ls
-companyos providers test "Ollama 127.0.0.1:11434"
-companyos credentials set NAME --stdin         # store an API key from standard input
+foundryos providers detect --register          # find a local Ollama and add it
+foundryos providers ls
+foundryos providers test "Ollama 127.0.0.1:11434"
+foundryos credentials set NAME --stdin         # store an API key from standard input
 ```
 
 ## Machine-only commands
@@ -89,8 +101,8 @@ companyos credentials set NAME --stdin         # store an API key from standard 
 These work only on the computer that runs Foundry, because they read the files in the data folder:
 
 ```bash
-companyos auth setup-token               # the setup token for a first sign-up from another device
-companyos auth reset-password USERNAME   # forgot the password? this is the recovery
+foundryos auth setup-token               # the setup token for a first sign-up from another device
+foundryos auth reset-password USERNAME   # forgot the password? this is the recovery
 ```
 
 `reset-password` signs the account out everywhere and records it in the audit log. It is deliberately not available over the network.
@@ -98,8 +110,8 @@ companyos auth reset-password USERNAME   # forgot the password? this is the reco
 ## Backups
 
 ```bash
-companyos backup create
-companyos backup restore ARCHIVE --verify-only
+foundryos backup create
+foundryos backup restore ARCHIVE --verify-only
 ```
 
 More in [Updates and backups](updates-backups.md).
@@ -110,4 +122,4 @@ More in [Updates and backups](updates-backups.md).
 
 ## Settings by environment
 
-The CLI reads `COMPANYOS_API_URL`, `COMPANYOS_COMPANY` and `COMPANYOS_TOKEN`. Its saved files live in `~/.config/companyos/` (mode 0600). `FOUNDRYOS_DATA_DIR` and `FOUNDRYOS_PORT` *(v0.1.0)* will move the data folder and the port; today the equivalents are `COMPANY_OS_DATA_DIR` and `--port`. The full list is in [docs/deploy.md](../deploy.md#7-configuration-reference).
+The CLI reads `COMPANYOS_API_URL`, `COMPANYOS_COMPANY` and `COMPANYOS_TOKEN`. Its saved files live in `~/.config/companyos/` (mode 0600). `FOUNDRYOS_DATA_DIR` moves the data folder, `FOUNDRYOS_PORT` the port, and `FOUNDRYOS_UPDATE_CHECK=0` switches off the daily check for a new release (the older `COMPANY_OS_*` names still work and win when both are set). The full list is in [docs/deploy.md](../deploy.md#7-configuration-reference).

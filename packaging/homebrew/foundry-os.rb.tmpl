@@ -58,7 +58,9 @@ class FoundryOs < Formula
     keep_alive true
     log_path var/"log/foundry-os.log"
     error_log_path var/"log/foundry-os.log"
-    environment_variables PATH: std_service_path_env
+    environment_variables PATH:               std_service_path_env,
+                          FOUNDRYOS_RUN_MODE: "service",
+                          FOUNDRYOS_LOG_FILE: var/"log/foundry-os.log"
   end
 
   def caveats

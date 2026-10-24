@@ -95,7 +95,7 @@ export function LoginForm({
     <form onSubmit={submit} noValidate className="space-y-4" aria-label={secondFactor ? 'Two-step verification' : 'Sign in'}>
       {secondFactor ? (
         <>
-          <p className="text-[13px] text-fg-2">Open your authenticator app and enter the 6-digit code for Company OS.</p>
+          <p className="text-[13px] text-fg-2">Open your authenticator app and enter the 6-digit code for Foundry AI OS.</p>
           <Field label="Authentication code" required error={fieldErrors.code}>
             {({ id, invalid, describedBy }) => (
               <Input

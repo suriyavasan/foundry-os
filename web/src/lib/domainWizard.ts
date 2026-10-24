@@ -33,7 +33,7 @@ export const PATH_INFO: readonly PathInfo[] = [
     title: 'Free domain from a provider with a dashboard',
     summary: 'You register the domain yourself on the provider’s site, following the exact steps and DNS records below. The AI Co-founder then checks DNS and wires it to your tunnel.',
     cost: 'Free',
-    caveats: ['You create the account and accept the provider’s terms yourself. Company OS never does that for you.', 'Providers may require renewal or limit what the domain can be used for.'],
+    caveats: ['You create the account and accept the provider’s terms yourself. Foundry AI OS never does that for you.', 'Providers may require renewal or limit what the domain can be used for.'],
   },
   {
     path: 'paid_registrar',

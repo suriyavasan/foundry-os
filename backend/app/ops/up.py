@@ -1,4 +1,4 @@
-"""``companyos up``: migrate, build the UI if needed, start the API and the worker, supervise them.
+"""``foundryos up``: migrate, build the UI if needed, start the API and the worker, supervise them.
 
 The pieces that matter are separated so they can be tested without real processes:
 :func:`web_status` (is ``web/dist`` fresh?), :class:`Supervisor` (restart-with-backoff, critical
@@ -23,9 +23,11 @@ from typing import Any, Protocol
 
 import httpx
 
+from app.core import install
 from app.core.config import BACKEND_DIR, REPO_DIR, Settings
 from app.core.netinfo import is_loopback_bind
 from app.core.owner_token import OWNER_TOKEN_FILENAME
+from app.ops import logs, pidfile, upgrade
 
 HEALTH_TIMEOUT = 90.0
 WEB_INPUTS = (
@@ -297,7 +299,7 @@ def describe_access(
     tty: bool,
 ) -> list[str]:
     """The lines `up` prints once everything is running."""
-    lines = ["", "Company OS is running.", f"  Local:    http://127.0.0.1:{port}"]
+    lines = ["", "Foundry AI OS is running.", f"  Local:    http://127.0.0.1:{port}"]
     if reach:
         for addr in (reach.get("lan") or {}).get("addresses", []):
             if addr.get("url") and not is_loopback_bind(bind_host):
@@ -331,7 +333,10 @@ def describe_access(
                 lines.append(
                     "  From another device you also need the setup token in <data dir>/owner.token."
                 )
-    lines += ["", "Ctrl-C stops everything."]
+    if os.environ.get("FOUNDRYOS_RUN_MODE"):
+        lines += ["", "Stop it with: foundryos stop"]
+    else:
+        lines += ["", "Ctrl-C stops everything."]
     return lines
 
 
@@ -355,15 +360,16 @@ def run_up(
 
     if port_in_use(opts.port):
         say(
-            f"Port {opts.port} is already in use (is Company OS already running? try `companyos doctor`)."
+            f"Port {opts.port} is already in use (is Foundry AI OS already running? try `foundryos status` or `foundryos doctor`)."
         )
         return 1
 
     say("Checking the database...")
-    ensure_migrated(settings)
+    if not upgrade.upgrade_database(settings, say, ensure_migrated):
+        return 1
 
     dist = settings.resolved_web_dist
-    if not opts.dev and opts.build:
+    if not opts.dev and opts.build and not install.bundle_root():
         state = web_status(web_dir, dist)
         if state in ("missing", "stale"):
             say(f"Web UI is {state}.")
@@ -411,6 +417,17 @@ def run_up(
             previous[sig] = signal.signal(sig, _signal)
 
     exit_code = 0
+    run_file = pidfile.register(
+        settings.resolved_data_dir,
+        "supervisor",
+        port=opts.port,
+        extra={"mode": os.environ.get("FOUNDRYOS_RUN_MODE") or "foreground"},
+    )
+    rotator = None
+    if os.environ.get("FOUNDRYOS_RUN_MODE") in ("background", "service") or os.environ.get(
+        "FOUNDRYOS_LOG_FILE"
+    ):
+        rotator = logs.Rotator(logs.log_path(settings)).start()
     try:
         api = children[0]
         sup.start(api)
@@ -432,6 +449,9 @@ def run_up(
             say("\nShutting down...")
     finally:
         sup.stop_all()
+        if rotator is not None:
+            rotator.stop()
+        pidfile.unregister(run_file)
         for sig, handler in previous.items():
             signal.signal(sig, handler)
     return exit_code

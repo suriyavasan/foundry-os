@@ -351,7 +351,7 @@ export const CLI_AUTH_BLURB: Record<CliAuthMode, string> = {
   own_login: 'Uses the login already on this computer.',
 }
 export const OWN_LOGIN_WARNING =
-  'Weaker isolation: the tool needs your real home folder to find your login, so it runs with access to what that folder holds. Check the tool’s own terms before using a personal or subscription login for automated work. Company OS never reads or copies the tool’s login files.'
+  'Weaker isolation: the tool needs your real home folder to find your login, so it runs with access to what that folder holds. Check the tool’s own terms before using a personal or subscription login for automated work. Foundry AI OS never reads or copies the tool’s login files.'
 
 export function sandboxSummary(s: CliRuntimeStatus['sandbox']): { label: string; tone: Tone; help: string } {
   if (!s.available || s.kind === 'none') {

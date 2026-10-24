@@ -275,9 +275,12 @@ def _openai_probe_body(model: str) -> dict:
 
 
 def _anthropic_probe_body(model: str) -> dict:
+    # tool_choice stays "auto": Claude Sonnet 5.5 / Opus 5.5 / Fable 5.1 reject a forced choice ("any"/"tool")
+    # with HTTP 400, and the prompt already asks for the tool. Those models think by default and thinking
+    # counts against max_tokens, so leave room for it before the tool call.
     return {
         "model": model,
-        "max_tokens": 256,
+        "max_tokens": 2048,
         "messages": [{"role": "user", "content": _PROBE_PROMPT}],
         "tools": [
             {
@@ -290,7 +293,7 @@ def _anthropic_probe_body(model: str) -> dict:
                 },
             }
         ],
-        "tool_choice": {"type": "any"},
+        "tool_choice": {"type": "auto"},
     }
 
 
@@ -456,7 +459,9 @@ def check_http_provider(
     auth_failed: int | None = None
     try:
         with _client(transport, 30.0) as http:
-            resp = http.get(list_url, headers=headers)
+            resp = http.get(
+                list_url, headers=headers, params={"limit": 1000} if kind == "anthropic" else None
+            )
             checks["reachable"] = Check(
                 "reachable", True, f"{kind} answered (HTTP {resp.status_code})"
             )
@@ -466,7 +471,11 @@ def check_http_provider(
                 try:
                     for m in resp.json().get("data") or []:
                         if isinstance(m, dict) and m.get("id"):
-                            ctx = m.get("context_length") or m.get("context_window")
+                            ctx = (
+                                m.get("context_length")
+                                or m.get("context_window")
+                                or m.get("max_input_tokens")
+                            )
                             ids[str(m["id"])] = ctx if isinstance(ctx, int) else None
                 except (ValueError, AttributeError):
                     ids = {}

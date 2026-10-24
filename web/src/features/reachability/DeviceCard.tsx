@@ -27,7 +27,7 @@ export function DeviceCard({ status, canManage }: { status: ReachabilityStatus; 
     setLan.mutate(next, {
       onSuccess: () => {
         setConfirming(false)
-        toast.success(next ? 'LAN access saved. Restart Company OS to start listening on your network.' : 'LAN access turned off. Restart Company OS to stop listening on your network.')
+        toast.success(next ? 'LAN access saved. Restart Foundry AI OS to start listening on your network.' : 'LAN access turned off. Restart Foundry AI OS to stop listening on your network.')
       },
       onError: (e) => {
         setConfirming(false)
@@ -77,8 +77,8 @@ export function DeviceCard({ status, canManage }: { status: ReachabilityStatus; 
               {toggle.restartRequired && (
                 <p role="status" className="mt-1 text-[12px] text-fg-2">
                   {toggle.checked
-                    ? 'Saved. The server is still listening on this computer only; restart Company OS to apply it.'
-                    : 'Saved. The server is still listening on your network; restart Company OS to stop it.'}
+                    ? 'Saved. The server is still listening on this computer only; restart Foundry AI OS to apply it.'
+                    : 'Saved. The server is still listening on your network; restart Foundry AI OS to stop it.'}
                 </p>
               )}
               {!canManage && <p className="mt-1 text-[12px] text-fg-3">Only the owner can change this.</p>}

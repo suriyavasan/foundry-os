@@ -105,4 +105,6 @@ export const qk = {
   commandFeed: (cid: string) => ['company', cid, 'command-center', 'feed'] as const,
   // The emergency stop is global (all companies).
   systemStatus: ['system', 'status'] as const,
+  // The update check is installation-wide (owner only).
+  systemUpdate: ['system', 'update'] as const,
 }

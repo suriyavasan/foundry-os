@@ -1,6 +1,6 @@
 """Runtime adapter contract (architecture section 6).
 
-Every agent runtime is reached only through ``RuntimeAdapter``. Company OS owns business
+Every agent runtime is reached only through ``RuntimeAdapter``. Foundry AI OS owns business
 state and governance; the runtime owns execution. These types are the normalized vocabulary
 between the two.
 
@@ -206,7 +206,7 @@ class ExecutionError:
 
 @dataclass(frozen=True)
 class ArtifactRef:
-    """A deliverable produced by the run. Content is stored by Company OS (never in the DB)."""
+    """A deliverable produced by the run. Content is stored by Foundry AI OS (never in the DB)."""
 
     title: str
     content: bytes | str

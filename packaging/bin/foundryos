@@ -6,10 +6,11 @@
 # data directory, then hands over to the Python CLI (`python -m app.cli.main`). It never writes
 # inside the bundle: the bundle can sit on a read-only volume.
 #
-#   foundryos               start Foundry AI OS and open the browser (`up --no-build --open`)
+#   foundryos               start Foundry AI OS in the background (if needed) and open the browser
 #   foundryos serve         foreground, no browser (what the Homebrew / launchd / systemd service runs)
 #   foundryos --version     print the bundle version
-#   foundryos <anything>    the regular CLI: `foundryos doctor`, `foundryos status`, `foundryos up ...`
+#   foundryos <anything>    the regular CLI: `foundryos doctor`, `foundryos status`, `foundryos update` ...
+# The Python CLI implements all of these; this launcher only sets up the environment.
 #
 # Environment (all optional):
 #   FOUNDRYOS_DATA_DIR   where the database, secrets, artifacts and logs live
@@ -96,13 +97,11 @@ PYTHONNOUSERSITE=1
 PYTHONDONTWRITEBYTECODE=1
 export PYTHONNOUSERSITE PYTHONDONTWRITEBYTECODE
 
-# --- subcommand mapping (until the Python CLI grows these natively) -----------------------------------
-if [ "$#" -eq 0 ] && [ "$invoked_as" != companyos ]; then
-    set -- up --no-build --open
-elif [ "${1:-}" = serve ]; then
-    shift
-    set -- up --no-build "$@"
-fi
+# Tell the CLI it runs from an installed bundle and under which name (`companyos` with no arguments
+# prints help, `foundryos` with no arguments starts the app and opens the browser).
+FOUNDRYOS_INSTALLED=1
+FOUNDRYOS_PROG=$invoked_as
+export FOUNDRYOS_INSTALLED FOUNDRYOS_PROG
 
 # -P: do not put the current directory on sys.path (a project with its own `app/` must not shadow ours)
 exec "$BACKEND_PY" -P -m app.cli.main "$@"

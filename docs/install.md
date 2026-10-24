@@ -85,19 +85,23 @@ To read the script before running it: it is `install.sh` at the root of this rep
 
 ### Starting, the service and updates (installed-mode CLI)
 
-The launcher (`bin/foundryos`) is finished: it finds its bundle, sets the data directory and the paths of the
-bundled interpreters, runtime and web UI, and runs the CLI. Today:
+The launcher (`bin/foundryos`) finds its bundle, sets the data directory and the paths of the bundled
+interpreters, runtime and web UI, marks the copy as installed (`FOUNDRYOS_INSTALLED=1`) and runs the CLI:
 
-- `foundryos` runs `up --no-build --open` in the foreground (keep the terminal open; Ctrl-C stops it);
-- `foundryos serve` is the same without the browser (what Homebrew's service runs);
-- every other command is the regular CLI (`foundryos doctor`, `status`, `agents ls`, ...).
+- `foundryos` starts Foundry AI OS in the background (as your user service when one is installed) and opens
+  the browser; if it is already running it just opens the browser;
+- `foundryos start | stop | restart | open | logs [-f]` control it; `foundryos serve` runs it in the
+  foreground without a browser (what the Homebrew / launchd / systemd service runs);
+- `foundryos service install | uninstall | status` sets up the login service (macOS LaunchAgent, Linux
+  `systemd --user`; Homebrew installs use `brew services` instead);
+- `foundryos update [--check]` / `foundryos rollback` update installer installs (checksums verified, the
+  previous version kept); Homebrew installs print `brew upgrade foundry-os`;
+- every start after a version change first writes a backup to `<data>/backups/` and refuses to start if a
+  migration fails;
+- `foundryos uninstall [--purge]` removes the program (and, with `--purge` and a typed confirmation, your
+  data). Details: [guide/cli.md](guide/cli.md), [guide/updates-backups.md](guide/updates-backups.md).
 
-Starting in the background, `foundryos service install|uninstall`, `foundryos update|rollback|uninstall`, the
-daily update check, the automatic pre-upgrade backup and a native `--version` are specified in
-[specs/m11-easy-install.md](specs/m11-easy-install.md) section 3 and land with the backend change for
-"installed mode". `install.sh` already calls the service commands when the installed version has them and
-otherwise tells you to run `foundryos`. Service templates for them are in `packaging/service/`
-(launchd plist, systemd user unit).
+`install.sh` runs `foundryos service install` and starts the app at the end of an install.
 
 ## Docker
 
@@ -165,7 +169,6 @@ browser from an installed copy.
 | `scripts/release.sh <version>` | bump, tag, push (asks first); `--notes <version>` prints the release notes |
 | `packaging/bin/foundryos` | the launcher shipped in every bundle |
 | `packaging/homebrew/` | `foundry-os.rb.tmpl` and `render_formula.sh <release-dir>` |
-| `packaging/service/` | launchd plist and systemd unit templates |
 | `packaging/gen_notices.py` | generates `THIRD_PARTY_NOTICES` for a bundle |
 | `packaging/sums.sh <dir>` | writes `SHA256SUMS` |
 | `Dockerfile`, `packaging/docker/entrypoint.sh`, `docker-compose*.yml` | the image |

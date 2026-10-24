@@ -17,7 +17,7 @@ const COMMON = [
   'admin', 'admin123', 'admin1234', 'administrator', 'root', 'rootroot', 'toor', 'login', 'master', 'superman', 'batman', 'dragon', 'monkey',
   'football', 'baseball', 'basketball', 'soccer', 'hockey', 'princess', 'sunshine', 'shadow', 'michael', 'jordan', 'harley', 'ranger', 'buster',
   'trustno1', 'changeme', 'changeme123', 'default', 'secret', 'secret123', 'letmein1', 'whatever', 'freedom', 'starwars', 'pokemon', 'passpass',
-  'companyos', 'company-os', 'companyos123', 'opensesame', 'mypassword', 'mypassword1', 'myp@ssword', 'thequickbrownfox', 'correcthorsebatterystaple',
+  'companyos', 'company-os', 'foundryos', 'foundry-os', 'companyos123', 'opensesame', 'mypassword', 'mypassword1', 'myp@ssword', 'thequickbrownfox', 'correcthorsebatterystaple',
   'internet', 'computer', 'ninja', 'hello', 'hello123', 'helloworld', 'helloworld123', 'test', 'test123', 'testtest', 'testing', 'testing123', 'guest', 'user',
   'aaaaaa', 'aaaaaaaa', 'aaaaaaaaaaaa', 'qqqqqq', 'zzzzzz', 'asdasd', 'asdfasdf', 'asdf1234', 'q1w2e3r4', 'q1w2e3r4t5', 'zaq12wsx', 'mnbvcxz', 'poiuytrewq', 'lkjhgfdsa',
 ]

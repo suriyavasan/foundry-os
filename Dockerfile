@@ -69,9 +69,8 @@ RUN useradd --system --uid 10001 --create-home --home-dir /home/foundry foundry 
 COPY --from=build --chown=foundry:foundry /app /app
 COPY --from=web --chown=foundry:foundry /src/web/dist /app/web/dist
 COPY packaging/docker/entrypoint.sh /usr/local/bin/foundry-entrypoint
-# `foundryos` and `companyos` are the same CLI (it talks to the API in this container over HTTP)
-RUN chmod 0755 /usr/local/bin/foundry-entrypoint \
- && ln -s /app/backend/.venv/bin/companyos /usr/local/bin/foundryos
+# `foundryos` (and its alias `companyos`) come from the backend venv, which is first on PATH
+RUN chmod 0755 /usr/local/bin/foundry-entrypoint
 
 ENV PATH="/app/backend/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \

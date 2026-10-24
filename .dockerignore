@@ -22,7 +22,6 @@ scripts
 install.sh
 packaging/bin
 packaging/homebrew
-packaging/service
 packaging/*.py
 packaging/*.sh
 packaging/*.env

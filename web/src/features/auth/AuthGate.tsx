@@ -33,11 +33,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   switch (status.kind) {
     case 'loading':
-      return <FullPage><LoadingState label="Starting Company OS" rows={3} /></FullPage>
+      return <FullPage><LoadingState label="Starting Foundry AI OS" rows={3} /></FullPage>
     case 'error':
       return (
         <FullPage>
-          <ErrorState error={status.error} title="Could not reach Company OS" onRetry={() => void session.refetch()} retrying={session.isFetching} />
+          <ErrorState error={status.error} title="Could not reach Foundry AI OS" onRetry={() => void session.refetch()} retrying={session.isFetching} />
         </FullPage>
       )
     case 'legacy':

@@ -1,4 +1,4 @@
-"""The ``companyos`` command."""
+"""The ``foundryos`` command (``companyos`` is kept as an alias)."""
 
 from __future__ import annotations
 
@@ -6,13 +6,17 @@ from typing import Annotated
 
 import typer
 
-from app.cli.commands import auth, company, org, setup, system, work
-from app.cli.context import CliState
+from app.cli.commands import auth, company, lifecycle, org, setup, system, work
+from app.cli.context import CliState, guarded
 
 app = typer.Typer(
-    name="companyos",
-    help="Run and operate your Company OS: one command to start it, a command for every core operation.",
-    no_args_is_help=True,
+    name="foundryos",
+    help=(
+        "Foundry AI OS: run and operate your autonomous company of AI agents. "
+        "Run it with no arguments to start it in the background and open it in your browser."
+    ),
+    no_args_is_help=False,
+    invoke_without_command=True,
     add_completion=False,
     rich_markup_mode=None,
 )
@@ -35,11 +39,27 @@ def root(
             "--company", "-c", help="Company id or name (default: the only one, or the saved one)"
         ),
     ] = None,
+    version: Annotated[
+        bool,
+        typer.Option(
+            "--version",
+            "-V",
+            help="Print the version and exit.",
+            callback=lifecycle.show_version,
+            is_eager=True,
+        ),
+    ] = False,
 ) -> None:
     ctx.obj = CliState(json=json_out, api_url=api_url, company=company_ref)
+    if ctx.invoked_subcommand is None:
+        if lifecycle.invoked_as().startswith("companyos"):
+            # the old name keeps its old behaviour: no arguments shows the help
+            typer.echo(ctx.get_help())
+            raise typer.Exit(0)
+        guarded(lambda ctx: lifecycle.launch())(ctx)
 
 
-for module in (auth, company, org, work, setup, system):
+for module in (auth, company, org, work, setup, system, lifecycle):
     module.register(app)
 
 

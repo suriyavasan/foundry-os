@@ -19,3 +19,7 @@ GitHub Release notes.
   Python 3.14 interpreters, locked dependencies, the agent runtime and the prebuilt web UI. Nothing to install
   first (no Python, Node, uv or git).
 - `SHA256SUMS` for every release; the installer and the Homebrew formula verify downloads against it.
+- `foundryos` command (alias `companyos`): `foundryos` alone starts it in the background and opens the
+  browser; `start`, `stop`, `restart`, `open`, `logs`, `serve`; `service install|uninstall|status`
+  (LaunchAgent / systemd user unit / `brew services`); `update` + `rollback` with checksum verification;
+  an automatic backup before every upgrade; a daily update check (opt-out); `uninstall [--purge]`.

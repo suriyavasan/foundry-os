@@ -4,7 +4,7 @@ uvicorn's own ``--host`` is invisible to the app, and the listening socket canno
 inside it. This launcher closes the loop for the LAN switch (Settings > Reachability): it reads the
 owner's persisted bind preference, refuses to bind to the network unless password sign-in is on and
 the owner account passed the exposure gate, tells the app which interface it is bound to
-(``COMPANY_OS_BIND_HOST``) and starts uvicorn. ``companyos up`` (M9) does the same.
+(``COMPANY_OS_BIND_HOST``) and starts uvicorn. ``foundryos up`` (M9) does the same.
 """
 
 from __future__ import annotations
@@ -48,8 +48,14 @@ def decide_host(explicit: str | None) -> tuple[str, str | None]:
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="python -m app.serve")
     parser.add_argument("--host", default=None, help="bind address (default: the saved preference)")
-    parser.add_argument("--port", type=int, default=int(os.environ.get("COMPANY_OS_PORT", "8700")))
+    parser.add_argument(
+        "--port", type=int, default=None, help="port (default: FOUNDRYOS_PORT or 8700)"
+    )
     args = parser.parse_args(argv)
+    if args.port is None:
+        from app.core.config import Settings
+
+        args.port = Settings().port
     host, warning = decide_host(args.host)
     if warning:
         print(warning, file=sys.stderr)

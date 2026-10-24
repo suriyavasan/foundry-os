@@ -591,7 +591,7 @@ def test_2fa_enrolment_and_login_flow(app):
     enroll = b.post("/api/auth/2fa/enroll", json={}).json()
     assert (
         enroll["otpauth_uri"].startswith("otpauth://totp/")
-        and "Company%20OS" in enroll["otpauth_uri"]
+        and "Foundry%20AI%20OS" in enroll["otpauth_uri"]
     )
     assert b.get("/api/auth/session").json()["user"]["two_factor_enabled"] is False  # not confirmed
     assert b.post("/api/auth/2fa/verify", json={"code": "000000"}).status_code == 401

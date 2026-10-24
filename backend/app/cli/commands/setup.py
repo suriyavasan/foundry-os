@@ -45,7 +45,7 @@ def register(app: typer.Typer) -> None:
                 ("enabled", "enabled"),
                 ("last test", lambda p: (p.get("last_test") or {}).get("status")),
             ],
-            empty="No model provider yet. Try: companyos providers detect --register",
+            empty="No model provider yet. Try: foundryos providers detect --register",
         )
 
     @command(providers_app, "detect")

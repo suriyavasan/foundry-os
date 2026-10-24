@@ -39,7 +39,7 @@ INSTALL_INSTRUCTIONS = [
     "Linux: download the package for your distribution from "
     "https://github.com/cloudflare/cloudflared/releases and install it",
     "Windows: `winget install --id Cloudflare.cloudflared`",
-    "Or let Company OS download the official release and verify its SHA-256 checksum "
+    "Or let Foundry AI OS download the official release and verify its SHA-256 checksum "
     "(it asks you to confirm first).",
 ]
 

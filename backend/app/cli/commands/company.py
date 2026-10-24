@@ -83,6 +83,7 @@ def register(app: typer.Typer) -> None:
         alerts = _try(st, f"{base}/alerts", status="open", limit=50) or {"items": []}
         reach = _try(st, "/reachability")
         system = _try(st, "/system/status")
+        update = _try(st, "/system/update")
 
         live_agents = [a for a in agents if a["status"] not in INACTIVE]
         by_family = Counter(a.get("role_family") or "generic" for a in live_agents)
@@ -123,6 +124,7 @@ def register(app: typer.Typer) -> None:
             if reach
             else None,
             "emergency_stop": (system or {}).get("emergency_stop"),
+            "update": update,
             "agents": [
                 {
                     "id": a["id"],
@@ -147,6 +149,12 @@ def register(app: typer.Typer) -> None:
         if stop and stop.get("active"):
             render.say(
                 f"EMERGENCY STOP is on: {stop.get('reason') or 'no reason given'}", style="bold red"
+            )
+        if update and update.get("update_available"):
+            render.say(
+                f"Update available: Foundry AI OS {update['latest_version']} "
+                f"(you have {update['current_version']}). To update: {update['update_command']}",
+                style="yellow",
             )
         cf = data["cofounder"]
         render.say(
@@ -206,7 +214,7 @@ def register(app: typer.Typer) -> None:
                 ("status", "status"),
                 ("mission", lambda c: short(c.get("mission"), 50)),
             ],
-            empty='No company yet. Create one: companyos company create "Name"',
+            empty='No company yet. Create one: foundryos company create "Name"',
         )
 
     @command(company_app, "create")
@@ -265,7 +273,7 @@ def register(app: typer.Typer) -> None:
                 ("replies", "reply_count"),
                 ("note", lambda n: short(n["body"], 60)),
             ],
-            empty='No notes yet. Add one with: companyos note "..."',
+            empty='No notes yet. Add one with: foundryos note "..."',
         )
 
     @command(notes_app, "show")
@@ -320,7 +328,7 @@ def register(app: typer.Typer) -> None:
                 ("title", "title"),
                 ("target", "target_date"),
             ],
-            empty='No goals yet. Add one with: companyos goal add "..."',
+            empty='No goals yet. Add one with: foundryos goal add "..."',
         )
 
     @command(goal_app, "add")
@@ -486,7 +494,7 @@ def register(app: typer.Typer) -> None:
         if st.json:
             render.print_json(result)
         else:
-            render.say(f"{result['name']} is paused. Resume with: companyos resume")
+            render.say(f"{result['name']} is paused. Resume with: foundryos resume")
 
     @command(app, "resume")
     def resume(
@@ -513,26 +521,37 @@ def register(app: typer.Typer) -> None:
     def stop(
         ctx: typer.Context,
         all_: Annotated[
-            bool, typer.Option("--all", help="Required: stop every company's runs on this install.")
+            bool,
+            typer.Option(
+                "--all", help="EMERGENCY stop: cancel every company's runs on this install (owner)."
+            ),
         ] = False,
-        reason: Annotated[str | None, typer.Option(help="Why (kept in the audit log).")] = None,
+        reason: Annotated[
+            str | None, typer.Option(help="Why (with --all; kept in the audit log).")
+        ] = None,
         json_out: JsonOpt = False,
     ) -> None:
-        """Emergency stop: cancel every live run in every company and stop dispatch (owner only)."""
+        """Stop Foundry AI OS (the background copy). With --all: the instance-wide emergency stop."""
         st = state(ctx, json_out)
         if not all_:
-            raise CliError(
-                "`companyos stop` is the instance-wide emergency stop; confirm with --all. "
-                "To pause one company use `companyos pause`.",
-                code="usage",
-            )
+            if reason:
+                raise CliError(
+                    "--reason belongs to the emergency stop: use `foundryos stop --all --reason ...`. "
+                    "(`foundryos stop` alone stops the program; to pause one company use "
+                    "`foundryos pause`.)",
+                    code="usage",
+                )
+            from app.cli.commands.lifecycle import stop_program
+
+            stop_program()
+            return
         result = st.client().post("/system/emergency-stop", {"reason": reason} if reason else {})
         if st.json:
             render.print_json(result)
         else:
             render.say(
                 f"Emergency stop is ON ({result.get('runs_cancelled') or 0} run(s) cancelled). "
-                "Lift it with: companyos resume --all",
+                "Lift it with: foundryos resume --all",
                 style="bold red",
             )
 
@@ -566,7 +585,7 @@ def register(app: typer.Typer) -> None:
             for url in lan_urls:
                 render.say(f"  network {url}")
         elif lan.get("requested"):
-            render.say("  network: switched on, restart `companyos up` to apply.", style="yellow")
+            render.say("  network: switched on, restart `foundryos up` to apply.", style="yellow")
         else:
             render.say("  network: off (enable it in the web app: Reachability)", style="dim")
         t = r.get("tunnel") or {}

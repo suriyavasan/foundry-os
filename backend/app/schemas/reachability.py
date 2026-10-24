@@ -34,7 +34,7 @@ class LanStatus(ApiModel):
     mdns_url: str | None
     addresses: list[LanAddress]
     # Added: the owner's persisted preference, the address the process is bound to, and whether
-    # the two differ (the server must be restarted -- e.g. `companyos up` -- to rebind).
+    # the two differ (the server must be restarted -- e.g. `foundryos up` -- to rebind).
     requested: bool = False
     bind_host: str = "127.0.0.1"
     restart_required: bool = False

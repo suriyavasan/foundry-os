@@ -557,7 +557,7 @@ class AuthService:
         revoke_tokens: bool = False,
         now: datetime | None = None,
     ) -> int:
-        """Set a new password without the old one. NOT reachable over HTTP: only ``companyos auth
+        """Set a new password without the old one. NOT reachable over HTTP: only ``foundryos auth
         reset-password`` calls it, after proving filesystem access to the owner token. Signs every
         session out (and optionally revokes API tokens), clears the login lockout, audits it."""
         now = now or utcnow()
@@ -632,7 +632,7 @@ class AuthService:
         user.totp_last_step = None
         db.commit()
         uri = pyotp.TOTP(secret, interval=TOTP_INTERVAL).provisioning_uri(
-            name=user.username or user.display_name, issuer_name="Company OS"
+            name=user.username or user.display_name, issuer_name="Foundry AI OS"
         )
         return secret, uri
 

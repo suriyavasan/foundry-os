@@ -153,7 +153,7 @@ export function CliTile({
         <div className="mt-3 space-y-2">
           {command ? (
             <>
-              <p className="text-[12.5px] text-fg-2">Not installed. Company OS can install it for you after you confirm the command.</p>
+              <p className="text-[12.5px] text-fg-2">Not installed. Foundry AI OS can install it for you after you confirm the command.</p>
               {canManage ? (
                 <Button icon={<Download className="size-3.5" />} onClick={() => setConfirmInstall(true)} disabled={install.isPending || installing}>
                   Install
@@ -164,7 +164,7 @@ export function CliTile({
             </>
           ) : (
             <p className="text-[12.5px] text-fg-2">
-              Not installed, and Company OS cannot install it here{cli.install.requires.length > 0 ? ` (it needs ${cli.install.requires.join(', ')} first)` : ''}. Install it yourself, then refresh this page.
+              Not installed, and Foundry AI OS cannot install it here{cli.install.requires.length > 0 ? ` (it needs ${cli.install.requires.join(', ')} first)` : ''}. Install it yourself, then refresh this page.
             </p>
           )}
         </div>
@@ -205,7 +205,7 @@ export function CliTile({
 
           {mode === 'api_key' && cli.auth_modes.includes('api_key') && cli.id === 'opencode' && (
             <div className="space-y-2">
-              <Field label="Run OpenCode on" hint="One of your model providers: OpenCode uses its address and key, held by Company OS.">
+              <Field label="Run OpenCode on" hint="One of your model providers: OpenCode uses its address and key, held by Foundry AI OS.">
                 {({ id, describedBy }) => (
                   <Select id={id} aria-describedby={describedBy} value={providerId} disabled={!canManage} onChange={(e) => setProviderId(e.target.value)}>
                     <option value="">Choose a provider…</option>
@@ -320,7 +320,7 @@ export function CliTile({
         loading={install.isPending}
         description={
           <div className="space-y-2">
-            <p>This will run exactly the command below on the computer that runs Company OS. It does not use sudo.</p>
+            <p>This will run exactly the command below on the computer that runs Foundry AI OS. It does not use sudo.</p>
             <pre aria-label="Install command" className="overflow-x-auto rounded-md border border-line bg-canvas px-3 py-2 font-mono text-[12.5px] text-fg">
               {command}
             </pre>

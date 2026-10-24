@@ -1,4 +1,4 @@
-"""``companyos doctor``: is this machine ready to run Company OS, and if not, what to do about it."""
+"""``foundryos doctor``: is this machine ready to run Foundry AI OS, and if not, what to do about it."""
 
 from __future__ import annotations
 
@@ -14,7 +14,8 @@ from pathlib import Path
 
 import httpx
 
-from app.core.config import REPO_DIR, Settings, sqlite_file_path
+from app.core import install
+from app.core.config import Settings, sqlite_file_path
 from app.core.owner_token import OWNER_TOKEN_FILENAME
 from app.ops import pidfile
 
@@ -58,12 +59,14 @@ def check_python() -> Check:
     ok = (v.major, v.minor) >= (3, 12)
     uv = shutil.which("uv")
     detail = f"Python {v.major}.{v.minor}.{v.micro}; uv {'found' if uv else 'not found'}"
+    if ok and install.bundle_root() is not None:
+        return Check("python", OK, f"{detail.split(';')[0]} (bundled with Foundry AI OS)")
     if not ok:
         return Check(
             "python",
             FAIL,
             detail,
-            "Company OS needs Python 3.12 or newer (uv python install 3.12).",
+            "Foundry AI OS needs Python 3.12 or newer (uv python install 3.12).",
         )
     if not uv:
         return Check(
@@ -75,9 +78,18 @@ def check_python() -> Check:
     return Check("python", OK, detail)
 
 
-def check_node() -> Check:
+def check_node(settings: Settings | None = None) -> Check:
     pnpm, node = shutil.which("pnpm"), shutil.which("node")
-    dist = REPO_DIR / "web" / "dist" / "index.html"
+    dist = (settings or Settings()).resolved_web_dist / "index.html"
+    if install.bundle_root() is not None:
+        if dist.is_file():
+            return Check("web ui", OK, f"built ({dist.parent}), shipped with this release")
+        return Check(
+            "web ui",
+            FAIL,
+            f"missing ({dist.parent})",
+            "Reinstall Foundry AI OS: this release is incomplete.",
+        )
     if dist.is_file():
         return Check(
             "web ui",
@@ -85,12 +97,12 @@ def check_node() -> Check:
             f"built ({dist.parent}); pnpm {'found' if pnpm else 'not found (only needed to rebuild)'}",
         )
     if pnpm and node:
-        return Check("web ui", WARN, "not built yet; `companyos up` will build it", None)
+        return Check("web ui", WARN, "not built yet; `foundryos up` will build it", None)
     return Check(
         "web ui",
         WARN,
         "not built and pnpm/node are missing: the API would run without the UI",
-        "Install Node >= 20 and pnpm, then run `companyos up`.",
+        "Install Node >= 20 and pnpm, then run `foundryos up`.",
     )
 
 
@@ -106,7 +118,7 @@ def check_database(settings: Settings) -> Check:
             "database",
             WARN,
             f"{path} does not exist yet",
-            "`companyos up` creates and migrates it.",
+            "`foundryos up` creates and migrates it.",
         )
     engine = build_engine(url)
     try:
@@ -134,14 +146,14 @@ def check_database(settings: Settings) -> Check:
             "database",
             WARN,
             f"{where}: no migrations applied",
-            "Run `uv run alembic upgrade head` (or `companyos up`).",
+            "Run `uv run alembic upgrade head` (or `foundryos up`).",
         )
     if head and current != head:
         return Check(
             "database",
             WARN,
             f"{where}: at {current}, code expects {head}",
-            "Run `uv run alembic upgrade head` (or `companyos up`).",
+            "Run `uv run alembic upgrade head` (or `foundryos up`).",
         )
     return Check("database", OK, f"{where}: migrations at head ({current})")
 
@@ -332,6 +344,43 @@ def check_auth_gate(settings: Settings) -> Check:
     return Check("auth", OK, f"mode {mode}; exposure gate open (password sign-in is set up)")
 
 
+def check_install(settings: Settings) -> Check:
+    kind = install.install_kind()
+    where = {
+        install.SOURCE: "source checkout",
+        install.INSTALLER: "installer",
+        install.HOMEBREW: "Homebrew",
+        install.BUNDLE: "release bundle (unpacked by hand)",
+        install.DOCKER: "Docker",
+    }[kind]
+    return Check(
+        "install",
+        INFO,
+        f"Foundry AI OS {install.APP_VERSION} ({where}); data in {settings.resolved_data_dir}",
+    )
+
+
+def check_updates(settings: Settings) -> Check:
+    """What the last (cached, at most daily) look at GitHub found. Never touches the network."""
+    from app.ops import updatecheck
+
+    info = updatecheck.status(settings, refresh="never")
+    if not info["enabled"]:
+        return Check("updates", INFO, "the daily update check is switched off")
+    if info["update_available"]:
+        return Check(
+            "updates",
+            WARN,
+            f"{info['latest_version']} is available (you have {info['current_version']})",
+            f"To update: {info['update_command']}",
+        )
+    if info["latest_version"]:
+        return Check("updates", OK, f"up to date ({info['current_version']})")
+    if info["checked_at"] is None:
+        return Check("updates", INFO, "not checked yet (`foundryos update --check` looks now)")
+    return Check("updates", INFO, "no newer release is known")
+
+
 def check_running(settings: Settings) -> Check:
     live = pidfile.live_processes(settings.resolved_data_dir)
     if live:
@@ -351,7 +400,7 @@ def run_checks(settings: Settings | None = None) -> list[Check]:
     settings = settings or Settings()
     steps = [
         check_python,
-        check_node,
+        lambda: check_node(settings),
         lambda: check_database(settings),
         lambda: check_runtime(settings),
         check_ollama,
@@ -361,6 +410,8 @@ def run_checks(settings: Settings | None = None) -> list[Check]:
         lambda: check_permissions(settings),
         lambda: check_auth_gate(settings),
         lambda: check_running(settings),
+        lambda: check_install(settings),
+        lambda: check_updates(settings),
     ]
     out: list[Check] = []
     for step in steps:

@@ -8,10 +8,10 @@ import type { Tone } from '@/components/ui/Badge'
  *
  * Secrets: a token lives in the form state until submit, goes only into `toSecretCredentialRequests`, is emptied the
  * moment the server has accepted it, and never reaches a response type, a toast or an error message
- * (`scrubSecrets`). Company OS never creates accounts on these services.
+ * (`scrubSecrets`). Foundry AI OS never creates accounts on these services.
  */
 
-export const BOUNDARY_COPY = 'Company OS never creates accounts for you on these services — you connect an account once; the AI Co-founder then operates it within your guardrails.'
+export const BOUNDARY_COPY = 'Foundry AI OS never creates accounts for you on these services — you connect an account once; the AI Co-founder then operates it within your guardrails.'
 
 export interface ProviderField {
   key: string
@@ -128,7 +128,7 @@ export const PROVIDERS: readonly ProviderDef[] = [
     label: 'Gmail',
     purpose: 'Use an existing Gmail account as the company mailbox',
     auth: 'oauth',
-    tokenHelp: 'You sign in with Google in a new tab and grant access. Company OS does not see your password.',
+    tokenHelp: 'You sign in with Google in a new tab and grant access. Foundry AI OS does not see your password.',
     fields: [],
   },
   {
@@ -136,7 +136,7 @@ export const PROVIDERS: readonly ProviderDef[] = [
     label: 'Outlook',
     purpose: 'Use an existing Outlook account as the company mailbox',
     auth: 'oauth',
-    tokenHelp: 'You sign in with Microsoft in a new tab and grant access. Company OS does not see your password.',
+    tokenHelp: 'You sign in with Microsoft in a new tab and grant access. Foundry AI OS does not see your password.',
     fields: [],
   },
 ] as const

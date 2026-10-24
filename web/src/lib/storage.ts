@@ -64,3 +64,8 @@ export function readCommandHistory(cid: string): string[] {
 export function writeCommandHistory(cid: string, items: string[]) {
   safeSet(cmdHistoryKey(cid), JSON.stringify(items.slice(-50)))
 }
+
+/** The release version whose "update available" banner the owner dismissed (a newer release shows it again). */
+const UPDATE_DISMISSED_KEY = 'company-os.update-dismissed'
+export const getDismissedUpdate = () => safeGet(UPDATE_DISMISSED_KEY)
+export const setDismissedUpdate = (version: string) => safeSet(UPDATE_DISMISSED_KEY, version)

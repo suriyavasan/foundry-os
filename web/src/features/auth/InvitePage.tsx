@@ -74,7 +74,7 @@ function AcceptInvite({ token, signedInAs, setupRequired }: { token: string; sig
         <h1 className="text-[18px] font-semibold text-fg">Invitation not valid</h1>
         <p className="mt-2 text-[13px] text-fg-2">{failure.message}</p>
         <Link to="/" className="mt-4 inline-flex h-8 items-center rounded-md border border-line-strong bg-raised px-3 text-[13px] font-medium text-fg hover:bg-hover">
-          Go to Company OS
+          Go to Foundry AI OS
         </Link>
       </div>
     )
@@ -84,7 +84,7 @@ function AcceptInvite({ token, signedInAs, setupRequired }: { token: string; sig
     return (
       <div>
         <h1 className="text-[18px] font-semibold text-fg">This install is not set up yet</h1>
-        <p className="mt-2 text-[13px] text-fg-2">Someone has to create the owner account first. Open Company OS from the computer that runs it, then use this link again.</p>
+        <p className="mt-2 text-[13px] text-fg-2">Someone has to create the owner account first. Open Foundry AI OS from the computer that runs it, then use this link again.</p>
         <Link to="/" className="mt-4 inline-flex h-8 items-center rounded-md border border-line-strong bg-raised px-3 text-[13px] font-medium text-fg hover:bg-hover">
           Open setup
         </Link>

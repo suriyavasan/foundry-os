@@ -172,7 +172,7 @@ def create_app(
             engine.dispose()
 
     app = FastAPI(
-        title="Company OS API",
+        title="Foundry AI OS API",
         version=APP_VERSION,
         openapi_url="/api/openapi.json",
         docs_url="/api/docs",
@@ -238,7 +238,7 @@ def create_app(
                     content=envelope(
                         "forbidden",
                         "auth_mode=local only answers requests from this machine; use the "
-                        "default password mode to reach Company OS from other devices",
+                        "default password mode to reach Foundry AI OS from other devices",
                         {"reason": "local_mode_loopback_only"},
                     ),
                 )

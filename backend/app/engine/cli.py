@@ -18,7 +18,7 @@ from app.engine.service import EngineService
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="companyos-worker",
-        description="Company OS worker + scheduler (dispatch, runs, schedules, recovery).",
+        description="Foundry AI OS worker + scheduler (dispatch, runs, schedules, recovery).",
     )
     parser.parse_args(argv)
     logging.basicConfig(

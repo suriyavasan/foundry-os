@@ -17,9 +17,9 @@ describe('AuthGate', () => {
     const child = vi.fn(() => <p>the app</p>)
     renderWithProviders(<AuthGate>{child()}</AuthGate>)
 
-    expect(await screen.findByRole('heading', { name: /Open Company OS from the login link printed in your terminal/ })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: /Open Foundry AI OS from the login link printed in your terminal/ })).toBeInTheDocument()
     expect(screen.getByText(/uv run uvicorn app.main:app --port 8700/)).toBeInTheDocument()
-    expect(screen.getByText(/companyos up/)).toBeInTheDocument()
+    expect(screen.getByText(/foundryos up/)).toBeInTheDocument()
     expect(screen.queryByText('the app')).not.toBeInTheDocument()
     // A backend without accounts answers 404 on the session probe; then exactly one /me, not retried (M3b-sec flow).
     await new Promise((r) => setTimeout(r, 50))

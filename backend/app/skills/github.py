@@ -22,7 +22,7 @@ logger = logging.getLogger("company_os.skills.github")
 
 API_VERSION = "2022-11-28"
 RAW_BASE = "https://raw.githubusercontent.com"
-USER_AGENT = "company-os-skills/0.1"
+USER_AGENT = "foundry-os-skills/0.1"
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _SYMLINK_MODE = "120000"
 _SUBMODULE_MODE = "160000"
