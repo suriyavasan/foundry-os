@@ -88,9 +88,8 @@ jobs:
         include:
           - platform: darwin-arm64
             runner: macos-14
-          # macos-13 (the last Intel image) was retired by GitHub in December 2025; macos-15-intel is its successor
-          - platform: darwin-x86_64
-            runner: macos-15-intel
+          # No darwin-x86_64 bundle: key dependencies (cryptography 50, argon2-cffi-bindings 26, cbor2 6)
+          # no longer publish Intel macOS wheels. Intel Macs use the Docker image (docs/install.md).
           - platform: linux-x86_64
             runner: ubuntu-22.04
           - platform: linux-arm64

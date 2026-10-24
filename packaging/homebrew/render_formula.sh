@@ -49,7 +49,7 @@ sha_for() { # file name -> hash on stdout, or nothing
 }
 
 SEDARGS="-e s|@VERSION@|$VERSION|g"
-for plat in darwin_arm64 darwin_x86_64 linux_arm64 linux_x86_64; do
+for plat in darwin_arm64 linux_arm64 linux_x86_64; do  # no Intel macOS bundle (see release.yml)
     file=foundry-os-$VERSION-$(printf '%s' "$plat" | sed 's/^\([a-z]*\)_/\1-/').tar.gz
     sha=$(sha_for "$file")
     if [ -z "$sha" ]; then

@@ -151,7 +151,7 @@ jobs:
       - name: Render the formula with placeholder checksums
         run: |
           mkdir release
-          for plat in darwin-arm64 darwin-x86_64 linux-arm64 linux-x86_64; do
+          for plat in darwin-arm64 linux-arm64 linux-x86_64; do
             printf '%064d  foundry-os-%s-%s.tar.gz\n' 1 "$(cat VERSION)" "$plat" >> release/SHA256SUMS
           done
           packaging/homebrew/render_formula.sh release -o foundry-os.rb

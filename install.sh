@@ -82,6 +82,9 @@ detect_platform() {
     if [ "$os" = darwin ] && [ "$arch" = x86_64 ] && [ "$(sysctl -n hw.optional.arm64 2>/dev/null || echo 0)" = 1 ]; then
         arch=arm64
     fi
+    if [ "$os" = darwin ] && [ "$arch" = x86_64 ]; then
+        die "Intel Macs are not supported by the native bundles (key libraries no longer publish Intel macOS builds). Use Docker: docker run -d --name foundry-os -p 127.0.0.1:8700:8700 -v foundry-os:/data ghcr.io/suriyavasan/foundry-os:latest"
+    fi
     if [ "$os" = linux ]; then
         if [ -e /lib/ld-musl-x86_64.so.1 ] || [ -e /lib/ld-musl-aarch64.so.1 ] ||
             (have ldd && ldd --version 2>&1 | grep -qi musl); then

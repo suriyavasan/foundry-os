@@ -23,7 +23,7 @@ runtime and the prebuilt web UI. **You do not need Python, Node, uv, pnpm or git
 model: a local [Ollama](https://ollama.com) or an API key for a cloud provider (the onboarding screen walks
 you through it).
 
-Requirements: macOS 11+ on Apple Silicon or Intel, or Linux (glibc, arm64 or x86_64; not Alpine/musl). About
+Requirements: macOS 11+ on Apple Silicon, or Linux (glibc, arm64 or x86_64; not Alpine/musl). **Intel Macs** use the Docker image: key libraries (cryptography, argon2-cffi-bindings, cbor2) no longer publish Intel macOS builds, so there is no native Intel bundle. About
 600 MB of disk for the install, plus your data.
 
 ## Homebrew
@@ -150,7 +150,7 @@ On macOS 26 / Apple Silicon only, with a bundle built on that machine and a loca
 | Homebrew formula in a throw-away local tap: `brew style`, `brew audit --strict` (offline: URLs are `file://`), `brew install` (clean, no linkage failure), `foundryos --version`, `brew test`, `serve` + `/api/health`, `brew uninstall` | passed |
 | `shellcheck -x` on all scripts, `actionlint` on both workflows, `docker compose config` on the compose files | clean |
 
-**Not verified** (no machine/network for it): Linux bundles and `install.sh` on Linux; Intel macOS; the
+**Not verified** (no machine/network for it): Linux bundles and `install.sh` on Linux (CI builds and smoke-tests both); Intel macOS (no bundle; Docker only); the
 workflows on GitHub's runners; the Docker image (built only in CI; the local Docker daemon was off); the
 formula against the real `https://` release; `brew services start`; launchd/systemd service templates; the
 installer's Homebrew path against a real published tap; GHCR push; the end-to-end first-run flow in the

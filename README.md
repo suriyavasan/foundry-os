@@ -21,7 +21,7 @@
 
 > **Available from the first release (v0.1.0).** The installers below are being built and are not published yet. Until then, use [From source](#from-source).
 
-**1. Homebrew** (macOS and Linux)
+**1. Homebrew** (Apple Silicon Macs and Linux)
 
 ```bash
 brew install suriyavasan/tap/foundry-os
@@ -29,7 +29,7 @@ brew install suriyavasan/tap/foundry-os
 
 Then run `foundryos`. It starts in the background and opens your browser. Update later with `brew upgrade foundry-os`. To start it at login: `brew services start foundry-os`.
 
-**2. One-line installer** (macOS and Linux, no Homebrew needed)
+**2. One-line installer** (Apple Silicon Macs and Linux, no Homebrew needed)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/suriyavasan/foundry-os/main/install.sh | sh
@@ -71,7 +71,7 @@ Steps 2 and 3 belong to the new setup screens that are still being finished. See
 
 ## Requirements
 
-- A Mac or Linux computer (Windows through Docker or WSL). Only macOS has been tested.
+- An Apple Silicon Mac or a Linux computer. Intel Macs and Windows: use Docker (or WSL on Windows).
 - A few hundred MB of disk plus room for your data. `doctor` warns below 2 GB free.
 - An AI to think with: an API key, or Ollama with a model that supports tool calling. A small local model works but is slow and follows long plans only partly.
 - From source only: Python 3.12+, `uv`, Node 20+ and `pnpm`.

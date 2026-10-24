@@ -9,6 +9,9 @@ GitHub Release notes.
 
 ## [0.1.0] - 2026-10-24
 
+> Intel Macs: use the Docker image. Key dependencies no longer publish Intel macOS builds, so there is no
+> native Intel macOS bundle.
+
 ### Added
 
 - First public release of Foundry AI OS: a self-hosted operating system for an autonomous company of AI
@@ -17,7 +20,7 @@ GitHub Release notes.
   and costs.
 - Install options: Homebrew (`brew install suriyavasan/tap/foundry-os`), a one-line installer
   (`install.sh`), Docker (`ghcr.io/suriyavasan/foundry-os`) and from source.
-- Self-contained release bundles for macOS (Apple Silicon, Intel) and Linux (x86_64, arm64): their own
+- Self-contained release bundles for macOS (Apple Silicon) and Linux (x86_64, arm64): their own
   Python 3.14 interpreters, locked dependencies, the agent runtime and the prebuilt web UI. Nothing to install
   first (no Python, Node, uv or git).
 - `SHA256SUMS` for every release; the installer and the Homebrew formula verify downloads against it.

@@ -13,13 +13,12 @@ class FoundryOs < Formula
   end
 
   on_macos do
+    # Apple Silicon only: upstream libraries no longer ship Intel macOS builds. Intel Macs: use Docker.
+    depends_on arch: :arm64
+
     on_arm do
       url "@URL_darwin_arm64@", using: :nounzip
       sha256 "@SHA_darwin_arm64@"
-    end
-    on_intel do
-      url "@URL_darwin_x86_64@", using: :nounzip
-      sha256 "@SHA_darwin_x86_64@"
     end
   end
 
