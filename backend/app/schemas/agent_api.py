@@ -143,6 +143,16 @@ class CtxRun(BaseModel):
     attempt_number: int
 
 
+class CtxCredential(BaseModel):
+    """A credential this agent may use through ``POST /provider-actions``. Metadata only: the
+    value never leaves the control plane."""
+
+    id: str
+    name: str
+    provider: str
+    allowed_actions: list[str]
+
+
 class AgentContext(BaseModel):
     company: CtxCompany
     run: CtxRun
@@ -156,3 +166,5 @@ class AgentContext(BaseModel):
     skills_available: bool = True
     # M5: verified company memory that applies to this agent (requirements, facts, lessons).
     memory: list[CtxMemory] = []
+    # M6: credentials scoped for this agent's role family (ids to name in company_provider_action).
+    credentials: list[CtxCredential] = []

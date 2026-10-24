@@ -23,6 +23,10 @@ class AppError(Exception):
         self.details = details
         super().__init__(self.message)
 
+    def body(self) -> dict[str, Any]:
+        """JSON body of the response (the standard error envelope unless overridden)."""
+        return envelope(self.code, self.message, self.details)
+
 
 class BadRequest(AppError):
     status_code = 400
@@ -101,6 +105,54 @@ class ScannerUnavailable(AppError):
     default_message = "The skill security scanner is not available"
 
 
+class GuardrailDenied(Forbidden):
+    """A guardrail rule (or the fail-closed default) forbids this action (403)."""
+
+    code = "guardrail_denied"
+    default_message = "A guardrail forbids this action"
+
+
+class RateLimited(AppError):
+    status_code = 429
+    code = "rate_limited"
+    default_message = "Rate limit exceeded"
+
+
+class EmergencyStopped(AppError):
+    """The instance-wide emergency stop is active: nothing runs until the owner resumes."""
+
+    status_code = 503
+    code = "emergency_stop"
+    default_message = "The emergency stop is active; nothing runs until the owner resumes"
+
+
+class NotAvailable(AppError):
+    """A subsystem that is not built / not connected yet (never faked)."""
+
+    status_code = 501
+    code = "not_available"
+    default_message = "Not available yet"
+
+    def __init__(self, message: str | None = None, *, milestone: str, details: Any = None) -> None:
+        super().__init__(message, {"available": False, "milestone": milestone, **(details or {})})
+
+
+class ApprovalPending(AppError):
+    """The action waits for an approval or a peer review (HTTP 202, not an error envelope): the
+    agent should finish what it can and repeat the identical action once it is woken."""
+
+    status_code = 202
+    code = "pending_approval"
+    default_message = "The action waits for a review"
+
+    def __init__(self, message: str | None = None, **fields: Any) -> None:
+        super().__init__(message, fields)
+        self.fields = fields
+
+    def body(self) -> dict[str, Any]:
+        return {"status": "pending_approval", "message": self.message, **self.fields}
+
+
 class UpstreamError(AppError):
     """An external source (GitHub) failed."""
 
@@ -131,7 +183,7 @@ _HTTP_CODES = {
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def _app_error(_: Request, exc: AppError) -> JSONResponse:
-        return _error_response(exc.status_code, exc.code, exc.message, exc.details)
+        return JSONResponse(status_code=exc.status_code, content=exc.body())
 
     @app.exception_handler(RequestValidationError)
     async def _validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:

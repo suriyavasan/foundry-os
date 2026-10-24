@@ -14,11 +14,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.crypto import CredentialCipher
-from app.core.errors import Conflict, Forbidden, NotFound
+from app.core.errors import Conflict, Forbidden, NotFound, ValidationFailed
 from app.core.principal import CompanyContext, require_human_admin
 from app.core.time import utcnow
 from app.models.provider import Credential, ModelProvider
-from app.schemas.providers import CredentialCreate
+from app.schemas.providers import CredentialCreate, CredentialRotate, CredentialScope
 from app.services import audit, events
 from app.services.pagination import paginate
 
@@ -72,6 +72,9 @@ def create_credential(
         encrypted_value=cipher.encrypt(data.value.get_secret_value()),
         created_by_type=ctx.principal.type.value,
         created_by_id=ctx.principal.id,
+        provider=data.provider,
+        allowed_actions=_clean_actions(data.allowed_actions or []),
+        allowed_families=_clean_families(data.allowed_families or []),
     )
     db.add(row)
     try:
@@ -91,6 +94,98 @@ def create_credential(
         data={"name": row.name, "kind": row.kind},
     )
     events.emit(db, ctx.company_id, "credential.created", {"credential_id": row.id})
+    db.commit()
+    return row
+
+
+def _clean_actions(actions: list[str]) -> list[str]:
+    """Exact registered actions or ``prefix.*`` patterns that match at least one."""
+    import fnmatch
+
+    from app.guardrails import registry
+
+    cleaned: list[str] = []
+    for raw in actions:
+        action = raw.strip()
+        if action not in registry.PROVIDER_ACTIONS and not (
+            "*" in action
+            and any(fnmatch.fnmatchcase(name, action) for name in registry.PROVIDER_ACTIONS)
+        ):
+            raise ValidationFailed(f"{action!r} is not a provider action")
+        cleaned.append(action)
+    return list(dict.fromkeys(cleaned))
+
+
+def _clean_families(families: list[str]) -> list[str]:
+    from app.models.enums import RoleFamily
+
+    valid = {f.value for f in RoleFamily}
+    for family in families:
+        if family not in valid:
+            raise ValidationFailed(f"Unknown role family {family!r}")
+    return list(dict.fromkeys(families))
+
+
+def update_scope(
+    db: Session, ctx: CompanyContext, credential_id: str, data: CredentialScope
+) -> Credential:
+    """Humans only: which provider uses the credential, which actions and role families may."""
+    require_human_admin(ctx, "change a credential's scope")
+    row = _load(db, ctx.company_id, credential_id)
+    if row.revoked_at is not None:
+        raise Conflict("Credential has been revoked")
+    given = data.model_fields_set
+    if "provider" in given:
+        row.provider = data.provider
+    if "allowed_actions" in given and data.allowed_actions is not None:
+        row.allowed_actions = _clean_actions(data.allowed_actions)
+    if "allowed_families" in given and data.allowed_families is not None:
+        row.allowed_families = _clean_families(data.allowed_families)
+    row.updated_at = utcnow()
+    audit.record(
+        db,
+        company_id=ctx.company_id,
+        principal=ctx.principal,
+        action="credential.scope_changed",
+        target_type="credential",
+        target_id=row.id,
+        summary=f"Changed the scope of credential {row.name}",
+        data={
+            "provider": row.provider,
+            "allowed_actions": row.allowed_actions,
+            "allowed_families": row.allowed_families,
+        },
+    )
+    events.emit(db, ctx.company_id, "credential.updated", {"credential_id": row.id})
+    db.commit()
+    return row
+
+
+def rotate_credential(
+    db: Session,
+    ctx: CompanyContext,
+    cipher: CredentialCipher,
+    credential_id: str,
+    data: CredentialRotate,
+) -> Credential:
+    """Humans only: replace the secret value in place (ids, scope and references stay)."""
+    require_human_admin(ctx, "rotate credentials")
+    row = _load(db, ctx.company_id, credential_id)
+    if row.revoked_at is not None:
+        raise Conflict("Credential has been revoked")
+    row.encrypted_value = cipher.encrypt(data.value.get_secret_value())
+    row.updated_at = utcnow()
+    audit.record(
+        db,
+        company_id=ctx.company_id,
+        principal=ctx.principal,
+        action="credential.rotated",
+        target_type="credential",
+        target_id=row.id,
+        summary=f"Rotated credential {row.name}",
+        data={"name": row.name, "kind": row.kind},
+    )
+    events.emit(db, ctx.company_id, "credential.updated", {"credential_id": row.id})
     db.commit()
     return row
 

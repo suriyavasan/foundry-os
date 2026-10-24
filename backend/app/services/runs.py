@@ -38,6 +38,7 @@ CANCEL_COMPANY_PAUSED = "company_paused"
 CANCEL_TASK_CANCELLED = "task_cancelled"
 CANCEL_TASK_BLOCKED = "task_blocked"
 CANCEL_SHUTDOWN = "worker_shutdown"
+EXIT_BUDGET_EXHAUSTED = "budget_exhausted"
 
 
 @dataclass
@@ -104,8 +105,10 @@ def create_queued_run(
     reservation: BudgetReservation,
     *,
     now: datetime,
+    route: Any = None,
 ) -> TaskRun:
-    """Queue a run for ``task`` (no commit). Bumps ``attempt_count`` and starts the task."""
+    """Queue a run for ``task`` (no commit). Bumps ``attempt_count`` and starts the task.
+    ``route`` is the model routing decision (``services.routing.Route``), stored on the run."""
     prior = db.scalar(select(func.count(TaskRun.id)).where(TaskRun.task_id == task.id))
     attempt_number = int(prior or 0) + 1
     task.attempt_count += 1
@@ -120,6 +123,9 @@ def create_queued_run(
         queued_at=now,
         reservation_id=reservation.id,
         cost_kind=CostKind.UNKNOWN,
+        routing_reason=route.reason if route is not None else None,
+        model_provider_id=route.provider_id if route is not None else None,
+        model_used=route.model if route is not None else None,
     )
     db.add(run)
     db.flush()
@@ -366,8 +372,8 @@ def _finalize_locked(
             task_id=run.task_id,
             run_id=run.id,
             runtime=run.runtime,
-            provider=agent.model_provider if agent else None,
-            model=agent.model_name if agent else None,
+            provider=run.model_provider_id or (agent.model_provider if agent else None),
+            model=run.model_used or (agent.model_name if agent else None),
             input_tokens=(usage.input_tokens if usage else 0) or 0,
             output_tokens=(usage.output_tokens if usage else 0) or 0,
             cost_micros=cost,

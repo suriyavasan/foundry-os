@@ -22,7 +22,9 @@ from app.api.routes import (
     companies,
     control,
     departments,
+    finance,
     goals,
+    guardrails,
     memory,
     notes,
     policy,
@@ -40,6 +42,7 @@ from app.core.errors import register_exception_handlers
 from app.core.keys import SecretKeyProvider
 from app.core.owner_token import OwnerTokenProvider, install_log_redaction
 from app.db.session import build_engine, build_session_factory
+from app.guardrails.providers import ProviderRegistry
 from app.runtimes.registry import RuntimeRegistry, build_default_registry
 from app.services.users import ensure_local_owner
 from app.skills.env import SkillsEnv, build_skills_env
@@ -56,6 +59,7 @@ REQUIRED_TABLES = {
     "skills",
     "model_providers",
     "founder_notes",
+    "guardrail_rules",
 }
 
 
@@ -126,6 +130,8 @@ def create_app(
     )
     app.state.storage = LocalFileStorage(settings.artifacts_dir)
     app.state.skills = skills_env or build_skills_env(settings)
+    # Control-plane provider executors (M8 registers the real ones; empty means "not connected").
+    app.state.provider_executors = ProviderRegistry()
 
     app.add_middleware(
         CORSMiddleware,
@@ -160,6 +166,8 @@ def create_app(
         memory.router,
         alerts.router,
         cofounder.router,
+        guardrails.router,
+        finance.router,
         agent_api.router,
     ):
         app.include_router(router, prefix="/api")

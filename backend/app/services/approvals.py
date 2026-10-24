@@ -37,6 +37,7 @@ from app.services.agents import _find_secret_paths
 from app.services.common import get_task_or_404
 from app.services.pagination import paginate
 
+_UNSET: Any = object()
 _DECISIONS = {
     "approve": (ApprovalStatus.APPROVED, "approval.approved", "Approved"),
     "reject": (ApprovalStatus.REJECTED, "approval.rejected", "Rejected"),
@@ -79,8 +80,11 @@ def list_approvals(
     cursor: str | None,
     status: str | None = None,
     approver: str | None = None,
+    tier: str | None = None,
 ):
     stmt = select(Approval).where(Approval.company_id == ctx.company_id)
+    if tier:
+        stmt = stmt.where(Approval.tier == tier)
     if status:
         stmt = stmt.where(Approval.status == status)
     if approver:
@@ -137,18 +141,30 @@ def create_approval_record(
     scope: dict[str, Any] | None = None,
     task_id: str | None = None,
     subject: tuple[str, str] | None = None,
+    approver: Approver | None = None,
+    tier: str | None = None,
+    action: str | None = None,
+    reviewer_agent_id: str | None = None,
+    outbound: dict[str, Any] | None = None,
+    dlp_findings: list[dict[str, Any]] | None = None,
+    requested_by_agent_id: Any = _UNSET,
 ) -> Approval:
     """Insert an approval (derived approver, audit, event). No commit. ``subject`` is set only
-    by services (e.g. the hiring service): it is what a decision on the approval acts on."""
+    by services (e.g. the hiring service): it is what a decision on the approval acts on. The
+    guardrail engine passes ``approver`` (peer / founder / human) and the guarded tier + action."""
     limits = policy.load_policy(db, company_id)
-    approver = derive_approver(limits, kind)
+    approver = approver or derive_approver(limits, kind)
     scope = dict(scope or {})
     approval = Approval(
         company_id=company_id,
         kind=kind,
         status=ApprovalStatus.PENDING,
         approver=approver,
-        requested_by_agent_id=principal.id if principal.is_agent else None,
+        requested_by_agent_id=(
+            requested_by_agent_id
+            if requested_by_agent_id is not _UNSET
+            else (principal.id if principal.is_agent else None)
+        ),
         task_id=task_id,
         title=title,
         reason=reason,
@@ -161,6 +177,11 @@ def create_approval_record(
         scope_hash=compute_scope_hash(scope),
         subject_type=subject[0] if subject else None,
         subject_id=subject[1] if subject else None,
+        tier=tier,
+        action=action,
+        reviewer_agent_id=reviewer_agent_id,
+        outbound=outbound,
+        dlp_findings=dlp_findings,
     )
     db.add(approval)
     db.flush()
@@ -172,7 +193,13 @@ def create_approval_record(
         target_type="approval",
         target_id=approval.id,
         summary=f"Requested {approval.kind} approval: {approval.title}",
-        data={"kind": approval.kind, "approver": approver.value, "amount_micros": amount_micros},
+        data={
+            "kind": approval.kind,
+            "approver": approver.value,
+            "amount_micros": amount_micros,
+            "tier": tier,
+            "action": action,
+        },
     )
     events.emit(
         db,
@@ -184,6 +211,7 @@ def create_approval_record(
             "approver": approver.value,
             "title": approval.title,
             "status": approval.status,
+            "tier": tier,
         },
     )
     return approval
@@ -202,12 +230,25 @@ def decide(
         agent = db.scalar(
             select(Agent).where(Agent.id == principal.id, Agent.company_id == ctx.company_id)
         )
-        if agent is None or agent.kind != AgentKind.FOUNDER or agent.status != AgentStatus.ACTIVE:
-            raise Forbidden("Only the active founder agent can decide approvals")
-        if approval.approver != Approver.FOUNDER:
-            raise Forbidden("This approval requires a human decision")
         if approval.requested_by_agent_id == principal.id:
             raise Forbidden("An agent can never decide its own request")
+        if approval.approver == Approver.PEER:
+            # Maker-checker: only the reviewer the engine picked (never the author) may decide.
+            if (
+                agent is None
+                or agent.status != AgentStatus.ACTIVE
+                or approval.reviewer_agent_id != principal.id
+            ):
+                raise Forbidden("Only the assigned reviewer can decide this peer review")
+        else:
+            if (
+                agent is None
+                or agent.kind != AgentKind.FOUNDER
+                or agent.status != AgentStatus.ACTIVE
+            ):
+                raise Forbidden("Only the active founder agent can decide approvals")
+            if approval.approver != Approver.FOUNDER:
+                raise Forbidden("This approval requires a human decision")
     elif not ctx.is_human_admin:
         raise Forbidden("Only company owners and admins can decide approvals")
 
@@ -252,6 +293,10 @@ def decide(
         from app.services import tasks  # local: tasks depends on this module
 
         tasks.apply_plan_decision(db, ctx, approval, decision)
+    if approval.subject_type == "guardrail":
+        from app.guardrails import peer  # local: the guardrail engine depends on this module
+
+        peer.after_decision(db, ctx, approval, decision, note)
     if approval.requested_by_agent_id and approval.subject_type != "agent_hire":
         # the requester continues once it is decided (a hire wakes the new hire's manager instead)
         from app.services import wakes
@@ -261,13 +306,25 @@ def decide(
             ctx.company_id,
             approval.requested_by_agent_id,
             "approval",
-            f"Approval {status.value}: {approval.title}",
+            _wake_text(approval, status.value),
             ref_type="approval",
             ref_id=approval.id,
             actor_agent_id=principal.id if principal.is_agent else None,
         )
     db.commit()
     return approval
+
+
+def _wake_text(approval: Approval, status: str) -> str:
+    text = f"Approval {status}: {approval.title}"
+    if approval.subject_type != "guardrail":
+        return text
+    if status == ApprovalStatus.APPROVED:
+        return (
+            f"{text}. Repeat the identical action now (same content, nothing changed): the "
+            "approval is single-use and bound to exactly that content."
+        )
+    return f"{text}. Do NOT resend the same content; change it or choose another approach."
 
 
 def consume(

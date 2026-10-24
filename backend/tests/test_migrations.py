@@ -371,3 +371,77 @@ def test_0005_backfills_budget_defaults_and_builtin_schedules(tmp_path):
         n = conn.execute(text("SELECT COUNT(*) FROM schedules WHERE name = 'heartbeat'")).scalar()
     engine.dispose()
     assert n == 1
+
+
+# ------------------------------------------------------------------ 0006: guardrails & governance
+
+M6_TABLES = {
+    "guardrail_rules",
+    "guardrail_events",
+    "rate_limit_hits",
+    "system_state",
+    "external_expenses",
+    "budget_alert_marks",
+}
+
+
+def test_0006_upgrade_downgrade_roundtrip_and_existing_policies_get_defaults(tmp_path):
+    url = f"sqlite:///{tmp_path / 'm6.db'}"
+    cfg = alembic_config(url)
+    command.upgrade(cfg, "0001")
+    engine = create_engine(url)
+    with engine.begin() as conn:
+        _legacy_company(conn, "Legacy")
+    engine.dispose()
+    command.upgrade(cfg, "0005")  # the policy row is backfilled on the way
+    command.upgrade(cfg, "head")
+    assert tables(url) >= M6_TABLES
+    engine = create_engine(url)
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT budget_alert_thresholds, model_routing, allow_paid_fallback, "
+                    "auto_spend_limit_micros, stall_seconds, ai_disclosure_enabled FROM company_policies"
+                )
+            ).one()
+            assert row[1:] == ("free_first", 1, 0, 180, 1) and "80" in str(row[0])
+        cols = {c["name"] for c in inspect(engine).get_columns("approvals")}
+        assert {"tier", "action", "reviewer_agent_id", "outbound", "dlp_findings"} <= cols
+        assert {"routing_reason", "model_provider_id", "model_used"} <= {
+            c["name"] for c in inspect(engine).get_columns("task_runs")
+        }
+        assert {"provider", "allowed_actions", "allowed_families"} <= {
+            c["name"] for c in inspect(engine).get_columns("credentials")
+        }
+    finally:
+        engine.dispose()
+    command.downgrade(cfg, "0005")
+    assert not (M6_TABLES & tables(url))
+    command.upgrade(cfg, "head")
+    assert tables(url) >= M6_TABLES
+
+
+def test_the_migrated_schema_matches_the_models(tmp_path):
+    """No drift between ``alembic upgrade head`` and the SQLAlchemy models (a model change without
+    a migration, or the other way round, fails here)."""
+    from alembic.autogenerate import compare_metadata
+    from alembic.migration import MigrationContext
+
+    from app.db.base import Base
+
+    url = f"sqlite:///{tmp_path / 'drift.db'}"
+    command.upgrade(alembic_config(url), "head")
+    engine = create_engine(url)
+    try:
+        with engine.connect() as conn:
+            ctx = MigrationContext.configure(conn, opts={"compare_type": False})
+            diff = [
+                d
+                for d in compare_metadata(ctx, Base.metadata)
+                if not (isinstance(d, tuple) and d[0] in ("remove_index", "add_index"))
+            ]
+    finally:
+        engine.dispose()
+    m6_drift = [d for d in diff if any(t in str(d) for t in M6_TABLES)]
+    assert not m6_drift, m6_drift

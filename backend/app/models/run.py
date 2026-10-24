@@ -60,6 +60,11 @@ class TaskRun(TimestampMixin, Base):
     cost_micros: Mapped[int | None] = mapped_column(BigInteger)
     cost_kind: Mapped[str] = mapped_column(String(16), default=CostKind.UNKNOWN, nullable=False)
     reservation_id: Mapped[str | None] = mapped_column(ForeignKey("budget_reservations.id"))
+    # M6 model routing: which provider/model this run was routed to and why (NULL = the runtime
+    # chooses, e.g. scripted or Hermes-gateway runs).
+    routing_reason: Mapped[str | None] = mapped_column(String(300))
+    model_provider_id: Mapped[str | None] = mapped_column(String(36))
+    model_used: Mapped[str | None] = mapped_column(String(160))
 
 
 class RunEvent(Base):

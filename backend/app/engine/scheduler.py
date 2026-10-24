@@ -8,7 +8,8 @@ from datetime import datetime, timedelta
 from app.engine import recovery
 from app.engine.context import EngineContext
 from app.engine.dispatcher import DispatchReport, dispatch_tick
-from app.services import events, jobs, schedules, wakes
+from app.guardrails import ratelimit
+from app.services import emergency, events, jobs, schedules, wakes
 
 logger = logging.getLogger("company_os.scheduler")
 
@@ -37,16 +38,23 @@ class Scheduler:
         now = now or self.ctx.clock()
         self._last_recovery = now
         report = recovery.recover(self.ctx, now)
-        schedules.fire_due(self.ctx.session_factory, now)
-        wakes.materialize_due(self.ctx.session_factory, now)
+        if not self._stopped():
+            schedules.fire_due(self.ctx.session_factory, now)
+            wakes.materialize_due(self.ctx.session_factory, now)
         return report
+
+    def _stopped(self) -> bool:
+        """The emergency stop is active: no schedules fire, no wakes, no dispatch."""
+        with self.ctx.session_factory() as db:
+            return emergency.is_active(db)
 
     def tick(self, now: datetime | None = None) -> TickReport:
         now = now or self.ctx.clock()
         report = TickReport()
-        report.fired_task_ids = schedules.fire_due(self.ctx.session_factory, now)
-        report.woke_task_ids = wakes.materialize_due(self.ctx.session_factory, now)
-        report.dispatch = dispatch_tick(self.ctx, now)
+        if not self._stopped():
+            report.fired_task_ids = schedules.fire_due(self.ctx.session_factory, now)
+            report.woke_task_ids = wakes.materialize_due(self.ctx.session_factory, now)
+            report.dispatch = dispatch_tick(self.ctx, now)
         if self._last_recovery is None or now - self._last_recovery >= timedelta(
             seconds=recovery.RECOVERY_INTERVAL_SECONDS
         ):
@@ -63,9 +71,15 @@ class Scheduler:
         with self.ctx.session_factory() as db:
             pruned_events = events.prune(db, now)
             pruned_jobs = jobs.prune_finished(db, now)
+            pruned_hits = ratelimit.prune(db, now)
             db.commit()
-        if pruned_events or pruned_jobs:
-            logger.info("pruned %s events, %s jobs", pruned_events, pruned_jobs)
+        if pruned_events or pruned_jobs or pruned_hits:
+            logger.info(
+                "pruned %s events, %s jobs, %s rate-limit hits",
+                pruned_events,
+                pruned_jobs,
+                pruned_hits,
+            )
 
     def run_forever(self, stop: threading.Event, interval: float = TICK_SECONDS) -> None:
         try:

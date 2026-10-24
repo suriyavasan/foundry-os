@@ -46,6 +46,14 @@ class Approval(TimestampMixin, Base):
     # e.g. ("agent_hire", <proposed agent id>) -> approving activates that agent.
     subject_type: Mapped[str | None] = mapped_column(String(32))
     subject_id: Mapped[str | None] = mapped_column(String(36))
+    # M6 guardrail approvals (subject_type "guardrail"): the tier and action they authorize, the
+    # reviewing agent of a peer review, the exact outbound content under review and the outbound DLP
+    # findings (kind / severity / description / count only: never a matched value).
+    tier: Mapped[str | None] = mapped_column(String(32))
+    action: Mapped[str | None] = mapped_column(String(80))
+    reviewer_agent_id: Mapped[str | None] = mapped_column(ForeignKey("agents.id"))
+    outbound: Mapped[dict | None] = mapped_column(JSON)
+    dlp_findings: Mapped[list | None] = mapped_column(JSON)
 
 
 class Decision(TimestampMixin, Base):

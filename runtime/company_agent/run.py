@@ -191,6 +191,17 @@ def main(argv: Optional[list[str]] = None) -> int:
         task_kind=str(spec.task.get("kind") or ""),
     )
 
+    # Milestone 6: tool registry + untrusted-content hooks on Hermes' plugin lifecycle.
+    from company_agent import guard as guardrails
+
+    tool_guard = guardrails.build_guard(
+        spec.guardrails, notify=lambda message: writer.emit("progress", {"message": message}))
+    if tool_guard is not None:
+        guardrails.install(tool_guard)
+    else:
+        writer.emit("progress", {"message": "Guardrails are not active: the control plane sent no "
+                                            "guardrails block (older than Milestone 6)."})
+
     started = time.monotonic()
     deadline = started + spec.max_run_seconds
     runner.start()

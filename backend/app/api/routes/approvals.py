@@ -13,6 +13,7 @@ from app.schemas.governance import (
     Decision,
     DecisionBody,
 )
+from app.schemas.guardrails import ActionTierLiteral
 from app.services import approvals, decisions
 from app.services.pagination import DEFAULT_LIMIT, MAX_LIMIT
 
@@ -26,11 +27,12 @@ def list_approvals(
     db: DbSession,
     status: ApprovalStatusLiteral | None = None,
     approver: ApproverLiteral | None = None,
+    tier: ActionTierLiteral | None = None,
     limit: Limit = DEFAULT_LIMIT,
     cursor: str | None = None,
 ):
     items, nxt = approvals.list_approvals(
-        db, ctx, limit=limit, cursor=cursor, status=status, approver=approver
+        db, ctx, limit=limit, cursor=cursor, status=status, approver=approver, tier=tier
     )
     return {"items": items, "next_cursor": nxt}
 

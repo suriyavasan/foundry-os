@@ -107,24 +107,18 @@ def committed_micros(
     return int(db.scalar(stmt) or 0)
 
 
-def reserve(
+def _limit_checks(
     db: Session,
-    company_id: str,
+    company: Company,
+    policy: CompanyPolicy,
     agent: Agent,
     task: Task,
     amount_micros: int,
-    *,
     now: datetime,
-) -> BudgetReservation:
-    """Check every applicable limit and insert a ``held`` reservation, atomically with the
-    caller's transaction. Raises ``BudgetExceeded`` (nothing is written beyond the lock bump)."""
-    if amount_micros < 0:
-        raise ValueError("amount_micros must be >= 0")
-    acquire_budget_lock(db, company_id)  # FIRST statement of the reservation transaction
-    company = db.scalar(select(Company).where(Company.id == company_id))
-    policy = db.scalar(select(CompanyPolicy).where(CompanyPolicy.company_id == company_id))
-    if company is None or policy is None:
-        raise Conflict("Company or policy missing")
+) -> None:
+    """Raise ``BudgetExceeded`` if adding ``amount_micros`` (on top of what is already committed,
+    held reservations included) would break a task, project, agent or company limit."""
+    company_id = company.id
     periods = periods_for(now, company.timezone)
     project = (
         db.scalar(
@@ -200,6 +194,27 @@ def reserve(
                 },
             )
 
+
+def reserve(
+    db: Session,
+    company_id: str,
+    agent: Agent,
+    task: Task,
+    amount_micros: int,
+    *,
+    now: datetime,
+) -> BudgetReservation:
+    """Check every applicable limit and insert a ``held`` reservation, atomically with the
+    caller's transaction. Raises ``BudgetExceeded`` (nothing is written beyond the lock bump)."""
+    if amount_micros < 0:
+        raise ValueError("amount_micros must be >= 0")
+    acquire_budget_lock(db, company_id)  # FIRST statement of the reservation transaction
+    company = db.scalar(select(Company).where(Company.id == company_id))
+    policy = db.scalar(select(CompanyPolicy).where(CompanyPolicy.company_id == company_id))
+    if company is None or policy is None:
+        raise Conflict("Company or policy missing")
+    _limit_checks(db, company, policy, agent, task, amount_micros, now)
+    periods = periods_for(now, company.timezone)
     reservation = BudgetReservation(
         company_id=company_id,
         agent_id=agent.id,
@@ -212,6 +227,37 @@ def reserve(
     )
     db.add(reservation)
     db.flush()
+    return reservation
+
+
+def extend_reservation(
+    db: Session, reservation: BudgetReservation, extra_micros: int, *, now: datetime
+) -> BudgetReservation:
+    """Grow a HELD reservation by ``extra_micros`` (mid-run budget checkpoint). Re-checks every
+    limit for the extra amount; raises ``BudgetExceeded`` and changes nothing when it does not fit.
+    The caller must hold the budget lock (``acquire_budget_lock`` as its first statement)."""
+    if extra_micros <= 0:
+        return reservation
+    company = db.get(Company, reservation.company_id)
+    policy = db.scalar(
+        select(CompanyPolicy).where(CompanyPolicy.company_id == reservation.company_id)
+    )
+    agent = db.get(Agent, reservation.agent_id)
+    task = db.get(Task, reservation.task_id) if reservation.task_id else None
+    if company is None or policy is None or agent is None or task is None:
+        raise Conflict("Reservation context is missing")
+    _limit_checks(db, company, policy, agent, task, extra_micros, now)
+    result = db.execute(
+        update(BudgetReservation)
+        .where(
+            BudgetReservation.id == reservation.id,
+            BudgetReservation.status == ReservationStatus.HELD,
+        )
+        .values(amount_micros=BudgetReservation.amount_micros + extra_micros)
+    )
+    if result.rowcount != 1:  # settled or released meanwhile
+        raise Conflict("The reservation is no longer held")
+    db.refresh(reservation)
     return reservation
 
 

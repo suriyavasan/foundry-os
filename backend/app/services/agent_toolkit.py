@@ -103,6 +103,24 @@ HR_TOOLS = (
 )
 
 
+def can_use_provider_actions(db: Session, agent: Agent) -> bool:
+    """The agent gets ``company_provider_action`` only when some live credential is scoped for
+    actions its role family may use (nothing to call otherwise: fewer tools suit small models)."""
+    from app.models.provider import Credential
+
+    rows = db.scalars(
+        select(Credential).where(
+            Credential.company_id == agent.company_id, Credential.revoked_at.is_(None)
+        )
+    )
+    return any(
+        r.provider
+        and r.allowed_actions
+        and (not r.allowed_families or agent.role_family in r.allowed_families)
+        for r in rows
+    )
+
+
 def has_active_reports(db: Session, agent: Agent) -> bool:
     return bool(
         db.scalar(
@@ -128,6 +146,8 @@ def company_tools_for(db: Session, agent: Agent, override: Any = None) -> list[s
         tools = [*WORKER_TOOLS, *MANAGER_EXTRA]
     else:
         tools = list(WORKER_TOOLS)
+    if can_use_provider_actions(db, agent):
+        tools.append("company_provider_action")
     tools = list(dict.fromkeys(tools))
     if isinstance(override, list) and override:
         keep = {str(t) for t in override}

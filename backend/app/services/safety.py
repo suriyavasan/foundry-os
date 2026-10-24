@@ -3,8 +3,9 @@
 * **Circuit breaker** - ``policy.circuit_breaker_failures`` failed or timed-out runs within ten
   minutes auto-pause the company (the same kill switch as the Founder's pause: runs are cancelled,
   dispatch and schedules stop) and raise a critical alert. A human resumes it.
-* **Budget thresholds** - alerts at 80 % and 100 % of the daily and monthly company budget.
-  Spend is the ledger's committed amount (settled + held), never a guess.
+* **Budget thresholds** - alerts at the configured percentages (default 50/80/100) of every daily
+  and monthly budget, idempotent per scope/period/threshold (``budget_alerts``). Spend is the
+  ledger's committed amount (settled + held), never a guess.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from app.core.principal import Principal
 from app.models.company import Company
 from app.models.enums import AlertSeverity, CompanyStatus, RunStatus
 from app.models.run import TaskRun
-from app.services import alerts, audit, ledger, policy
+from app.services import alerts, audit, policy
 
 BREAKER_WINDOW = timedelta(minutes=10)
 BREAKER_ALERT_KEY = "circuit_breaker"
@@ -82,32 +83,7 @@ def resolve_breaker_alert(db: Session, company_id: str, principal: Principal | N
 
 
 def check_budget_thresholds(db: Session, company_id: str, now: datetime) -> None:
-    company = db.get(Company, company_id)
-    if company is None:
-        return
-    limits = policy.load_policy(db, company_id)
-    periods = ledger.periods_for(now, company.timezone)
-    checks = (
-        ("monthly", limits.monthly_budget_micros, {"period_month": periods.month}, periods.month),
-        ("daily", limits.daily_budget_micros, {"period_day": periods.day}, periods.day.isoformat()),
-    )
-    for label, budget, scope, period_key in checks:
-        if not budget:
-            continue
-        used = ledger.committed_micros(db, company_id, **scope)
-        for pct, severity in ((100, AlertSeverity.CRITICAL), (80, AlertSeverity.WARNING)):
-            if used * 100 >= budget * pct:
-                alerts.raise_alert(
-                    db,
-                    company_id,
-                    kind="budget_threshold",
-                    severity=severity,
-                    title=f"{label.capitalize()} budget {pct}% used",
-                    body=f"Spent or reserved {used} of {budget} micro-USD this "
-                    f"{'day' if label == 'daily' else 'month'}. Local models cost $0; cloud "
-                    "costs may be estimates.",
-                    related_type="company",
-                    related_id=company_id,
-                    dedupe_key=f"budget:{label}:{pct}:{period_key}",
-                )
-                break
+    """Threshold alerts for every budget (company and agents); see ``budget_alerts``."""
+    from app.services import budget_alerts
+
+    budget_alerts.check(db, company_id, now)

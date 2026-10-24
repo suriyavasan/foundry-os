@@ -544,9 +544,18 @@ class ModelResolutionError(Exception):
     """No usable provider/model for this agent. The message is safe to show."""
 
 
-def resolve_for_agent(db: Session, agent: Agent) -> ResolvedModel:
+def resolve_for_agent(
+    db: Session,
+    agent: Agent,
+    *,
+    provider_id: str | None = None,
+    model_name: str | None = None,
+) -> ResolvedModel:
+    """The provider + model for a run. ``provider_id`` / ``model_name`` are a routing decision
+    (M6) that replaces the agent's own choice for one run."""
     pol: CompanyPolicy = policy.load_policy(db, agent.company_id)
-    provider_id = agent.model_provider or pol.default_model_provider_id
+    pinned_by_routing = provider_id is not None
+    provider_id = provider_id or agent.model_provider or pol.default_model_provider_id
     if not provider_id:
         raise ModelResolutionError(
             "No model provider: set the agent's model provider or a company default model"
@@ -560,8 +569,11 @@ def resolve_for_agent(db: Session, agent: Agent) -> ResolvedModel:
         raise ModelResolutionError(f"Model provider {provider_id!r} does not exist in this company")
     if not row.enabled:
         raise ModelResolutionError(f"Model provider {row.name!r} is disabled")
-    model = agent.model_name or (
-        pol.default_model_name if pol.default_model_provider_id == row.id else None
+    model = model_name if pinned_by_routing and model_name else None
+    model = (
+        model
+        or (agent.model_name if not pinned_by_routing else None)
+        or (pol.default_model_name if pol.default_model_provider_id == row.id else None)
     )
     return ResolvedModel(
         provider_id=row.id,

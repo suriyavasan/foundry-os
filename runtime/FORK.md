@@ -20,9 +20,9 @@ Rules for this tree: upstream files are modified **only** when unavoidable; each
 
 | Path | Purpose |
 |---|---|
-| `company_agent/` | The launcher: `run.py` (entrypoint, stdin spec -> JSONL stdout, signals, limits), `spec.py` (run spec validation), `protocol.py` (event writer: seq, single terminal, redaction), `runner.py` (builds `AIAgent`, callbacks -> events, time/cancel/finish handling), `prompts.py` (role prompt), `home.py` (HERMES_HOME, SOUL.md, enforced `config.yaml`, scrubbed environment), `toolpolicy.py` (toolset mapping/removal), `approvals.py` (deny-all approval callback), `context.py` (tool client config). |
+| `company_agent/` | The launcher: `run.py` (entrypoint, stdin spec -> JSONL stdout, signals, limits), `spec.py` (run spec validation), `protocol.py` (event writer: seq, single terminal, redaction), `runner.py` (builds `AIAgent`, callbacks -> events, time/cancel/finish handling), `prompts.py` (role prompt), `home.py` (HERMES_HOME, SOUL.md, enforced `config.yaml`, scrubbed environment), `toolpolicy.py` (toolset mapping/removal), `approvals.py` (deny-all approval callback), `context.py` (tool client config), `guard.py` (M6: tool registry check, untrusted-content tagging, injection flagging). |
 | `company_agent/tests/` | pytest suite incl. a deterministic fake OpenAI-compatible model server and a stub agent API (counts in the milestone report). |
-| `tools/company_tools.py` | The `company` toolset (19 tools: 10 work tools + M4 colleague/hiring/HR tools) calling the Company OS agent API. Auto-discovered by Hermes' tool registry. |
+| `tools/company_tools.py` | The `company` toolset (32 tools: work tools, M4 colleague/hiring/HR tools, M5 autonomy tools, M6 `company_decide_peer_review` and `company_provider_action`) calling the Company OS agent API. Auto-discovered by Hermes' tool registry. |
 | `scripts/check_imports.py` | Import check for the pruned tree (run after any prune / upstream sync). |
 | `scripts/scan_dropped_imports.py` | Static list of imports of dropped modules still present in kept code. |
 | `scripts/live_smoke.py` | Manual live smoke against a real local model with a printing stub API. |
@@ -149,3 +149,23 @@ providers (no keys), the HR/hiring tools against a real model (they are covered 
   `spec.agent.role`; verified company memory in the identity prompt; review / failure-analysis tasks render the work under review;
   role-aware kickoff and completion nudges. `company_agent/context.py`: `handed_off` disposition. `spec.py`: tool names.
 * Tests: `company_agent/tests/test_company_tools.py` (M5 tools, hints), `test_policy.py` (playbooks, memory, review prompts).
+
+## Milestone 6 additions (company layer only, no upstream file touched)
+
+* `company_agent/guard.py`: two hooks registered on Hermes' in-process plugin manager (`_hooks`; Hermes has no public API
+  for first-party in-process hooks, so this touches a private attribute -- covered by tests that go through the real
+  `model_tools.handle_function_call`; remember it when syncing upstream):
+  `pre_tool_call` refuses any tool that is not in the run spec's `guardrails.tool_tiers` (fail closed; `company_*` tools are
+  enforced by the agent API instead) and asks the control plane (`POST /guardrails/check-tool`) before running a tool of an
+  outside-reaching tier (a control plane that cannot be reached means "no"); `transform_tool_result` wraps the results of
+  web/file/command tools in `<untrusted source="...">` (the content cannot close or fake the tag) and flags common
+  injection phrases (progress event + `POST /guardrails/flags`, categories only; never blocks). A refused call leaves a
+  `[guardrail]` progress event because Hermes emits no start/complete callbacks for it.
+* `tools/company_tools.py`: `company_decide_peer_review` (the reviewer's decision; success ends the run), `company_provider_action`
+  (the control plane acts with a stored credential; the tool never carries one), a `pending_approval` answer is never treated as a
+  completed task, `company_get_context` tags other agents' artifact excerpts as untrusted. 32 company tools in total.
+* `company_agent/spec.py`: optional `guardrails` block and the two tool names; `prompts.py`: untrusted-content rule, peer-review
+  task rendering (the exact outbound draft in an untrusted block, DLP findings, checklist, company constraints) and kickoff/nudge.
+* The tool -> tier table lives in `backend/app/guardrails/tools.json` (single source of truth, sent in every run spec);
+  `company_agent/tests/test_guard_registry.py` compares it with the tools Hermes really resolves.
+* Tests: `test_guard.py`, `test_guard_registry.py`, `test_m6_runtime.py` (incl. a real launcher subprocess run).

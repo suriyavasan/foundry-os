@@ -165,6 +165,7 @@ class ApprovalStatus(StrEnum):
 class Approver(StrEnum):
     HUMAN = "human"
     FOUNDER = "founder"
+    PEER = "peer"  # M6: another agent checks the exact outbound content (maker-checker)
 
 
 class Recurrence(StrEnum):
@@ -291,3 +292,48 @@ class AlertStatus(StrEnum):
 WAITING_FOR_HIRE = "waiting_for_hire"
 WAITING_ON_SUBTASKS = "waiting_on_subtasks"
 AWAITING_PLAN_APPROVAL = "awaiting_plan_approval"
+
+
+# ------------------------------------------------------------ Milestone 6: guardrails & governance
+
+
+class ActionTier(StrEnum):
+    """Risk tier of an agent action (docs/specs/m6 section 1)."""
+
+    READ = "read"
+    INTERNAL_WRITE = "internal_write"
+    ORG_CHANGE = "org_change"
+    EXTERNAL_READ = "external_read"
+    EXTERNAL_COMMUNICATION = "external_communication"
+    EXTERNAL_COMMITMENT = "external_commitment"
+    SPEND = "spend"
+    IDENTITY = "identity"
+    DESTRUCTIVE = "destructive"
+
+
+class GuardrailDecision(StrEnum):
+    ALLOW = "allow"
+    PEER_REVIEW = "peer_review"
+    COFOUNDER_APPROVAL = "cofounder_approval"
+    HUMAN_APPROVAL = "human_approval"
+    DENY = "deny"
+
+
+# Decisions that park the action behind an Approval.
+APPROVAL_DECISIONS = (
+    GuardrailDecision.PEER_REVIEW,
+    GuardrailDecision.COFOUNDER_APPROVAL,
+    GuardrailDecision.HUMAN_APPROVAL,
+)
+
+
+class GuardrailScope(StrEnum):
+    ALL = "all"
+    FAMILY = "family"
+    AGENT = "agent"
+
+
+class ModelRouting(StrEnum):
+    FREE_FIRST = "free_first"
+    PINNED = "pinned"
+    QUALITY_FIRST = "quality_first"

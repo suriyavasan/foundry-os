@@ -7,8 +7,9 @@ from sqlalchemy import text
 from app.api.deps import CurrentPrincipal, DbSession
 from app.core.config import APP_VERSION
 from app.core.errors import Forbidden
+from app.schemas.guardrails import EmergencyStopRequest, EmergencyStopStatus, SystemStatus
 from app.schemas.system import Health, Me, MeMembership, MeUser
-from app.services import users
+from app.services import emergency, users
 
 router = APIRouter(tags=["system"])
 
@@ -41,3 +42,28 @@ def me(principal: CurrentPrincipal, db: DbSession):
             for m, c in users.list_memberships(db, user.id)
         ],
     )
+
+
+# ------------------------------------------------------------ Milestone 6: emergency stop
+
+
+@router.get("/system/status", response_model=SystemStatus)
+def system_status(principal: CurrentPrincipal, db: DbSession):
+    """Instance-wide status (today: the emergency stop). Humans only."""
+    if not principal.is_human:
+        raise Forbidden("Only human users can read the system status")
+    return SystemStatus(emergency_stop=emergency.status(db), version=APP_VERSION)
+
+
+@router.post("/system/emergency-stop", response_model=EmergencyStopStatus)
+def emergency_stop(
+    principal: CurrentPrincipal, db: DbSession, body: EmergencyStopRequest | None = None
+):
+    """Owner only. Cancels every live run in EVERY company and disables dispatch until resumed."""
+    return emergency.stop(db, principal, body.reason if body else None)
+
+
+@router.post("/system/resume", response_model=EmergencyStopStatus)
+def resume(principal: CurrentPrincipal, db: DbSession):
+    """Owner only. Lifts the emergency stop. Agents never can (403, run tokens included)."""
+    return emergency.resume(db, principal)

@@ -54,7 +54,7 @@ MODULES = [
     "agent.model_metadata", "agent.file_safety", "agent.system_prompt",
     "company_agent.run", "company_agent.runner", "company_agent.spec", "company_agent.protocol",
     "company_agent.prompts", "company_agent.home", "company_agent.context", "company_agent.approvals",
-    "company_agent.toolpolicy",
+    "company_agent.toolpolicy", "company_agent.guard",
 ]
 
 

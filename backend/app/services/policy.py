@@ -37,8 +37,20 @@ UPDATABLE = (
     "default_model_provider_id",
     "default_model_name",
     "sandbox_backend",
+    "budget_alert_thresholds",
+    "model_routing",
+    "allow_paid_fallback",
+    "auto_spend_limit_micros",
+    "stall_seconds",
+    "max_tool_calls_per_run",
+    "max_artifacts_per_run",
+    "max_tokens_per_run",
+    "ai_disclosure_enabled",
+    "ai_disclosure_text",
 )
 _BUDGET_FIELDS = {"daily_budget_micros", "monthly_budget_micros", "default_run_reservation_micros"}
+# Changing these re-evaluates tasks the dispatcher parked behind the paid-model approval.
+_ROUTING_FIELDS = {"model_routing", "allow_paid_fallback", "auto_spend_limit_micros"}
 
 
 def _check_default_model(
@@ -119,6 +131,10 @@ def update_policy(db: Session, ctx: CompanyContext, data: PolicyUpdate) -> Compa
 
             builtin_schedules.sync_heartbeat_interval(
                 db, ctx.company_id, policy.heartbeat_interval_seconds, ctx.principal
+            )
+        if _ROUTING_FIELDS & set(changed):
+            tasks.release_budget_blocked(
+                db, ctx.company_id, ctx.principal, codes=("paid_model_approval",)
             )
         if "allowed_model_providers" in changed:
             tasks.release_budget_blocked(

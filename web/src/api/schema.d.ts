@@ -38,6 +38,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/system/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * System Status
+         * @description Instance-wide status (today: the emergency stop). Humans only.
+         */
+        get: operations["system_status_api_system_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/emergency-stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Emergency Stop
+         * @description Owner only. Cancels every live run in EVERY company and disables dispatch until resumed.
+         */
+        post: operations["emergency_stop_api_system_emergency_stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume
+         * @description Owner only. Lifts the emergency stop. Agents never can (403, run tokens included).
+         */
+        post: operations["resume_api_system_resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/local": {
         parameters: {
             query?: never;
@@ -495,6 +555,24 @@ export interface paths {
          * @description Revoke (the stored ciphertext is wiped). Refused while an enabled provider uses it.
          */
         delete: operations["revoke_credential_api_companies__company_id__credentials__credential_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Credential Scope */
+        patch: operations["update_credential_scope_api_companies__company_id__credentials__credential_id__patch"];
+        trace?: never;
+    };
+    "/api/companies/{company_id}/credentials/{credential_id}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rotate Credential */
+        post: operations["rotate_credential_api_companies__company_id__credentials__credential_id__rotate_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1352,6 +1430,180 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/companies/{company_id}/guardrails/rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Rules */
+        get: operations["list_rules_api_companies__company_id__guardrails_rules_get"];
+        put?: never;
+        /** Create Rule */
+        post: operations["create_rule_api_companies__company_id__guardrails_rules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/guardrails/rules/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Rule */
+        get: operations["get_rule_api_companies__company_id__guardrails_rules__rule_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Rule */
+        delete: operations["delete_rule_api_companies__company_id__guardrails_rules__rule_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Rule */
+        patch: operations["update_rule_api_companies__company_id__guardrails_rules__rule_id__patch"];
+        trace?: never;
+    };
+    "/api/companies/{company_id}/guardrails/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Events */
+        get: operations["list_events_api_companies__company_id__guardrails_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/guardrails/rate-limits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Rate Limits */
+        get: operations["rate_limits_api_companies__company_id__guardrails_rate_limits_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/agents/{agent_id}/effective-permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Effective Permissions */
+        get: operations["effective_permissions_api_companies__company_id__agents__agent_id__effective_permissions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/finance/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Summary */
+        get: operations["summary_api_companies__company_id__finance_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/finance/breakdown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Breakdown */
+        get: operations["breakdown_api_companies__company_id__finance_breakdown_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/finance/trend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Trend */
+        get: operations["trend_api_companies__company_id__finance_trend_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/finance/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Runs */
+        get: operations["runs_api_companies__company_id__finance_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/finance/expenses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Expenses */
+        get: operations["list_expenses_api_companies__company_id__finance_expenses_get"];
+        put?: never;
+        /** Create Expense */
+        post: operations["create_expense_api_companies__company_id__finance_expenses_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/agent/v1/context": {
         parameters: {
             query?: never;
@@ -2003,6 +2255,87 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agent/v1/guardrails/check-tool": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Tool
+         * @description The runtime asks before it runs a tool that reaches outside (web search...). Raises 403 /
+         *     429 / 202 like any guarded action; unknown tools are denied (fail closed).
+         */
+        post: operations["check_tool_api_agent_v1_guardrails_check_tool_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/v1/guardrails/flags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Flag Content
+         * @description The runtime saw an injection-style phrase in a tool result: logged, never auto-blocked.
+         */
+        post: operations["flag_content_api_agent_v1_guardrails_flags_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/v1/peer-reviews/{approval_id}/decide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide Peer Review
+         * @description The reviewer agent decides a peer review assigned to it (never its own work).
+         */
+        post: operations["decide_peer_review_api_agent_v1_peer_reviews__approval_id__decide_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/v1/provider-actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Provider Action
+         * @description Ask the control plane to act with a stored credential (the agent never sees it).
+         */
+        post: operations["provider_action_api_agent_v1_provider_actions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2091,6 +2424,11 @@ export interface components {
              * @default []
              */
             memory?: components["schemas"]["CtxMemory"][];
+            /**
+             * Credentials
+             * @default []
+             */
+            credentials?: components["schemas"]["CtxCredential"][];
         };
         /** AgentCreate */
         AgentCreate: {
@@ -2415,7 +2753,7 @@ export interface components {
              * Approver
              * @enum {string}
              */
-            approver: "human" | "founder";
+            approver: "human" | "founder" | "peer";
             /** Requested By Agent Id */
             requested_by_agent_id: string | null;
             /** Task Id */
@@ -2459,6 +2797,15 @@ export interface components {
             subject_type?: string | null;
             /** Subject Id */
             subject_id?: string | null;
+            /** Tier */
+            tier?: ("read" | "internal_write" | "org_change" | "external_read" | "external_communication" | "external_commitment" | "spend" | "identity" | "destructive") | null;
+            /** Action */
+            action?: string | null;
+            /** Reviewer Agent Id */
+            reviewer_agent_id?: string | null;
+            outbound?: components["schemas"]["ApprovalOutbound"] | null;
+            /** Dlp Findings */
+            dlp_findings?: components["schemas"]["DlpFinding"][] | null;
             /** Created At */
             created_at: string;
             /** Updated At */
@@ -2511,7 +2858,18 @@ export interface components {
              * Approver
              * @enum {string}
              */
-            approver: "human" | "founder";
+            approver: "human" | "founder" | "peer";
+        };
+        /** ApprovalOutbound */
+        ApprovalOutbound: {
+            /** Channel */
+            channel?: string | null;
+            /** To */
+            to?: string | null;
+            /** Subject */
+            subject?: string | null;
+            /** Body */
+            body: string;
         };
         /** ApprovalsOverview */
         ApprovalsOverview: {
@@ -2683,6 +3041,27 @@ export interface components {
             };
             /** Created At */
             created_at: string;
+        };
+        /** BudgetStatus */
+        BudgetStatus: {
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "company" | "agent";
+            /** Agent Id */
+            agent_id: string | null;
+            /**
+             * Period
+             * @enum {string}
+             */
+            period: "day" | "month";
+            /** Limit Micros */
+            limit_micros: number | null;
+            /** Verified Micros */
+            verified_micros: number;
+            /** Estimated Micros */
+            estimated_micros: number;
         };
         /** CatalogItem */
         CatalogItem: {
@@ -2988,6 +3367,18 @@ export interface components {
             created_by_id: string | null;
             /** Revoked At */
             revoked_at: string | null;
+            /** Provider */
+            provider?: string | null;
+            /**
+             * Allowed Actions
+             * @default []
+             */
+            allowed_actions?: string[];
+            /**
+             * Allowed Families
+             * @default []
+             */
+            allowed_families?: string[];
             /** Created At */
             created_at: string;
             /** Updated At */
@@ -2995,6 +3386,12 @@ export interface components {
         };
         /** CredentialCreate */
         CredentialCreate: {
+            /** Provider */
+            provider?: string | null;
+            /** Allowed Actions */
+            allowed_actions?: string[] | null;
+            /** Allowed Families */
+            allowed_families?: string[] | null;
             /** Name */
             name: string;
             /**
@@ -3008,6 +3405,26 @@ export interface components {
              * Format: password
              */
             value: string;
+        };
+        /** CredentialRotate */
+        CredentialRotate: {
+            /**
+             * Value
+             * Format: password
+             */
+            value: string;
+        };
+        /**
+         * CredentialScope
+         * @description Which provider executes calls made with a credential and what agents may do with it.
+         */
+        CredentialScope: {
+            /** Provider */
+            provider?: string | null;
+            /** Allowed Actions */
+            allowed_actions?: string[] | null;
+            /** Allowed Families */
+            allowed_families?: string[] | null;
         };
         /** CtxAgent */
         CtxAgent: {
@@ -3076,6 +3493,21 @@ export interface components {
             constraints: string[];
             /** Timezone */
             timezone: string;
+        };
+        /**
+         * CtxCredential
+         * @description A credential this agent may use through ``POST /provider-actions``. Metadata only: the
+         *     value never leaves the control plane.
+         */
+        CtxCredential: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Provider */
+            provider: string;
+            /** Allowed Actions */
+            allowed_actions: string[];
         };
         /** CtxMemory */
         CtxMemory: {
@@ -3381,6 +3813,86 @@ export interface components {
             recommended?: boolean;
         };
         /**
+         * DlpFinding
+         * @description A finding of the outbound DLP scan. The matched text is never part of it.
+         */
+        DlpFinding: {
+            /** Kind */
+            kind: string;
+            /** Severity */
+            severity?: ("low" | "medium" | "high") | null;
+            /** Description */
+            description?: string | null;
+            /** Count */
+            count?: number | null;
+        };
+        /** EffectivePermissions */
+        EffectivePermissions: {
+            /** Agent Id */
+            agent_id: string;
+            /** Tiers */
+            tiers: components["schemas"]["EffectiveTier"][];
+            /** Tools */
+            tools: components["schemas"]["EffectiveTool"][];
+            /** Rate Limits */
+            rate_limits?: components["schemas"]["RateLimitStatus"][];
+        };
+        /** EffectiveTier */
+        EffectiveTier: {
+            /**
+             * Tier
+             * @enum {string}
+             */
+            tier: "read" | "internal_write" | "org_change" | "external_read" | "external_communication" | "external_commitment" | "spend" | "identity" | "destructive";
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "allow" | "peer_review" | "cofounder_approval" | "human_approval" | "deny";
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "default" | "rule";
+            /** Rule Id */
+            rule_id: string | null;
+        };
+        /** EffectiveTool */
+        EffectiveTool: {
+            /** Name */
+            name: string;
+            /**
+             * Tier
+             * @enum {string}
+             */
+            tier: "read" | "internal_write" | "org_change" | "external_read" | "external_communication" | "external_commitment" | "spend" | "identity" | "destructive";
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "allow" | "peer_review" | "cofounder_approval" | "human_approval" | "deny";
+            /** Rule Id */
+            rule_id: string | null;
+        };
+        /** EmergencyStopRequest */
+        EmergencyStopRequest: {
+            /** Reason */
+            reason?: string | null;
+        };
+        /** EmergencyStopStatus */
+        EmergencyStopStatus: {
+            /** Active */
+            active: boolean;
+            /** Activated At */
+            activated_at: string | null;
+            /** Activated By */
+            activated_by: string | null;
+            /** Reason */
+            reason: string | null;
+            /** Runs Cancelled */
+            runs_cancelled?: number | null;
+        };
+        /**
          * ErrorInfo
          * @description Structured failure details on a task. Always has a code and a message; may carry extra
          *     context (e.g. ``limit``/``retry_after`` for budget errors).
@@ -3415,6 +3927,192 @@ export interface components {
             escalated_to_name: string;
             /** Wake Status */
             wake_status: string;
+        };
+        /** ExternalExpense */
+        ExternalExpense: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string;
+            /** Vendor */
+            vendor: string;
+            /** Description */
+            description: string | null;
+            /** Amount Micros */
+            amount_micros: number;
+            /**
+             * Recurrence
+             * @enum {string}
+             */
+            recurrence: "one_time" | "monthly" | "yearly";
+            /** Project Id */
+            project_id: string | null;
+            /**
+             * Incurred On
+             * Format: date
+             */
+            incurred_on: string;
+            /** Created By Type */
+            created_by_type?: ("human" | "agent" | "system") | null;
+            /** Created By Id */
+            created_by_id?: string | null;
+            /** Created At */
+            created_at: string;
+        };
+        /** ExternalExpenseCreate */
+        ExternalExpenseCreate: {
+            /** Vendor */
+            vendor: string;
+            /** Description */
+            description?: string | null;
+            /** Amount Micros */
+            amount_micros: number;
+            /**
+             * Recurrence
+             * @default one_time
+             * @enum {string}
+             */
+            recurrence?: "one_time" | "monthly" | "yearly";
+            /** Project Id */
+            project_id?: string | null;
+            /**
+             * Incurred On
+             * Format: date
+             */
+            incurred_on: string;
+        };
+        /** FinanceBreakdown */
+        FinanceBreakdown: {
+            /**
+             * Group By
+             * @enum {string}
+             */
+            group_by: "agent" | "project" | "provider" | "model" | "runtime";
+            /** From */
+            from: string;
+            /** To */
+            to: string;
+            /** Items */
+            items: components["schemas"]["FinanceBreakdownRow"][];
+        };
+        /** FinanceBreakdownRow */
+        FinanceBreakdownRow: {
+            /** Verified Micros */
+            verified_micros: number;
+            /** Estimated Micros */
+            estimated_micros: number;
+            /** Unknown Micros */
+            unknown_micros: number;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string | null;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Output Tokens */
+            output_tokens: number;
+            /** Runs */
+            runs: number;
+        };
+        /** FinanceRun */
+        FinanceRun: {
+            /** Run Id */
+            run_id: string;
+            /** Task Id */
+            task_id: string;
+            /** Task Title */
+            task_title: string | null;
+            /** Agent Id */
+            agent_id: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "starting" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out";
+            /** Started At */
+            started_at: string | null;
+            /** Finished At */
+            finished_at: string | null;
+            /** Cost Micros */
+            cost_micros: number | null;
+            /**
+             * Cost Kind
+             * @enum {string}
+             */
+            cost_kind: "verified" | "estimated" | "unknown";
+            /** Model */
+            model: string | null;
+            /** Provider */
+            provider: string | null;
+        };
+        /** FinanceSummary */
+        FinanceSummary: {
+            /** From */
+            from: string;
+            /** To */
+            to: string;
+            /** Timezone */
+            timezone: string;
+            totals: components["schemas"]["FinanceTotals"];
+            wasted: components["schemas"]["FinanceWasted"];
+            /** External Expenses Micros */
+            external_expenses_micros: number;
+            /** Budgets */
+            budgets: components["schemas"]["BudgetStatus"][];
+        };
+        /** FinanceTotals */
+        FinanceTotals: {
+            /** Verified Micros */
+            verified_micros: number;
+            /** Estimated Micros */
+            estimated_micros: number;
+            /** Unknown Micros */
+            unknown_micros: number;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Output Tokens */
+            output_tokens: number;
+            /** Runs */
+            runs: number;
+        };
+        /** FinanceTrend */
+        FinanceTrend: {
+            /** From */
+            from: string;
+            /** To */
+            to: string;
+            /** Points */
+            points: components["schemas"]["FinanceTrendPoint"][];
+        };
+        /** FinanceTrendPoint */
+        FinanceTrendPoint: {
+            /** Verified Micros */
+            verified_micros: number;
+            /** Estimated Micros */
+            estimated_micros: number;
+            /** Unknown Micros */
+            unknown_micros: number;
+            /** Date */
+            date: string;
+        };
+        /** FinanceWasted */
+        FinanceWasted: {
+            /** Verified Micros */
+            verified_micros: number;
+            /** Estimated Micros */
+            estimated_micros: number;
+            /** Unknown Micros */
+            unknown_micros: number;
+            /** Runs */
+            runs: number;
+        };
+        /** FlagResult */
+        FlagResult: {
+            /**
+             * Recorded
+             * @default true
+             */
+            recorded?: boolean;
         };
         /** FounderInput */
         FounderInput: {
@@ -3540,6 +4238,122 @@ export interface components {
             /** Target Date */
             target_date?: string | null;
         };
+        /** GuardrailEvent */
+        GuardrailEvent: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string;
+            /** Created At */
+            created_at: string;
+            /** Agent Id */
+            agent_id: string | null;
+            /** Run Id */
+            run_id: string | null;
+            /** Task Id */
+            task_id: string | null;
+            /** Action */
+            action: string;
+            /**
+             * Tier
+             * @enum {string}
+             */
+            tier: "read" | "internal_write" | "org_change" | "external_read" | "external_communication" | "external_commitment" | "spend" | "identity" | "destructive";
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "allow" | "peer_review" | "cofounder_approval" | "human_approval" | "deny" | "rate_limited";
+            /** Rule Id */
+            rule_id: string | null;
+            /** Approval Id */
+            approval_id: string | null;
+            /** Payload Digest */
+            payload_digest: string | null;
+            /** Reason */
+            reason: string | null;
+        };
+        /** GuardrailRule */
+        GuardrailRule: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string;
+            /**
+             * Tier
+             * @enum {string}
+             */
+            tier: "read" | "internal_write" | "org_change" | "external_read" | "external_communication" | "external_commitment" | "spend" | "identity" | "destructive";
+            /** Action */
+            action: string | null;
+            /**
+             * Scope Type
+             * @enum {string}
+             */
+            scope_type: "all" | "family" | "agent";
+            /** Scope Value */
+            scope_value: string | null;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "allow" | "peer_review" | "cofounder_approval" | "human_approval" | "deny";
+            /** Conditions */
+            conditions: {
+                [key: string]: unknown;
+            };
+            /** Created By Type */
+            created_by_type?: ("human" | "agent" | "system") | null;
+            /** Created By Id */
+            created_by_id?: string | null;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /** GuardrailRuleCreate */
+        GuardrailRuleCreate: {
+            /**
+             * Tier
+             * @enum {string}
+             */
+            tier: "read" | "internal_write" | "org_change" | "external_read" | "external_communication" | "external_commitment" | "spend" | "identity" | "destructive";
+            /** Action */
+            action?: string | null;
+            /**
+             * Scope Type
+             * @enum {string}
+             */
+            scope_type: "all" | "family" | "agent";
+            /** Scope Value */
+            scope_value?: string | null;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "allow" | "peer_review" | "cofounder_approval" | "human_approval" | "deny";
+            /** Conditions */
+            conditions?: {
+                [key: string]: unknown;
+            };
+        };
+        /** GuardrailRuleUpdate */
+        GuardrailRuleUpdate: {
+            /** Tier */
+            tier?: ("read" | "internal_write" | "org_change" | "external_read" | "external_communication" | "external_commitment" | "spend" | "identity" | "destructive") | null;
+            /** Action */
+            action?: string | null;
+            /** Scope Type */
+            scope_type?: ("all" | "family" | "agent") | null;
+            /** Scope Value */
+            scope_value?: string | null;
+            /** Decision */
+            decision?: ("allow" | "peer_review" | "cofounder_approval" | "human_approval" | "deny") | null;
+            /** Conditions */
+            conditions?: {
+                [key: string]: unknown;
+            } | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -3640,6 +4454,15 @@ export interface components {
             created: boolean;
             /** Status */
             status: string;
+        };
+        /** InjectionFlag */
+        InjectionFlag: {
+            /** Tool */
+            tool: string;
+            /** Source */
+            source?: string | null;
+            /** Categories */
+            categories?: string[];
         };
         /** LifecycleAction */
         LifecycleAction: {
@@ -4103,6 +4926,20 @@ export interface components {
             /** Next Cursor */
             next_cursor?: string | null;
         };
+        /** Page[ExternalExpense] */
+        Page_ExternalExpense_: {
+            /** Items */
+            items: components["schemas"]["ExternalExpense"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** Page[FinanceRun] */
+        Page_FinanceRun_: {
+            /** Items */
+            items: components["schemas"]["FinanceRun"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
         /** Page[FounderNote] */
         Page_FounderNote_: {
             /** Items */
@@ -4114,6 +4951,20 @@ export interface components {
         Page_Goal_: {
             /** Items */
             items: components["schemas"]["Goal"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** Page[GuardrailEvent] */
+        Page_GuardrailEvent_: {
+            /** Items */
+            items: components["schemas"]["GuardrailEvent"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** Page[GuardrailRule] */
+        Page_GuardrailRule_: {
+            /** Items */
+            items: components["schemas"]["GuardrailRule"][];
             /** Next Cursor */
             next_cursor?: string | null;
         };
@@ -4172,6 +5023,16 @@ export interface components {
             items: components["schemas"]["Task"][];
             /** Next Cursor */
             next_cursor?: string | null;
+        };
+        /** PeerReviewDecision */
+        PeerReviewDecision: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approve" | "reject" | "request_changes";
+            /** Note */
+            note?: string | null;
         };
         /** Policy */
         Policy: {
@@ -4247,6 +5108,58 @@ export interface components {
              * @enum {string}
              */
             sandbox_backend?: "auto" | "none" | "docker";
+            /**
+             * Budget Alert Thresholds
+             * @default [
+             *       50,
+             *       80,
+             *       100
+             *     ]
+             */
+            budget_alert_thresholds?: number[];
+            /**
+             * Model Routing
+             * @default free_first
+             * @enum {string}
+             */
+            model_routing?: "free_first" | "pinned" | "quality_first";
+            /**
+             * Allow Paid Fallback
+             * @default true
+             */
+            allow_paid_fallback?: boolean;
+            /**
+             * Auto Spend Limit Micros
+             * @default 0
+             */
+            auto_spend_limit_micros?: number;
+            /**
+             * Stall Seconds
+             * @default 180
+             */
+            stall_seconds?: number;
+            /**
+             * Max Tool Calls Per Run
+             * @default 300
+             */
+            max_tool_calls_per_run?: number;
+            /**
+             * Max Artifacts Per Run
+             * @default 50
+             */
+            max_artifacts_per_run?: number;
+            /**
+             * Max Tokens Per Run
+             * @default 3000000
+             */
+            max_tokens_per_run?: number;
+            /**
+             * Ai Disclosure Enabled
+             * @default true
+             */
+            ai_disclosure_enabled?: boolean;
+            /** Ai Disclosure Text */
+            ai_disclosure_text?: string | null;
             /** Created At */
             created_at: string;
             /** Updated At */
@@ -4300,6 +5213,26 @@ export interface components {
             default_model_name?: string | null;
             /** Sandbox Backend */
             sandbox_backend?: ("auto" | "none" | "docker") | null;
+            /** Budget Alert Thresholds */
+            budget_alert_thresholds?: number[] | null;
+            /** Model Routing */
+            model_routing?: ("free_first" | "pinned" | "quality_first") | null;
+            /** Allow Paid Fallback */
+            allow_paid_fallback?: boolean | null;
+            /** Auto Spend Limit Micros */
+            auto_spend_limit_micros?: number | null;
+            /** Stall Seconds */
+            stall_seconds?: number | null;
+            /** Max Tool Calls Per Run */
+            max_tool_calls_per_run?: number | null;
+            /** Max Artifacts Per Run */
+            max_artifacts_per_run?: number | null;
+            /** Max Tokens Per Run */
+            max_tokens_per_run?: number | null;
+            /** Ai Disclosure Enabled */
+            ai_disclosure_enabled?: boolean | null;
+            /** Ai Disclosure Text */
+            ai_disclosure_text?: string | null;
         };
         /** ProgressBody */
         ProgressBody: {
@@ -4380,6 +5313,32 @@ export interface components {
             /** Budget Micros */
             budget_micros?: number | null;
         };
+        /** ProviderActionRequest */
+        ProviderActionRequest: {
+            /** Credential Id */
+            credential_id: string;
+            /** Action */
+            action: string;
+            /** Params */
+            params?: {
+                [key: string]: unknown;
+            };
+        };
+        /** ProviderActionResult */
+        ProviderActionResult: {
+            /**
+             * Status
+             * @default executed
+             * @constant
+             */
+            status?: "executed";
+            /** Action */
+            action: string;
+            /** Result */
+            result?: {
+                [key: string]: unknown;
+            };
+        };
         /** ProviderTest */
         ProviderTest: {
             /**
@@ -4406,6 +5365,28 @@ export interface components {
             warnings?: string[];
             /** Latency Ms */
             latency_ms?: number | null;
+        };
+        /** RateLimitList */
+        RateLimitList: {
+            /** Items */
+            items: components["schemas"]["RateLimitStatus"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** RateLimitStatus */
+        RateLimitStatus: {
+            /** Agent Id */
+            agent_id: string | null;
+            /** Key */
+            key: string;
+            /** Limit */
+            limit: number;
+            /** Used */
+            used: number;
+            /** Window Seconds */
+            window_seconds: number;
+            /** Resets At */
+            resets_at: string | null;
         };
         /** ReviewBody */
         ReviewBody: {
@@ -5089,6 +6070,12 @@ export interface components {
             /** Result Summary */
             result_summary?: string | null;
         };
+        /** SystemStatus */
+        SystemStatus: {
+            emergency_stop: components["schemas"]["EmergencyStopStatus"];
+            /** Version */
+            version: string;
+        };
         /** Task */
         Task: {
             /** Id */
@@ -5272,6 +6259,12 @@ export interface components {
             activity_summary: string | null;
             /** Activity At */
             activity_at: string | null;
+            /** Routing Reason */
+            routing_reason?: string | null;
+            /** Model Provider Id */
+            model_provider_id?: string | null;
+            /** Model Used */
+            model_used?: string | null;
             /** Created At */
             created_at: string;
             /** Updated At */
@@ -5345,6 +6338,23 @@ export interface components {
             waiting_for_runtime: number;
             /** Blocked By Budget */
             blocked_by_budget: number;
+        };
+        /** ToolCheck */
+        ToolCheck: {
+            /** Tool */
+            tool: string;
+        };
+        /** ToolCheckResult */
+        ToolCheckResult: {
+            /** Allowed */
+            allowed: boolean;
+            /** Tool */
+            tool: string;
+            /**
+             * Tier
+             * @enum {string}
+             */
+            tier: "read" | "internal_write" | "org_change" | "external_read" | "external_communication" | "external_commitment" | "spend" | "identity" | "destructive";
         };
         /** UpcomingSchedule */
         UpcomingSchedule: {
@@ -5452,6 +6462,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Me"];
+                };
+            };
+        };
+    };
+    system_status_api_system_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemStatus"];
+                };
+            };
+        };
+    };
+    emergency_stop_api_system_emergency_stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["EmergencyStopRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmergencyStopStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_api_system_resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmergencyStopStatus"];
                 };
             };
         };
@@ -6640,6 +7723,78 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Credential"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_credential_scope_api_companies__company_id__credentials__credential_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                credential_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CredentialScope"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Credential"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rotate_credential_api_companies__company_id__credentials__credential_id__rotate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                credential_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CredentialRotate"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -7900,7 +9055,8 @@ export interface operations {
         parameters: {
             query?: {
                 status?: ("pending" | "approved" | "rejected" | "changes_requested" | "expired") | null;
-                approver?: ("human" | "founder") | null;
+                approver?: ("human" | "founder" | "peer") | null;
+                tier?: ("read" | "internal_write" | "org_change" | "external_read" | "external_communication" | "external_commitment" | "spend" | "identity" | "destructive") | null;
                 limit?: number;
                 cursor?: string | null;
             };
@@ -8882,6 +10038,490 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CofounderWakeResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_rules_api_companies__company_id__guardrails_rules_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_GuardrailRule_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_rule_api_companies__company_id__guardrails_rules_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GuardrailRuleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuardrailRule"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_rule_api_companies__company_id__guardrails_rules__rule_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuardrailRule"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_rule_api_companies__company_id__guardrails_rules__rule_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_rule_api_companies__company_id__guardrails_rules__rule_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GuardrailRuleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuardrailRule"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_events_api_companies__company_id__guardrails_events_get: {
+        parameters: {
+            query?: {
+                decision?: ("allow" | "peer_review" | "cofounder_approval" | "human_approval" | "deny" | "rate_limited") | null;
+                tier?: ("read" | "internal_write" | "org_change" | "external_read" | "external_communication" | "external_commitment" | "spend" | "identity" | "destructive") | null;
+                agent_id?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_GuardrailEvent_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rate_limits_api_companies__company_id__guardrails_rate_limits_get: {
+        parameters: {
+            query?: {
+                agent_id?: string | null;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateLimitList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    effective_permissions_api_companies__company_id__agents__agent_id__effective_permissions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EffectivePermissions"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    summary_api_companies__company_id__finance_summary_get: {
+        parameters: {
+            query?: {
+                from?: string | null;
+                /** @description YYYY-MM-DD, company timezone */
+                to?: string | null;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinanceSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    breakdown_api_companies__company_id__finance_breakdown_get: {
+        parameters: {
+            query?: {
+                from?: string | null;
+                /** @description YYYY-MM-DD, company timezone */
+                to?: string | null;
+                group_by?: "agent" | "project" | "provider" | "model" | "runtime";
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinanceBreakdown"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trend_api_companies__company_id__finance_trend_get: {
+        parameters: {
+            query?: {
+                from?: string | null;
+                /** @description YYYY-MM-DD, company timezone */
+                to?: string | null;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinanceTrend"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    runs_api_companies__company_id__finance_runs_get: {
+        parameters: {
+            query?: {
+                from?: string | null;
+                /** @description YYYY-MM-DD, company timezone */
+                to?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_FinanceRun_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_expenses_api_companies__company_id__finance_expenses_get: {
+        parameters: {
+            query?: {
+                from?: string | null;
+                /** @description YYYY-MM-DD, company timezone */
+                to?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_ExternalExpense_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_expense_api_companies__company_id__finance_expenses_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExternalExpenseCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExternalExpense"];
                 };
             };
             /** @description Validation Error */
@@ -10138,6 +11778,140 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MemoryEntry"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_tool_api_agent_v1_guardrails_check_tool_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ToolCheck"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ToolCheckResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    flag_content_api_agent_v1_guardrails_flags_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InjectionFlag"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FlagResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_peer_review_api_agent_v1_peer_reviews__approval_id__decide_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                approval_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PeerReviewDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Approval"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    provider_action_api_agent_v1_provider_actions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderActionResult"];
                 };
             };
             /** @description Validation Error */

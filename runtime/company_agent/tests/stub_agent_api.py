@@ -200,6 +200,15 @@ class StubApi:
             return 201, {"id": self._next_id("mem"), "status": "proposed", **b}
         if m == "POST" and sub.startswith("/memory/"):
             return 200, {"id": sub.split("/")[2], "status": "verified" if sub.endswith("verify") else "rejected"}
+        # ---- M6: guardrails
+        if m == "POST" and sub == "/guardrails/check-tool":
+            return 200, {"allowed": True, "tool": b.get("tool"), "tier": "external_read"}
+        if m == "POST" and sub == "/guardrails/flags":
+            return 201, {"recorded": True}
+        if m == "POST" and sub.startswith("/peer-reviews/") and sub.endswith("/decide"):
+            return 200, {"id": sub.split("/")[2], "status": "approved" if b.get("decision") == "approve" else "rejected"}
+        if m == "POST" and sub == "/provider-actions":
+            return 200, {"status": "executed", "action": b.get("action"), "result": {"message_id": "m-1"}}
         if m == "POST" and sub.endswith("/retry"):
             return 200, {"id": sub.split("/")[2], "status": "backlog", "error": None}
         if m == "POST" and sub.endswith("/cancel"):

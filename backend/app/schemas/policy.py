@@ -9,6 +9,7 @@ from app.schemas.common import ApiModel, RequestModel, Timestamp
 
 AutonomyModeLiteral = Literal["autonomous", "supervised"]
 SandboxBackendLiteral = Literal["auto", "none", "docker"]
+ModelRoutingLiteral = Literal["free_first", "pinned", "quality_first"]
 ApprovalKindLiteral = Literal[
     "external_purchase",
     "budget_increase",
@@ -48,6 +49,17 @@ class Policy(ApiModel):
     default_model_provider_id: str | None = None
     default_model_name: str | None = None
     sandbox_backend: SandboxBackendLiteral = "auto"
+    # M6 governance (only humans can change them).
+    budget_alert_thresholds: list[int] = [50, 80, 100]
+    model_routing: ModelRoutingLiteral = "free_first"
+    allow_paid_fallback: bool = True
+    auto_spend_limit_micros: int = 0
+    stall_seconds: int = 180
+    max_tool_calls_per_run: int = 300
+    max_artifacts_per_run: int = 50
+    max_tokens_per_run: int = 3_000_000
+    ai_disclosure_enabled: bool = True
+    ai_disclosure_text: str | None = None
     created_at: Timestamp
     updated_at: Timestamp
 
@@ -76,6 +88,16 @@ class PolicyUpdate(RequestModel):
     default_model_provider_id: str | None = Field(default=None, max_length=36)
     default_model_name: str | None = Field(default=None, min_length=1, max_length=160)
     sandbox_backend: SandboxBackendLiteral | None = None
+    budget_alert_thresholds: list[int] | None = Field(default=None, max_length=10)
+    model_routing: ModelRoutingLiteral | None = None
+    allow_paid_fallback: bool | None = None
+    auto_spend_limit_micros: int | None = Field(default=None, ge=0, le=MAX_BUDGET_MICROS)
+    stall_seconds: int | None = Field(default=None, ge=30, le=3600)
+    max_tool_calls_per_run: int | None = Field(default=None, ge=1, le=100_000)
+    max_artifacts_per_run: int | None = Field(default=None, ge=1, le=10_000)
+    max_tokens_per_run: int | None = Field(default=None, ge=1000, le=10**10)
+    ai_disclosure_enabled: bool | None = None
+    ai_disclosure_text: str | None = Field(default=None, max_length=500)
 
     @field_validator(
         "autonomy_mode",
@@ -96,12 +118,28 @@ class PolicyUpdate(RequestModel):
         "max_planning_runs_per_hour",
         "max_open_tasks",
         "circuit_breaker_failures",
+        "budget_alert_thresholds",
+        "model_routing",
+        "allow_paid_fallback",
+        "auto_spend_limit_micros",
+        "stall_seconds",
+        "max_tool_calls_per_run",
+        "max_artifacts_per_run",
+        "max_tokens_per_run",
+        "ai_disclosure_enabled",
     )
     @classmethod
     def _not_null(cls, v):  # only the two budget caps are nullable (null = no limit)
         if v is None:
             raise ValueError("must not be null")
         return v
+
+    @field_validator("budget_alert_thresholds")
+    @classmethod
+    def _thresholds(cls, v):
+        if any(isinstance(p, bool) or p < 1 or p > 1000 for p in v):
+            raise ValueError("thresholds are percentages between 1 and 1000")
+        return sorted(set(v))
 
     @field_validator("human_approval_required_for")
     @classmethod

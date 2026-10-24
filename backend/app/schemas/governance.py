@@ -6,11 +6,12 @@ from typing import Any, Literal
 from pydantic import Field, field_validator
 
 from app.schemas.common import ApiModel, RequestModel, Timestamp
+from app.schemas.guardrails import ActionTierLiteral
 from app.schemas.policy import ApprovalKindLiteral
 from app.schemas.work import ActorTypeLiteral
 
 ApprovalStatusLiteral = Literal["pending", "approved", "rejected", "changes_requested", "expired"]
-ApproverLiteral = Literal["human", "founder"]
+ApproverLiteral = Literal["human", "founder", "peer"]
 RecurrenceLiteral = Literal["one_time", "monthly", "yearly"]
 RiskLiteral = Literal["low", "medium", "high"]
 MAX_JSON_BYTES = 50_000
@@ -20,6 +21,22 @@ def _check_json(value: dict[str, Any]) -> dict[str, Any]:
     if len(json.dumps(value, default=str)) > MAX_JSON_BYTES:
         raise ValueError("must be under 50KB")
     return value
+
+
+class DlpFinding(ApiModel):
+    """A finding of the outbound DLP scan. The matched text is never part of it."""
+
+    kind: str
+    severity: Literal["low", "medium", "high"] | None = None
+    description: str | None = None
+    count: int | None = None
+
+
+class ApprovalOutbound(ApiModel):
+    channel: str | None = None
+    to: str | None = None
+    subject: str | None = None
+    body: str
 
 
 class Approval(ApiModel):
@@ -46,6 +63,12 @@ class Approval(ApiModel):
     consumed_at: Timestamp | None
     subject_type: str | None = None  # e.g. "agent_hire"
     subject_id: str | None = None
+    # M6: the guarded action (guardrail approvals), the peer reviewer and what is under review.
+    tier: ActionTierLiteral | None = None
+    action: str | None = None
+    reviewer_agent_id: str | None = None
+    outbound: ApprovalOutbound | None = None
+    dlp_findings: list[DlpFinding] | None = None
     created_at: Timestamp
     updated_at: Timestamp
 

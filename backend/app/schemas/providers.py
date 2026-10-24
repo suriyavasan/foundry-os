@@ -21,13 +21,31 @@ class Credential(ApiModel):
     created_by_type: str
     created_by_id: str | None
     revoked_at: Timestamp | None
+    # M6 scope: which control-plane provider uses it and what agents may do with it.
+    provider: str | None = None
+    allowed_actions: list[str] = []
+    allowed_families: list[str] = []
     created_at: Timestamp
     updated_at: Timestamp
 
 
-class CredentialCreate(RequestModel):
+class CredentialScope(RequestModel):
+    """Which provider executes calls made with a credential and what agents may do with it."""
+
+    provider: str | None = Field(
+        default=None, min_length=1, max_length=32, pattern=r"^[a-z0-9_.-]+$"
+    )
+    allowed_actions: list[str] | None = Field(default=None, max_length=50)
+    allowed_families: list[str] | None = Field(default=None, max_length=20)
+
+
+class CredentialCreate(CredentialScope):
     name: str = Field(min_length=1, max_length=120)
     kind: CredentialKindLiteral = "api_key"
+    value: SecretStr = Field(min_length=1, max_length=8192)
+
+
+class CredentialRotate(RequestModel):
     value: SecretStr = Field(min_length=1, max_length=8192)
 
 

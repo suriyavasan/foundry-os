@@ -18,7 +18,7 @@ from sqlalchemy import select, update
 from app.engine.context import EngineContext
 from app.models.agent import Agent
 from app.models.company import Company
-from app.models.enums import CompanyStatus, RunStatus
+from app.models.enums import CompanyStatus, CostKind, RunStatus
 from app.models.ledger import BudgetReservation
 from app.models.run import TaskRun
 from app.models.work import Task
@@ -32,8 +32,20 @@ from app.runtimes.base import (
     Limits,
     RuntimeAdapterError,
     TaskSpec,
+    UsageReport,
 )
-from app.services import agent_auth, audit, events, jobs, policy, runs
+from app.services import (
+    agent_auth,
+    audit,
+    containment,
+    emergency,
+    events,
+    jobs,
+    ledger,
+    policy,
+    runs,
+    safety,
+)
 from app.services.redaction import redact_payload
 
 logger = logging.getLogger("company_os.executor")
@@ -46,6 +58,7 @@ ACTIVITY_THROTTLE_SECONDS = 1.0
 class _MonitorState:
     timed_out: bool = False
     cancel_reason: str | None = None
+    trip: containment.Trip | None = None  # stalled / runaway / budget exhausted
 
 
 def _summarize(event: ExecutionEvent) -> str:
@@ -59,8 +72,15 @@ def _summarize(event: ExecutionEvent) -> str:
 class DbEventSink:
     """Persists RunEvents (idempotent on seq) and mirrors them to the company outbox."""
 
-    def __init__(self, ctx: EngineContext, run: TaskRun, secrets: list[str]) -> None:
+    def __init__(
+        self,
+        ctx: EngineContext,
+        run: TaskRun,
+        secrets: list[str],
+        guard: containment.RunGuard | None = None,
+    ) -> None:
         self._ctx = ctx
+        self._guard = guard
         self._run_id = run.id
         self._company_id = run.company_id
         self._agent_id = run.agent_id
@@ -117,6 +137,38 @@ class DbEventSink:
                     },
                 )
             db.commit()
+        if self._guard is not None:
+            self._guard.observe(event.type, payload)
+            if event.type == "usage":
+                self._budget_checkpoint(payload, now)
+
+    def _budget_checkpoint(self, payload: dict, now: datetime) -> None:
+        """Mid-run budget checkpoint on a usage event: extend the reservation while the budgets
+        allow, cancel the run (``budget_exhausted``) when they do not."""
+        assert self._guard is not None
+        cost = containment.measured_cost(payload)
+        if cost is None:
+            return
+        if self._guard.measured_micros is None or cost >= self._guard.measured_micros:
+            self._guard.measured_micros = cost
+            self._guard.measured_kind = containment.measured_kind(payload)
+        with self._ctx.session_factory() as db:
+            ledger.acquire_budget_lock(db, self._company_id)  # first statement of the transaction
+            run = db.get(TaskRun, self._run_id)
+            if run is None:
+                db.rollback()
+                return
+            limits = policy.load_policy(db, self._company_id)
+            outcome = containment.checkpoint(db, run, cost, limits, now)
+            if outcome == "extended":
+                safety.check_budget_thresholds(db, self._company_id, now)
+            db.commit()
+        if outcome == "exhausted":
+            self._guard.trip(
+                runs.EXIT_BUDGET_EXHAUSTED,
+                "The run spent its budget and the budgets do not allow more",
+                status="cancelled",
+            )
 
 
 class RunExecutor:
@@ -167,8 +219,11 @@ class RunExecutor:
             db.commit()
             assert task and agent and company
 
-            if run.cancel_requested or company.status != CompanyStatus.ACTIVE:
-                reason = run.cancel_reason or runs.CANCEL_COMPANY_PAUSED
+            stopped = emergency.is_active(db)
+            if run.cancel_requested or company.status != CompanyStatus.ACTIVE or stopped:
+                reason = run.cancel_reason or (
+                    emergency.CANCEL_REASON if stopped else runs.CANCEL_COMPANY_PAUSED
+                )
                 return self._finalize(
                     run_id,
                     runs.RunOutcome(RunStatus.CANCELLED, reason, executed=False),
@@ -233,7 +288,9 @@ class RunExecutor:
                 workspace_dir=str(workspace),
             )
             max_run_seconds = limits.max_run_seconds
-            sink = DbEventSink(ctx, run, [token])
+            guard = containment.RunGuard.for_policy(limits)
+            stall_seconds = limits.stall_seconds
+            sink = DbEventSink(ctx, run, [token], guard)
 
             started = db.execute(
                 update(TaskRun)
@@ -261,18 +318,31 @@ class RunExecutor:
             if started.rowcount != 1:  # finalized concurrently (e.g. recovery)
                 return "skipped"
 
-        return self._run_adapter(run_id, job_id, adapter, request, sink, now, max_run_seconds)
+        return self._run_adapter(
+            run_id, job_id, adapter, request, sink, now, max_run_seconds, guard, stall_seconds
+        )
 
     # ------------------------------------------------------------ internals
 
-    def _run_adapter(self, run_id, job_id, adapter, request, sink, started_at, max_run_seconds):
+    def _run_adapter(
+        self,
+        run_id,
+        job_id,
+        adapter,
+        request,
+        sink,
+        started_at,
+        max_run_seconds,
+        guard,
+        stall_seconds,
+    ):
         cancel = CancelToken()
         state = _MonitorState()
         stop = threading.Event()
         deadline = started_at.timestamp() + max_run_seconds
         monitor = threading.Thread(
             target=self._monitor,
-            args=(run_id, job_id, cancel, state, stop, deadline, started_at),
+            args=(run_id, job_id, cancel, state, stop, deadline, started_at, guard, stall_seconds),
             name=f"run-monitor-{run_id[:8]}",
             daemon=True,
         )
@@ -290,7 +360,7 @@ class RunExecutor:
             stop.set()
             monitor.join(timeout=5)
 
-        outcome = self._outcome(result, exception, state, max_run_seconds)
+        outcome = self._outcome(result, exception, state, max_run_seconds, guard)
         return self._finalize(run_id, outcome, cancel_reason=state.cancel_reason)
 
     @staticmethod
@@ -299,8 +369,31 @@ class RunExecutor:
         exception: BaseException | None,
         state: _MonitorState,
         max_run_seconds: int,
+        guard: containment.RunGuard | None = None,
     ) -> runs.RunOutcome:
         usage = result.usage if result else None
+        if (
+            guard is not None
+            and guard.measured_micros is not None
+            and (usage is None or usage.cost_micros is None)
+        ):
+            # The runtime ended without a final cost (cancelled, killed): bill what it measured.
+            usage = UsageReport(
+                input_tokens=usage.input_tokens if usage else None,
+                output_tokens=usage.output_tokens if usage else None,
+                cost_micros=guard.measured_micros,
+                cost_kind=CostKind(guard.measured_kind),
+            )
+        if state.trip is not None and not (result is not None and result.status == "succeeded"):
+            trip = state.trip
+            if trip.status == "cancelled":
+                return runs.RunOutcome(RunStatus.CANCELLED, trip.code, usage=usage)
+            return runs.RunOutcome(
+                RunStatus.FAILED,
+                trip.code,
+                error={"code": trip.code, "message": trip.message},
+                usage=usage,
+            )
         if exception is not None:
             if isinstance(exception, RuntimeAdapterError):
                 code, message = exception.kind.value, exception.message
@@ -351,7 +444,9 @@ class RunExecutor:
                 db.commit()
             return outcome.status.value
 
-    def _monitor(self, run_id, job_id, cancel, state, stop, deadline_epoch, started_at) -> None:
+    def _monitor(
+        self, run_id, job_id, cancel, state, stop, deadline_epoch, started_at, guard, stall_seconds
+    ) -> None:
         ctx = self.ctx
         last_heartbeat = started_at
         while not stop.wait(self.monitor_interval):
@@ -359,19 +454,34 @@ class RunExecutor:
             if not state.timed_out and now.timestamp() >= deadline_epoch:
                 state.timed_out = True
                 cancel.set()
+            trip = guard.tripped
+            if trip is not None and state.trip is None and not cancel.is_set():
+                state.trip = trip
+                if trip.status == "cancelled":
+                    state.cancel_reason = trip.code
+                cancel.set()
             if self.shutdown.is_set() and not cancel.is_set():
                 state.cancel_reason = runs.CANCEL_SHUTDOWN
                 cancel.set()
             try:
                 with ctx.session_factory() as db:
-                    requested, reason = db.execute(
-                        select(TaskRun.cancel_requested, TaskRun.cancel_reason).where(
-                            TaskRun.id == run_id
-                        )
+                    requested, reason, activity_at = db.execute(
+                        select(
+                            TaskRun.cancel_requested, TaskRun.cancel_reason, TaskRun.activity_at
+                        ).where(TaskRun.id == run_id)
                     ).one()
                     if requested and not cancel.is_set():
                         state.cancel_reason = reason or runs.CANCEL_BY_USER
                         cancel.set()
+                    last_activity = max(activity_at or started_at, started_at)
+                    if (
+                        not cancel.is_set()
+                        and (now - last_activity).total_seconds() > stall_seconds
+                    ):
+                        guard.trip(
+                            "stalled",
+                            f"No event or progress for {stall_seconds}s; the run was cancelled",
+                        )
                     if (now - last_heartbeat).total_seconds() >= HEARTBEAT_SECONDS:
                         db.execute(
                             update(TaskRun)

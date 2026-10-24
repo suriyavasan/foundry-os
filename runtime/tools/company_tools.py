@@ -19,6 +19,11 @@ Autonomous operating model (M5, docs/specs/m5-autonomous-company.md):
     company_escalate, company_request_help, company_propose_memory, company_verify_memory,
     company_list_notes / company_triage_note / company_reply_to_note (AI Co-founder: the Founder's notes)
 
+Guardrails (M6, docs/specs/m6-guardrails-and-governance.md):
+    company_decide_peer_review (the reviewer of an outbound message decides it; never the author),
+    company_provider_action (ask the control plane to act with a stored credential -- the agent never
+    sees the credential; outbound content is scanned, peer reviewed and rate limited server side)
+
 Which of these a given employee sees is decided by the control plane (spec ``company_tools``
 subset, derived from the role template); the server remains the authority on every call.
 
@@ -42,6 +47,7 @@ from typing import Any, Callable, Optional
 import httpx
 
 from company_agent import context as ctx
+from company_agent import guard
 from tools.registry import no_cache_check_fn, registry
 
 MAX_ARTIFACT_BYTES = 25 * 1024 * 1024  # matches the backend's default max upload
@@ -122,6 +128,11 @@ def _json_of(result: str) -> Any:
         return None
 
 
+def _is_pending(parsed: Any) -> bool:
+    """A guardrail parked the action behind a review/approval (HTTP 202): it has NOT happened yet."""
+    return isinstance(parsed, dict) and parsed.get("status") == "pending_approval"
+
+
 def _is_error(parsed: Any) -> bool:
     """True for a tool-level error body (``{"error": "<code>", "message": ...}``).
 
@@ -171,7 +182,15 @@ def _need(args: dict[str, Any], *names: str) -> Optional[str]:
 
 
 def company_get_context(args: dict[str, Any], **_: Any) -> str:
-    return _call("GET", "/context")
+    result = _call("GET", "/context")
+    parsed = _json_of(result)
+    if not isinstance(parsed, dict) or _is_error(parsed):
+        return result
+    # Excerpts of other agents' deliverables are data from outside: tag them, flag injection phrases.
+    tagged, categories = guard.tag_artifact_excerpts(parsed)
+    if categories:
+        guard.report_flag("company_get_context", "artifact", categories)
+    return _out(tagged)
 
 
 def company_create_task(args: dict[str, Any], **_: Any) -> str:
@@ -228,7 +247,7 @@ def company_update_task(args: dict[str, Any], **_: Any) -> str:
     else:
         return _err("invalid_arguments", "action must be one of: block, unblock, reassign, retry, cancel")
     parsed = _json_of(result)
-    ok = isinstance(parsed, dict) and not _is_error(parsed)
+    ok = isinstance(parsed, dict) and not _is_error(parsed) and not _is_pending(parsed)
     if ok and own and action == "block":
         ctx.mark_task_blocked(task_id)
     elif ok and own and action == "reassign" and parsed.get("status") in ("ready", "backlog"):
@@ -264,7 +283,7 @@ def company_complete_task(args: dict[str, Any], **_: Any) -> str:
             "company_complete_task again and say why in result_summary.")
     result = _call("POST", f"/tasks/{task_id}/complete", json=body)
     parsed = _json_of(result)
-    if isinstance(parsed, dict) and not _is_error(parsed):
+    if isinstance(parsed, dict) and not _is_error(parsed) and not _is_pending(parsed):
         ctx.mark_task_completed(task_id)
     return result
 
@@ -394,6 +413,50 @@ def company_decide_approval(args: dict[str, Any], **_: Any) -> str:
         return _err("invalid_arguments", "decision must be 'approve', 'reject' or 'request_changes'")
     return _call("POST", f"/approvals/{str(args['approval_id']).strip()}/decide",
                  json=_clean({"decision": decision, "note": args.get("note")}))
+
+
+# ------------------------------------------------------------------ M6: guardrails & governance
+
+
+PEER_DECISIONS = ["approve", "reject", "request_changes"]
+
+
+def company_decide_peer_review(args: dict[str, Any], **_: Any) -> str:
+    if (bad := _need(args, "approval_id", "decision")):
+        return bad
+    decision = str(args["decision"]).strip()
+    if decision not in PEER_DECISIONS:
+        return _err("invalid_arguments", f"decision must be one of: {', '.join(PEER_DECISIONS)}")
+    if decision != "approve" and not str(args.get("note") or "").strip():
+        return _err("invalid_arguments", "A note saying what is wrong is required unless you approve.")
+    result = _call("POST", f"/peer-reviews/{str(args['approval_id']).strip()}/decide",
+                   json=_clean({"decision": decision, "note": args.get("note")}))
+    parsed = _json_of(result)
+    if isinstance(parsed, dict) and not _is_error(parsed) and ctx.config().task_id:
+        ctx.mark_task_completed(ctx.config().task_id)  # deciding is the whole task: the run is over
+    return result
+
+
+def company_provider_action(args: dict[str, Any], **_: Any) -> str:
+    if (bad := _need(args, "credential_id", "action")):
+        return bad
+    params = args.get("params")
+    if isinstance(params, str):
+        params = _json_of(params)
+    if not isinstance(params, dict):
+        params = {k: v for k, v in args.items() if k not in ("credential_id", "action", "params")}
+    result = _call("POST", "/provider-actions", json={
+        "credential_id": str(args["credential_id"]).strip(),
+        "action": str(args["action"]).strip(),
+        "params": params,
+    })
+    parsed = _json_of(result)
+    if _is_pending(parsed):
+        return _with_next(result, "Do not retry now. Finish what else you can and complete your task; you are "
+                                  "woken when the review is decided, then repeat this IDENTICAL call once.")
+    result = _with_hint(result, "dlp", "Remove what the scan flagged (see details.dlp_findings: kinds only) and "
+                                       "call again with the revised text.")
+    return result
 
 
 # ------------------------------------------------------------------ M4: colleagues + hiring
@@ -795,7 +858,8 @@ def company_escalate(args: dict[str, Any], **_: Any) -> str:
     result = _call("POST", "/escalations", json=_clean({
         "reason": str(args["reason"]).strip(), "task_id": task_id or None, "block_task": block}))
     parsed = _json_of(result)
-    if block and isinstance(parsed, dict) and not _is_error(parsed) and task_id == ctx.config().task_id:
+    if (block and isinstance(parsed, dict) and not _is_error(parsed) and not _is_pending(parsed)
+            and task_id == ctx.config().task_id):
         ctx.mark_task_blocked(task_id)
     return result
 
@@ -1026,6 +1090,26 @@ _TOOLS: dict[str, tuple[dict[str, Any], Callable[..., str], str]] = {
                 ["role_template", "name", "manager_agent_id"]),
         company_hire_agent, "🤝"),
 
+    "company_decide_peer_review": (
+        _schema("company_decide_peer_review",
+                "Decide a peer review assigned to you: approve an outbound message exactly as written, "
+                "request_changes (say what to change) or reject it. You can never review your own work.",
+                {"approval_id": _str("Approval id shown in your task"),
+                 "decision": {"type": "string", "enum": PEER_DECISIONS},
+                 "note": _str("What is wrong or what to change (required unless you approve)")},
+                ["approval_id", "decision"]),
+        company_decide_peer_review, "🧐"),
+    "company_provider_action": (
+        _schema("company_provider_action",
+                "Ask the company to act with a stored credential you never see: action such as email.send "
+                "(params: to, subject, body), social.post, github.pr.open. Messages to outside people are "
+                "scanned and checked by another agent first; if you get status pending_approval, finish what you "
+                "can and repeat the identical call once you are woken.",
+                {"credential_id": _str("Credential id (from your context)"),
+                 "action": _str("Action name, e.g. email.send"),
+                 "params": {"type": "object", "description": "Action parameters, e.g. {to, subject, body}"}},
+                ["credential_id", "action"]),
+        company_provider_action, "📤"),
     "company_get_state": (
         _schema("company_get_state",
                 "Read the live state of the company for your role: goals, projects, tasks, blockers, failures, "

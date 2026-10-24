@@ -50,6 +50,12 @@ class Credential(TimestampMixin, Base):
     created_by_type: Mapped[str] = mapped_column(String(16), nullable=False)
     created_by_id: Mapped[str | None] = mapped_column(String(36))
     revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    # M6 scoping: which control-plane provider executes calls made with this credential, which
+    # actions (``email.send``, ``github.*``) and role families may use it. Empty actions = no agent
+    # may use it (fail closed); empty families = any family. Agents never see the value.
+    provider: Mapped[str | None] = mapped_column(String(32))
+    allowed_actions: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    allowed_families: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
 
 
 class ModelProvider(TimestampMixin, Base):

@@ -10,11 +10,13 @@ from app.core.ids import new_id
 from app.core.time import utcnow
 from app.db.base import Base
 from app.db.types import UTCDateTime
-from app.models.enums import AutonomyMode
+from app.models.enums import AutonomyMode, ModelRouting
 
 DEFAULT_HUMAN_APPROVAL_KINDS = ["external_purchase", "budget_increase"]
 DEFAULT_HIRE_MONTHLY_BUDGET_MICROS = 5_000_000
 DEFAULT_MAX_AGENT_MONTHLY_BUDGET_MICROS = 25_000_000
+DEFAULT_BUDGET_ALERT_THRESHOLDS = (50, 80, 100)
+DEFAULT_STALL_SECONDS = 180
 
 
 class CompanyPolicy(Base):
@@ -82,6 +84,46 @@ class CompanyPolicy(Base):
     sandbox_backend: Mapped[str] = mapped_column(
         String(16), default="auto", server_default="auto", nullable=False
     )
+    # M6 governance. Only humans can change them.
+    # Percentages of a budget at which an alert is raised (idempotent per scope/period/threshold).
+    budget_alert_thresholds: Mapped[list[int]] = mapped_column(
+        JSON, default=lambda: list(DEFAULT_BUDGET_ALERT_THRESHOLDS), nullable=False
+    )
+    # free_first | pinned | quality_first (see app/services/routing.py).
+    model_routing: Mapped[str] = mapped_column(
+        String(16), default=ModelRouting.FREE_FIRST, server_default="free_first", nullable=False
+    )
+    # When no free model exists, may a run use the paid one without asking? If not, the spend tier
+    # decides (human approval above ``auto_spend_limit_micros``).
+    allow_paid_fallback: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true(), nullable=False
+    )
+    # Spend an agent may commit without a human (default 0 = any spend needs a human).
+    auto_spend_limit_micros: Mapped[int] = mapped_column(
+        BigInteger, default=0, server_default="0", nullable=False
+    )
+    # No run event or progress for this long -> the run is cancelled as stalled.
+    stall_seconds: Mapped[int] = mapped_column(
+        Integer,
+        default=DEFAULT_STALL_SECONDS,
+        server_default=str(DEFAULT_STALL_SECONDS),
+        nullable=False,
+    )
+    # Per-run runaway caps: tool calls, artifacts, tokens (tasks: ``max_tasks_per_planning_cycle``).
+    max_tool_calls_per_run: Mapped[int] = mapped_column(
+        Integer, default=300, server_default="300", nullable=False
+    )
+    max_artifacts_per_run: Mapped[int] = mapped_column(
+        Integer, default=50, server_default="50", nullable=False
+    )
+    max_tokens_per_run: Mapped[int] = mapped_column(
+        BigInteger, default=3_000_000, server_default="3000000", nullable=False
+    )
+    # Outbound email carries an AI disclosure footer (default on); NULL text = the built-in text.
+    ai_disclosure_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true(), nullable=False
+    )
+    ai_disclosure_text: Mapped[str | None] = mapped_column(String(500))
     budget_lock_version: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)

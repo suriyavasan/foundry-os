@@ -14,8 +14,10 @@ from datetime import datetime
 
 from sqlalchemy import case, select
 
-from app.core.errors import BudgetExceeded
+from app.core.errors import ApprovalPending, BudgetExceeded, GuardrailDenied
+from app.core.principal import CompanyContext, Principal, PrincipalType, Role
 from app.engine.context import EngineContext
+from app.guardrails import engine as guard_engine
 from app.models.agent import Agent
 from app.models.company import Company
 from app.models.enums import (
@@ -26,7 +28,7 @@ from app.models.enums import (
 )
 from app.models.run import TaskRun
 from app.models.work import Task
-from app.services import hiring, jobs, ledger, model_providers, policy, runs, tasks, wakes
+from app.services import emergency, hiring, jobs, ledger, policy, routing, runs, tasks, wakes
 
 PRIORITY_RANK = case(
     (Task.priority == "urgent", 3),
@@ -45,20 +47,42 @@ class DispatchReport:
     waiting_for_runtime: int = 0
 
 
-def _runs_on_local_model(db, agent: Agent) -> bool:
-    """True when the agent runs on the company agent runtime with a local (zero-cost) provider."""
-    if agent.runtime != "company_agent":
-        return False
+def _agent_ctx(agent: Agent) -> CompanyContext:
+    principal = Principal(PrincipalType.AGENT, agent.id, agent.name, agent.company_id)
+    return CompanyContext(agent.company_id, principal, Role.AGENT)
+
+
+def _paid_model_gate(db, agent: Agent, task: Task, route: routing.Route, limits, now: datetime):
+    """The paid-model fallback is a ``spend``-tier action when policy does not allow it outright:
+    returns None when it may proceed, else the (code, message, details) that parks the task."""
+    payload = {
+        "task_id": task.id,
+        "agent_id": agent.id,
+        "provider_id": route.provider_id,
+        "model": route.model,
+        # what the run may cost, as far as it is known before it starts
+        "amount_micros": task.budget_micros or limits.default_run_reservation_micros,
+    }
     try:
-        return model_providers.resolve_for_agent(db, agent).is_local
-    except model_providers.ModelResolutionError:
-        return False
+        guard_engine.check(db, _agent_ctx(agent), "model.paid_fallback", payload, now=now)
+    except ApprovalPending as exc:
+        return (
+            "paid_model_approval",
+            "No free model is available and policy requires approval before a run uses a paid "
+            "model",
+            {"approval_id": (exc.fields or {}).get("approval_id")},
+        )
+    except GuardrailDenied as exc:
+        return ("paid_model_approval", exc.message, {"denied": True})
+    return None
 
 
 def dispatch_tick(ctx: EngineContext, now: datetime | None = None) -> DispatchReport:
     now = now or ctx.clock()
     report = DispatchReport()
     with ctx.session_factory() as db:
+        if emergency.is_active(db):  # nothing is dispatched until the owner resumes
+            return report
         company_ids = list(
             db.scalars(select(Company.id).where(Company.status == CompanyStatus.ACTIVE))
         )
@@ -95,7 +119,7 @@ def _dispatch_one(
     with ctx.session_factory() as db:
         ledger.acquire_budget_lock(db, company_id)  # first statement of the transaction
         company = db.get(Company, company_id)
-        if company is None or company.status != CompanyStatus.ACTIVE:
+        if company is None or company.status != CompanyStatus.ACTIVE or emergency.is_active(db):
             db.rollback()
             return False
         limits = policy.load_policy(db, company_id)
@@ -160,6 +184,25 @@ def _dispatch_one(
             db.rollback()
             return False
 
+        route = routing.choose(db, agent, limits)
+        if route.needs_paid_approval:
+            gate = _paid_model_gate(db, agent, candidate, route, limits, now)
+            if gate is not None:
+                code, message, details = gate
+                tasks.transition(
+                    db,
+                    candidate,
+                    TaskStatus.BLOCKED,
+                    principal=None,
+                    now=now,
+                    reason="waiting for approval to use a paid model",
+                    error={"code": code, "message": message, "run_id": None, **details},
+                )
+                db.commit()
+                report.policy_blocked_task_ids.append(candidate.id)
+                return True
+            # approved and consumed: the guard committed; the lock is taken again by reserve()
+
         # Budget: reserve the task's remaining budget, else the policy default.
         try:
             if candidate.budget_micros is not None:
@@ -178,8 +221,8 @@ def _dispatch_one(
                 amount = remaining
             else:
                 amount = limits.default_run_reservation_micros
-                if _runs_on_local_model(db, agent):
-                    amount = 0  # a local model has no provider charge: nothing to hold
+                if route.free:
+                    amount = 0  # a free model has no provider charge: nothing to hold
             reservation = ledger.reserve(db, company_id, agent, candidate, amount, now=now)
         except BudgetExceeded as exc:
             details = exc.details or {}
@@ -202,7 +245,7 @@ def _dispatch_one(
             report.budget_blocked_task_ids.append(candidate.id)
             return True
 
-        run = runs.create_queued_run(db, candidate, agent, reservation, now=now)
+        run = runs.create_queued_run(db, candidate, agent, reservation, now=now, route=route)
         jobs.enqueue(
             db,
             kind="execute_run",

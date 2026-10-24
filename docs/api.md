@@ -938,3 +938,235 @@ Other M5 rules worth knowing: triaging a `directive` or `goal` note is refused (
 something in the same run (goal, project, task, schedule, decision or hire request); runs of agents on a **local** model reserve 0 micro-USD
 (they cost nothing, so a project budget of 0 no longer blocks them - found in the live run); a "new hire" wake tells the founder there is
 nothing to onboard and tells a lead to use the hire.
+
+
+---
+
+# Milestone 6: guardrails & governance (incl. finance)
+
+Spec: `docs/specs/m6-guardrails-and-governance.md`. Migration `0006_guardrails` (run `uv run alembic upgrade head`; the API
+refuses to start without the `guardrail_rules` table). **Defaults live in code, not in the database** (`app/guardrails/rules.py`):
+a company has no `guardrail_rules` rows until a human adds an override, so existing companies get the spec defaults the moment this code
+runs and the migration needs no backfill. New tables: `guardrail_rules`, `guardrail_events`, `rate_limit_hits`, `system_state`,
+`external_expenses`, `budget_alert_marks`; new columns on `company_policies`, `approvals` (`tier`, `action`, `reviewer_agent_id`,
+`outbound`, `dlp_findings`), `task_runs` (`routing_reason`, `model_provider_id`, `model_used`) and `credentials` (`provider`,
+`allowed_actions`, `allowed_families`).
+
+## Risk tiers, the registry and the default table
+
+Every agent-API endpoint, every runtime tool and every control-plane provider action is registered with one of nine tiers
+(`app/guardrails/registry.py`, `app/guardrails/tools.json`). **Fail closed:** an unregistered endpoint, tool or action has no tier and is
+denied (`403 guardrail_denied`, logged as tier `destructive`); `tests/test_guardrails_registry.py` enumerates every `/api/agent/v1` route
+from the OpenAPI document and fails when one is missing. Default decision per tier:
+
+| tier | examples (registered actions) | default |
+|---|---|---|
+| `read` | `context.read`, `state.read`, `colleagues.search`, runtime `read_file`, `skills_list` | allow |
+| `internal_write` | `task.create/update/complete`, `artifact.submit`, `progress.report`, `memory.propose`, `peer_review.decide`, `write_file` | allow |
+| `org_change` | `hire.create`, `hire.request`, `skills.install/author/assign`, `role_templates.create`, `goal/project/schedule.*` | allow (M4 headcount/budget rules still apply) |
+| `external_read` | `skills.catalog`, runtime `web_search`, provider `email.read`, `github.read` | allow, rate limited |
+| `external_communication` | provider `email.send`, `social.post`, `github.pr.open`, `github.issue.comment`, `invite.send` | **peer_review**, then allow |
+| `external_commitment` | `terms.accept`, `account.register`, `domain.register` | human_approval |
+| `spend` | `purchase.make`, `subscription.start`, platform `model.paid_fallback` | human_approval above `auto_spend_limit_micros` (default 0), else cofounder_approval |
+| `identity` | `mailbox.create`, `ui.deploy`, `credential.rotate`, `dns.change` | cofounder_approval; human_approval for `dns.change` and `domain.register` (domain/DNS ownership) |
+| `destructive` | `resource.delete` | human_approval |
+
+## Rules and precedence
+
+`guardrail_rules` are company-scoped and **editable by humans only** (owner/admin; viewers read; agents - run token or not - get `403`).
+
+```json
+GuardrailRule = { "id", "company_id", "tier", "action": "email.send" | null, "scope_type": "all|family|agent",
+                  "scope_value": "<role family>|<agent id>" | null, "decision": "allow|peer_review|cofounder_approval|human_approval|deny",
+                  "conditions": { "max_amount_micros"?, "max_per_day"?, "allowed_domains"? }, "created_by_type", "created_by_id",
+                  "created_at", "updated_at" }
+```
+- `GET /guardrails/rules` (page), `POST /guardrails/rules` (201), `GET|PATCH|DELETE /guardrails/rules/{id}` (`DELETE` -> 204).
+  `422` for an unknown action, an action of another tier, a family that does not exist, a `scope_value` with scope `all`, unknown
+  condition keys; `404` for an agent of another company. Audit `guardrail_rule.created|updated|deleted`; event `guardrail.rule_changed`.
+- **Resolution** (the winner among the rules that apply): (1) a rule for the **specific action** beats a tier rule, (2) then **agent**
+  beats **family** beats **all**, (3) then the **newest** (`created_at`, then id) wins a tie; no applicable rule -> the default table.
+  Conditions decide whether a rule applies at all: `max_amount_micros` - while the action's `amount_micros` is <= it; `max_per_day` -
+  while *fewer than N* such actions of this agent were allowed today (company timezone); `allowed_domains` - for actions whose target
+  host / e-mail domain is on the list (it is also the DLP allowlist). A rule whose condition fails is skipped, so "allow up to $1, then
+  ask a human" is a rule plus the default.
+- `GET /agents/{id}/effective-permissions` -> `EffectivePermissions {agent_id, tiers: [{tier, decision, source: default|rule, rule_id}],
+  tools: [{name, tier, decision, rule_id}], rate_limits: [RateLimitStatus]}` (the Permissions tab).
+
+## `guardrails.check` and the agent API gate
+
+`app/guardrails/engine.check(db, ctx, action, payload)` is the one decision point. Instead of a call inside each service, every
+`/api/agent/v1` handler sits behind a router-level dependency (`app/api/guard.py`) that runs first: registry lookup (fail closed) ->
+emergency stop (`503 emergency_stop`) -> `api_calls_per_min` limit -> (provider actions: credential scope + executor pre-check) -> `check`.
+`check` either returns (the action may run) or raises, after committing its `guardrail_events` row:
+
+| outcome | HTTP | body |
+|---|---|---|
+| unregistered / `deny` rule / outbound DLP | 403 | `{"error": {"code": "guardrail_denied", "message", "details": {"action", "tier", "rule_id", "reason"?, "dlp_findings"?}}}` |
+| rate limit | 429 | `code: rate_limited`, `details: {key, scope: agent|company, limit, used, window_seconds, retry_after_seconds}` |
+| waits for a review / approval | **202** | `{"status": "pending_approval", "message", "approval_id", "approver": "peer|founder|human", "decision", "reviewer_agent_id", "tier", "action", "rule_id"}` (not an error envelope) |
+| emergency stop | 503 | `code: emergency_stop` |
+
+**Approvals are bound to the exact action.** The scope is `{v, action, agent_id, payload_digest}` (the digest covers the whole request body
+and path parameters except `idempotency_key`); `approvals.consume` checks its hash and spends it once. The agent is woken when the approval
+is decided and repeats the **identical** call: the engine finds the approved, unconsumed approval with that hash and consumes it. The same
+content by another agent, other content by the same agent, or the same content a second time each need a new approval. While one is pending
+the same call returns the same approval (no duplicates); a rejected / changes-requested approval makes the identical content `403` for 24 h.
+A rate-limit hit is recorded only when the action actually succeeded (a request that fails validation costs no quota).
+`cofounder_approval` for the Co-founder's own action, and `peer_review` when no independent reviewer exists, escalate to `human_approval`.
+
+`guardrail_events`: `GET /guardrails/events?decision=&tier=&agent_id=&limit=&cursor=` (newest first, humans only) -> `GuardrailEvent {id,
+company_id, created_at, agent_id, run_id, task_id, action, tier, decision (allow|peer_review|cofounder_approval|human_approval|deny|
+rate_limited), rule_id, approval_id, payload_digest, reason}`. **A digest, never the payload.** Allowed `read`-tier calls are not logged (a
+run makes dozens); everything else is. Each row is mirrored as the stream event `guardrail.event`.
+
+## Peer review (maker-checker)
+
+`peer_review` creates an approval with `approver: "peer"` and a `review` task for the reviewer: the author's manager, else a QA agent, else a
+marketing ("brand") agent, else the AI Co-founder, else any other active non-HR agent - **never the author**; nobody independent -> a human
+decides. The approval carries `tier`, `action`, `reviewer_agent_id`, `outbound {channel, to, subject, body}` (the exact content) and
+`dlp_findings [{kind, severity, description, count}]` (never a matched value). The reviewer's run spec carries the same plus a checklist
+and the company constraints (`spec.task.peer_review`); its toolset is just `company_decide_peer_review` + `company_complete_task`.
+`POST /peer-reviews/{approval_id}/decide {decision: approve|reject|request_changes, note?}` (agent API, only the assigned reviewer; `403`
+for the author or anyone else; humans can decide via `POST /approvals/{id}/approve|reject|request_changes`). Deciding closes the review task
+and wakes the author. `GET /approvals?tier=` filters by tier; `Approval.approver` is now `human|founder|peer`.
+
+## Outbound DLP, untrusted content, disclosure
+
+- **Outbound DLP** (`app/guardrails/dlp.py`) scans every `external_communication` payload before anything is parked or sent: credential
+  shapes (`sk-`, GitHub/AWS/Slack/Stripe/Google keys, private-key blocks, JWTs, `password = ...`), the company's **own secrets** (run tokens,
+  the owner token, every stored credential value), e-mail addresses and phone numbers beyond the allowlist (the recipients plus the rule's
+  `allowed_domains`), and verbatim passages of **verified memory tagged `internal`** (also `internal-only`, `confidential`, `private`).
+  Findings block the action (`403`, `details.reason = dlp_blocked`, `details.dlp_findings`) - a revision request: remove it and submit
+  again. Findings never contain the matched text, and neither do events, audit rows or approvals.
+- **Untrusted content** (runtime): results of web/file/command tools and other agents' artifact excerpts (`company_get_context`, review
+  targets, the draft under peer review) are wrapped in `<untrusted source="...">`; the system prompt calls such text data. Injection phrases
+  (instruction override, role change, prompt/secret exfiltration, tool directives, permission changes, chat-template markup) are flagged:
+  a `[guardrail]` progress event and `POST /guardrails/flags` (a `guardrail_events` row `content.injection_flag`) - never auto-blocked.
+- **AI disclosure**: `email.send` provider calls get a footer (`policy.ai_disclosure_enabled`, default on; `ai_disclosure_text`, `{company}`
+  is replaced) appended by the control plane before the executor runs.
+
+## Credentials: scoped grants and control-plane provider actions
+
+Agents never hold a credential. `Credential` gains `provider`, `allowed_actions` (exact actions or `prefix.*`; **empty = no agent may use it**)
+and `allowed_families` (empty = any family) - set on `POST /credentials` or `PATCH /credentials/{id}` (humans only); `POST
+/credentials/{id}/rotate {value}` replaces the secret in place (audited); revocation exists since M3b. `GET /context` lists the credentials
+usable by the calling agent as `credentials: [{id, name, provider, allowed_actions}]` (metadata only).
+`POST /api/agent/v1/provider-actions {credential_id, action, params}` -> checks the credential scope for the agent's role family (`403`),
+that an executor is connected (**`501 not_available` with `details {available: false, milestone: "M8"}`** otherwise - nothing is faked and
+nothing is parked for review), runs the guardrail engine, reveals the secret inside the control plane for the one call, hands it to the
+executor and returns `{status: "executed", action, result}` with the secret scrubbed from the result (audit `provider_action.executed`:
+action, provider, payload digest). The executor registry (`app.state.provider_executors`) is empty until M8 registers real providers; the
+tests register a recording executor. The tool `company_provider_action` is offered only to agents with a usable credential.
+
+## Rate limits
+
+DB-backed sliding windows (`rate_limit_hits`; a hit exactly one window old is outside the window), per agent and per company, defaults in
+code (`app/guardrails/ratelimit.py`):
+
+| key | window | per agent | per company | counted for |
+|---|---|---|---|---|
+| `api_calls_per_min` | 60 s | 120 | 600 | every agent-API call |
+| `tasks_created_per_hour` | 1 h | 30 | 150 | `task.create` |
+| `external_communications_per_day` | 1 day | 10 | 40 | `external_communication` actions |
+| `hires_per_day` | 1 day | 10 | 20 | `hire.create` |
+| `skill_installs_per_day` | 1 day | 10 | 30 | `skills.install` |
+| `web_fetches_per_hour` | 1 h | 120 | 600 | runtime `web_search` (asked through `POST /guardrails/check-tool`) |
+
+`GET /guardrails/rate-limits[?agent_id=]` -> `{items: [RateLimitStatus {agent_id|null, key, limit, used, window_seconds, resets_at}],
+next_cursor}` (company windows, plus the windows of the given agent or of every agent active in a window). A third refusal of the same
+agent and key within ten minutes raises a `rate_limit` alert. Agent-API endpoints for the runtime: `POST /guardrails/check-tool {tool}` ->
+`{allowed, tool, tier}` or the errors above (unknown tool: `403`); `POST /guardrails/flags {tool, source?, categories[]}` -> 201.
+
+## Containment
+
+- **Stall detection**: a run with no event or progress for `policy.stall_seconds` (default 180, 30-3600) is cancelled; status `failed`,
+  `exit_reason` and `error.code` `stalled` (counts toward the circuit breaker).
+- **Runaway caps** per run (`policy.max_tool_calls_per_run` 300, `max_artifacts_per_run` 50, `max_tokens_per_run` 3 000 000; tasks:
+  `max_tasks_per_planning_cycle` plus a cancel after 3 refused `company_create_task` calls): `failed` with `exit_reason` =
+  `runaway_tool_calls|runaway_artifacts|runaway_tokens|runaway_tasks_created`.
+- **Emergency stop** (owner only; persists in `system_state`): `POST /api/system/emergency-stop {reason?}` -> `EmergencyStopStatus {active,
+  activated_at, activated_by, reason, runs_cancelled}`; cancels every live run in **every company** (`exit_reason: emergency_stop`, tasks
+  go back to `ready` with the attempt refunded), disables dispatch, schedules, wakes and run claiming, and makes the agent API answer
+  `503 emergency_stop`. `POST /api/system/resume` lifts it. `GET /api/system/status` -> `{emergency_stop: EmergencyStopStatus, version}`.
+  Humans who own at least one company only: agents (run tokens included) and viewers get `403` on all three. Audit
+  `system.emergency_stop|resumed` in every company; events `system.emergency_stop` / `system.resumed`. (`companyos stop --all` arrives
+  with the CLI in M9.)
+
+## Finance
+
+- **Mid-run budget checkpoints**: every `usage` event with a measured cost compares it with the run's reservation. If it is higher, the
+  reservation is extended (by headroom, else by just what was spent) when every task/project/agent/company budget still fits (audit
+  `budget.reservation_extended`); if not, the run is cancelled with `exit_reason: budget_exhausted` and billed what it measured (cost kind
+  as reported); its task returns to `ready` and the dispatcher parks it as `blocked` / `budget_exceeded` with `retry_after`.
+- **Model routing** (`policy.model_routing`, default `free_first`; `allow_paid_fallback`, default true; company-agent runtime only):
+  `free_first` uses the agent's own model if free, else the first enabled **free** provider (local, or priced at zero; the company default
+  first), else the paid one - which, with `allow_paid_fallback: false`, is the `spend`-tier action `model.paid_fallback` (payload: task,
+  provider, model, `amount_micros` = the reservation): the task is `blocked` with `error.code = paid_model_approval` and `error.approval_id`
+  until the approval (human above `auto_spend_limit_micros`, else the Co-founder) is decided; approving releases the task and the next
+  dispatch spends the approval (single use, per task). `pinned` = the agent's own model; `quality_first` = the agent's own paid model, else
+  the paid provider with the highest output price (the only quality signal available), else free. The decision is stored on the run
+  (`TaskRun.routing_reason`, `model_provider_id`, `model_used`) and a free route reserves 0.
+- **Threshold alerts**: `policy.budget_alert_thresholds` (default `[50, 80, 100]`) for company daily/monthly and every agent daily/monthly
+  budget; one `budget_threshold` alert (the highest newly crossed threshold) per (scope, period, threshold), remembered in
+  `budget_alert_marks` so resolving an alert does not re-fire it within the period.
+- **Reporting** (`/companies/{cid}/finance`, members read, agents `403`; `from`/`to` are `YYYY-MM-DD`, **inclusive, company timezone**,
+  default month-to-date, at most 366 days, echoed back with `timezone`):
+  `GET /summary` -> `FinanceSummary {from, to, timezone, totals {verified_micros, estimated_micros, unknown_micros, input_tokens,
+  output_tokens, runs}, wasted {split + runs}` (failed, cancelled, timed-out runs)`, external_expenses_micros, budgets [BudgetStatus {scope,
+  agent_id, period, limit_micros, verified_micros, estimated_micros}]}`; `GET /breakdown?group_by=agent|project|provider|model|runtime` ->
+  `{group_by, from, to, items [{key, label, <split>, input_tokens, output_tokens, runs}]}` (costliest first, `unassigned` for none);
+  `GET /trend` -> `{from, to, points [{date, <split>}]}` (one point per local day, zero-filled); `GET /runs` (page, newest finished first)
+  -> `FinanceRun {run_id, task_id, task_title, agent_id, status, started_at, finished_at, cost_micros, cost_kind, model, provider}`.
+- **External expenses**: `GET /finance/expenses?from=&to=` (page; recurring ones are listed when an occurrence falls in the range),
+  `POST /finance/expenses {vendor, description?, amount_micros, recurrence: one_time|monthly|yearly, project_id?, incurred_on}` (humans
+  only; audit + event `expense.created`). Reported separately as `external_expenses_micros` (monthly/yearly expenses count once per
+  occurrence in the range, day clamped to the month's length); they never count against model budgets.
+
+## Policy fields (humans only; agents `403`)
+
+`max_agent_monthly_budget_micros` (M5), `hire_default_monthly_budget_micros` (M5), `budget_alert_thresholds` `[50,80,100]`, `model_routing`
+`free_first`, `allow_paid_fallback` `true`, `auto_spend_limit_micros` `0`, `stall_seconds` `180`; additionally `max_tool_calls_per_run`,
+`max_artifacts_per_run`, `max_tokens_per_run`, `ai_disclosure_enabled` `true`, `ai_disclosure_text` `null`.
+
+## Stream events
+
+`guardrail.event`, `guardrail.rule_changed`, `system.emergency_stop`, `system.resumed`, `expense.created` (plus the existing
+`approval.created` which now carries `tier`, and `alert.raised` for threshold / rate-limit alerts).
+
+## Tools, sandbox network and what is not built
+
+- The runtime registers **32** company tools: M6 adds `company_decide_peer_review` (only in a peer-review run) and
+  `company_provider_action` (only for agents with a usable credential). The run spec carries a new `guardrails` block
+  (`tool_tiers`, `server_checked_tiers`, `untrusted_tools`, `flag_injection`) and `task.peer_review`.
+- **Network egress with the Docker sandbox**: the sandbox already runs with the network off (`sandbox.network: false`), which is "default
+  deny". Per-role domain allowlists are **not built** (they need a running Docker daemon to verify); until then no sandboxed tool reaches
+  the network at all, and the only outside-reaching tool, `web_search`, goes through `check-tool`.
+- Not built: expiry of pending approvals (`expired` is never set), per-run caps for artifacts "marked for external publication" (no such
+  marking exists; only provider actions are DLP-scanned), revocation of credentials when an agent retires (M7 lifecycle), pruning of
+  `guardrail_events`, the `companyos stop --all` CLI (M9).
+
+## Deviations from the spec and the web assumptions
+
+- The gate is a router-level dependency over the whole agent API (a registry-backed test proves coverage) rather than a call in each
+  service; services that need their own decision call `guardrails.check` directly (the dispatcher does for `model.paid_fallback`).
+- `max_per_day` means "applies while *fewer than N* were allowed today" (the web hint says "at most N happened"); `GET /system/status` nests
+  the status under `emergency_stop` (the web accepts both); `GET /guardrails/rate-limits` answers `{items, next_cursor}`.
+- A stalled run is `failed` (not `cancelled`) so that it counts toward the circuit breaker; a budget-exhausted run is `cancelled`.
+- Allowed `read`-tier calls are not written to `guardrail_events`; rate-limit hits are counted for actions that succeeded.
+- Default `model_routing` is `free_first`: a company that has both a free (local) and a paid provider now runs its company-agent runs on
+  the free one unless it sets `pinned`.
+
+## Verified and not verified
+
+Verified (2026-10-24, macOS arm64, Python 3.14): the full backend and runtime test suites; the generated OpenAPI document typechecks
+against `web/src/api/contract.check.ts` with every M6 check switched on; a live run on a temporary instance (own SQLite file, port 8705)
+with the real launcher, real Hermes and a local `qwen2.5:7b` on a temporary Ollama (port 11435): free-first routing recorded on the run,
+`web_search` asked through `check-tool` (events + rate-limit windows), its result tagged `<untrusted>`, a `deny` rule for `tool.web_search`
+blocking the tool with the rule id in the model's context, and the emergency stop cancelling the live run in 0.6 s, holding dispatch and
+resuming it.
+
+**Not** verified against a real system: any paid model provider (checkpoints, extension and the paid-fallback approval are exercised
+with the scripted runtime and a fake `company_agent` adapter), a real stall of a hung model, a connected provider (no executor exists
+before M8: the provider-action framework is exercised with a recording test executor), a Docker sandbox, Postgres (SQL is portable and
+SQLite-tested), concurrent budget extensions under several worker processes.

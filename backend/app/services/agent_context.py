@@ -9,12 +9,14 @@ from app.models.agent import Agent
 from app.models.artifact import Artifact
 from app.models.company import Company
 from app.models.enums import AgentStatus
+from app.models.provider import Credential
 from app.models.work import Project, Task, TaskDependency
 from app.schemas.agent_api import (
     AgentContext,
     CtxAgent,
     CtxArtifactBrief,
     CtxCompany,
+    CtxCredential,
     CtxMemory,
     CtxPolicy,
     CtxProject,
@@ -179,7 +181,21 @@ def build_context(
         )
     target = reviews.review_target(db, storage, task) if task.kind == "review" else None
     role = agent_roles.role_of(db, agent)
+    usable = [
+        CtxCredential(
+            id=c.id, name=c.name, provider=c.provider or "", allowed_actions=list(c.allowed_actions)
+        )
+        for c in db.scalars(
+            select(Credential)
+            .where(Credential.company_id == company_id, Credential.revoked_at.is_(None))
+            .order_by(Credential.created_at, Credential.id)
+        )
+        if c.provider
+        and c.allowed_actions
+        and (not c.allowed_families or agent.role_family in c.allowed_families)
+    ]
     return AgentContext(
+        credentials=usable,
         memory=[
             CtxMemory(id=m.id, kind=m.kind, title=m.title, body=m.body)
             for m in memory.relevant_for(db, company_id, agent)

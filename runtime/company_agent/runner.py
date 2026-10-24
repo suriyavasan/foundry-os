@@ -383,6 +383,9 @@ def tool_result_is_error(name: str, text: str) -> bool:
     """Tool results are JSON strings; an ``error`` key (or success=false) marks a failure."""
     import json
 
+    from company_agent.guard import strip_untrusted
+
+    text = strip_untrusted(text) if isinstance(text, str) else text
     try:
         data = json.loads(text)
     except (TypeError, ValueError):

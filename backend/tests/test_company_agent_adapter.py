@@ -16,6 +16,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.core.owner_token import OWNER_TOKEN_FILENAME
+from app.core.time import utcnow
 from app.engine.context import build_context
 from app.engine.executor import DbEventSink
 from app.engine.scheduler import Scheduler
@@ -925,3 +926,110 @@ def test_a_missing_runtime_never_dispatches_the_task(make_settings):
         report = Scheduler(ctx).tick()
         assert report.dispatch.queued_run_ids == [] and report.dispatch.waiting_for_runtime >= 1
         assert get_task(c, cid, task["id"])["status"] == "ready"
+
+
+# ------------------------------------------------------------------ Milestone 6: guardrails in the spec
+
+
+def test_spec_carries_the_guardrail_registry_for_exactly_the_tools_of_the_run(env):
+    seen = _inspect(env)
+    guard = seen["guardrails"]
+    tiers = guard["tool_tiers"]
+    for tool in seen["company_tools"]:
+        assert tool in tiers, f"{tool} reaches the agent without a guardrail tier"
+    assert tiers["web_search"] == "external_read" and tiers["read_file"] == "read"
+    assert "terminal" not in tiers  # no docker sandbox: the shell is not on offer
+    assert guard["untrusted_tools"]["web_search"] == "web" and guard["flag_injection"] is True
+    assert "external_read" in guard["server_checked_tiers"]
+
+
+def test_a_peer_review_run_sees_the_exact_outbound_content_and_nothing_else(env):
+    from tests.guardrail_helpers import connect_mail, make_team, send
+    from tests.test_agent_api import start_run
+
+    team = make_team(env.client, env.cid)
+    mail = connect_mail(env.app, env.client, env.cid)
+    worker = start_run(env.app, env.client, env.cid, team.worker["id"])
+    pending = send(worker, mail, body="Draft for Jane: our price is $40.").json()
+    from sqlalchemy import select
+
+    from app.models.work import Task
+
+    with env.app.state.session_factory() as db:
+        review = db.scalar(
+            select(Task).where(Task.idempotency_key == f"peerreview:{pending['approval_id']}")
+        )
+    assert review is not None and review.assignee_agent_id == team.manager["id"]
+    request = env.request(
+        "t scenario:inspect",
+        task=TaskSpec(
+            review.id, "t scenario:inspect", "d", None, "review", "high", list(review.input_refs)
+        ),
+        agent=AgentSpec(team.manager["id"], "Mia", "Lead", None, None, None, None, {}, []),
+    )
+    sink = RecordingSink()
+    result = env.adapter.execute(request, sink, CancelToken())
+    assert result.status == "succeeded"
+    seen = next(e.payload for e in sink.events if e.type == "progress")
+    peer = seen["task"]["peer_review"]
+    assert peer["approval_id"] == pending["approval_id"] and peer["author"] == "Wes"
+    assert peer["outbound"]["body"] == "Draft for Jane: our price is $40."
+    assert peer["outbound"]["to"] == "jane@customer.example" and peer["dlp_findings"] == []
+    assert len(peer["checklist"]) >= 4 and isinstance(peer["constraints"], list)
+    assert seen["company_tools"] == ["company_decide_peer_review", "company_complete_task"]
+    assert seen["guardrails"]["tool_tiers"]["company_decide_peer_review"] == "internal_write"
+    # an ordinary run has no peer review block
+    assert _inspect(env)["task"]["peer_review"] is None
+
+
+def test_the_spec_uses_the_model_the_dispatcher_routed_the_run_to(env):
+    from sqlalchemy import update
+
+    other = env.client.post(
+        api(env.cid, "/model-providers"),
+        json={
+            "name": "Second",
+            "kind": "ollama",
+            "default_model": "llama3:8b",
+            "base_url": "http://127.0.0.1:11435",
+        },
+    ).json()
+    request = env.request("t scenario:inspect", run_id="routed-run")
+    with env.app.state.session_factory() as db:
+        from app.models.run import TaskRun
+        from app.models.work import Task
+
+        task = Task(
+            company_id=env.cid,
+            title="t",
+            kind="work",
+            status="in_progress",
+            created_by_type="system",
+        )
+        db.add(task)
+        db.flush()
+        db.add(
+            TaskRun(
+                id="routed-run",
+                company_id=env.cid,
+                task_id=task.id,
+                agent_id=env.agent["id"],
+                attempt_number=1,
+                status="running",
+                runtime="company_agent",
+                idempotency_key="routed-key",
+                queued_at=utcnow(),
+                model_provider_id=other["id"],
+                model_used="llama3:8b",
+                routing_reason="free_first: test",
+            )
+        )
+        db.commit()
+        db.execute(update(TaskRun).where(TaskRun.id == "routed-run").values(cost_kind="unknown"))
+        db.commit()
+    sink = RecordingSink()
+    result = env.adapter.execute(request, sink, CancelToken())
+    assert result.status == "succeeded"
+    seen = next(e.payload for e in sink.events if e.type == "progress")
+    assert seen["model"]["model"] == "llama3:8b"
+    assert seen["model"]["base_url"] == "http://127.0.0.1:11435/v1"

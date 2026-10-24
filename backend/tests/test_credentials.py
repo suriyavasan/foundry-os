@@ -28,6 +28,9 @@ META_KEYS = {
     "created_by_type",
     "created_by_id",
     "revoked_at",
+    "provider",
+    "allowed_actions",
+    "allowed_families",
     "created_at",
     "updated_at",
 }

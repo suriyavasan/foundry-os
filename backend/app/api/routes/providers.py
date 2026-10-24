@@ -13,6 +13,8 @@ from app.schemas.common import Page
 from app.schemas.providers import (
     Credential,
     CredentialCreate,
+    CredentialRotate,
+    CredentialScope,
     DetectRequest,
     DetectResult,
     ModelProvider,
@@ -52,6 +54,20 @@ def create_credential(body: CredentialCreate, ctx: CompanyCtx, db: DbSession, ci
 @router.get("/credentials/{credential_id}", response_model=Credential)
 def get_credential(credential_id: str, ctx: CompanyCtx, db: DbSession):
     return credentials.get_credential(db, ctx, credential_id)
+
+
+@router.patch("/credentials/{credential_id}", response_model=Credential)
+def update_credential_scope(
+    credential_id: str, body: CredentialScope, ctx: CompanyCtx, db: DbSession
+):
+    return credentials.update_scope(db, ctx, credential_id, body)
+
+
+@router.post("/credentials/{credential_id}/rotate", response_model=Credential)
+def rotate_credential(
+    credential_id: str, body: CredentialRotate, ctx: CompanyCtx, db: DbSession, cipher: Cipher
+):
+    return credentials.rotate_credential(db, ctx, cipher, credential_id, body)
 
 
 @router.delete("/credentials/{credential_id}", response_model=Credential)

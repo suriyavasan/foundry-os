@@ -299,6 +299,10 @@ class TaskRun(ApiModel):
     reservation_id: str | None
     activity_summary: str | None
     activity_at: Timestamp | None
+    # M6: which model the run was routed to and why (null when the runtime picks its own).
+    routing_reason: str | None = None
+    model_provider_id: str | None = None
+    model_used: str | None = None
     created_at: Timestamp
     updated_at: Timestamp
 

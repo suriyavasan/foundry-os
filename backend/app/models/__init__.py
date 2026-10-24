@@ -7,6 +7,14 @@ from app.models.autonomy import Alert, FounderNote, MemoryEntry, NoteReply, Wake
 from app.models.company import Company, CompanyMember
 from app.models.department import Department
 from app.models.governance import Approval, Decision
+from app.models.guardrails import (
+    BudgetAlertMark,
+    ExternalExpense,
+    GuardrailEvent,
+    GuardrailRule,
+    RateLimitHit,
+    SystemState,
+)
 from app.models.ledger import BudgetReservation, UsageRecord
 from app.models.policy import CompanyPolicy
 from app.models.provider import Credential, ModelProvider
@@ -24,6 +32,7 @@ __all__ = [
     "Artifact",
     "ArtifactVersion",
     "AuditEvent",
+    "BudgetAlertMark",
     "BudgetReservation",
     "Company",
     "CompanyEvent",
@@ -31,14 +40,18 @@ __all__ = [
     "CompanyPolicy",
     "Credential",
     "Decision",
+    "ExternalExpense",
     "Department",
     "FounderNote",
     "Goal",
+    "GuardrailEvent",
+    "GuardrailRule",
     "Job",
     "MemoryEntry",
     "ModelProvider",
     "NoteReply",
     "Project",
+    "RateLimitHit",
     "RunEvent",
     "RoleTemplate",
     "Schedule",
@@ -47,6 +60,7 @@ __all__ = [
     "SkillBlob",
     "Task",
     "TaskDependency",
+    "SystemState",
     "TaskRun",
     "UsageRecord",
     "User",

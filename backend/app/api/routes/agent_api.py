@@ -12,8 +12,13 @@ from fastapi import APIRouter, Depends, Request, Response
 from starlette.concurrency import run_in_threadpool
 
 from app.api.deps import DbSession, RunCtx, Skills, get_storage
+from app.api.guard import agent_guard, guard_env
 from app.api.routes.skills import agent_skill_out, install_result
 from app.api.uploads import read_artifact_input
+from app.guardrails import engine as guard_engine
+from app.guardrails import log as guard_log
+from app.guardrails import peer, providers, registry
+from app.models.company import Company
 from app.schemas.agent import Agent as AgentOut
 from app.schemas.agent_api import (
     AgentContext,
@@ -47,6 +52,15 @@ from app.schemas.governance import (
     ApprovalCreated,
     Decision,
     DecisionCreate,
+)
+from app.schemas.guardrails import (
+    FlagResult,
+    InjectionFlag,
+    PeerReviewDecision,
+    ProviderActionRequest,
+    ProviderActionResult,
+    ToolCheck,
+    ToolCheckResult,
 )
 from app.schemas.hr import (
     Colleague,
@@ -88,6 +102,7 @@ from app.services import (
     hiring,
     memory,
     notes,
+    policy,
     projects,
     role_templates,
     schedules,
@@ -97,7 +112,9 @@ from app.services import (
 )
 from app.storage.base import ArtifactStorage
 
-router = APIRouter(prefix="/agent/v1", tags=["agent-api"])
+# Every route passes the guardrail gate first (registry lookup -> emergency stop -> rate limit ->
+# tier decision); see app/api/guard.py.
+router = APIRouter(prefix="/agent/v1", tags=["agent-api"], dependencies=[Depends(agent_guard)])
 
 
 def _one(db, task) -> Task:
@@ -402,3 +419,60 @@ def verify_memory(entry_id: str, rc: RunCtx, db: DbSession, body: MemoryDecision
 @router.post("/memory/{entry_id}/reject", response_model=MemoryEntry)
 def reject_memory(entry_id: str, rc: RunCtx, db: DbSession, body: MemoryDecisionBody | None = None):
     return memory.decide(db, rc.ctx, entry_id, "reject", body.reason if body else None)
+
+
+# ------------------------------------------------------ Milestone 6: guardrails & governance
+
+
+@router.post("/guardrails/check-tool", response_model=ToolCheckResult)
+def check_tool(body: ToolCheck, request: Request, rc: RunCtx, db: DbSession):
+    """The runtime asks before it runs a tool that reaches outside (web search...). Raises 403 /
+    429 / 202 like any guarded action; unknown tools are denied (fail closed)."""
+    action = registry.tool_action(body.tool)
+    verdict = guard_engine.check(
+        db, rc.ctx, action, {"tool": body.tool}, run=rc.run, env=guard_env(request)
+    )
+    return ToolCheckResult(allowed=True, tool=body.tool, tier=verdict.tier)
+
+
+@router.post("/guardrails/flags", response_model=FlagResult, status_code=201)
+def flag_content(body: InjectionFlag, rc: RunCtx, db: DbSession):
+    """The runtime saw an injection-style phrase in a tool result: logged, never auto-blocked."""
+    source = f" ({body.source})" if body.source else ""
+    guard_log.record(
+        db,
+        company_id=rc.ctx.company_id,
+        agent_id=rc.agent.id,
+        run_id=rc.run.id,
+        task_id=rc.run.task_id,
+        action="content.injection_flag",
+        tier="external_read",
+        decision="allow",
+        reason=f"possible prompt injection in the result of {body.tool}{source}: "
+        + ", ".join(body.categories[:10]),
+    )
+    db.commit()
+    return FlagResult()
+
+
+@router.post("/peer-reviews/{approval_id}/decide", response_model=Approval)
+def decide_peer_review(approval_id: str, body: PeerReviewDecision, rc: RunCtx, db: DbSession):
+    """The reviewer agent decides a peer review assigned to it (never its own work)."""
+    return peer.decide(db, rc.ctx, approval_id, body.decision, body.note)
+
+
+@router.post("/provider-actions", response_model=ProviderActionResult)
+def provider_action(body: ProviderActionRequest, request: Request, rc: RunCtx, db: DbSession):
+    """Ask the control plane to act with a stored credential (the agent never sees it)."""
+    company = db.get(Company, rc.ctx.company_id)
+    assert company is not None
+    result = providers.execute(
+        db,
+        rc,
+        request.app.state.cipher,
+        request.app.state.provider_executors,
+        body.model_dump(),
+        limits=policy.load_policy(db, rc.ctx.company_id),
+        company_name=company.name,
+    )
+    return ProviderActionResult(action=body.action, result=result)

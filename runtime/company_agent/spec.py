@@ -42,6 +42,8 @@ COMPANY_TOOL_NAMES = (
     "company_get_state", "company_list_notes", "company_triage_note", "company_reply_to_note",
     "company_manage_goal", "company_manage_project", "company_manage_schedule",
     "company_escalate", "company_request_help", "company_propose_memory", "company_verify_memory",
+    # M6: maker-checker review decisions and control-plane provider actions (credentials never reach the agent).
+    "company_decide_peer_review", "company_provider_action",
 )
 
 MIN_CONTEXT_LENGTH = 8192
@@ -88,6 +90,9 @@ class RunSpec:
     docker_network: bool = False
     # Optional subset of the company tools (None = all). Small models do better with fewer tools.
     company_tools: Optional[list[str]] = None
+    # M6 guardrails block (docs/specs/m6): tool tiers, which tiers the control plane is asked about,
+    # which tools return untrusted content. None = a control plane older than Milestone 6.
+    guardrails: Optional[dict[str, Any]] = None
 
     @property
     def secrets(self) -> list[str]:
@@ -222,6 +227,22 @@ def parse_spec(raw: Any) -> RunSpec:
             if bad:
                 problems.append(f"company_tools has unknown tools: {', '.join(bad)}")
 
+    guardrails = raw.get("guardrails")
+    if guardrails is not None:
+        if not isinstance(guardrails, dict):
+            problems.append("guardrails must be an object")
+            guardrails = None
+        else:
+            tiers = guardrails.get("tool_tiers")
+            checked = guardrails.get("server_checked_tiers", [])
+            untrusted = guardrails.get("untrusted_tools", {})
+            if not (isinstance(tiers, dict) and all(isinstance(k, str) and isinstance(v, str) for k, v in tiers.items())):
+                problems.append("guardrails.tool_tiers must map tool names to tiers")
+            if not (isinstance(checked, list) and all(isinstance(t, str) for t in checked)):
+                problems.append("guardrails.server_checked_tiers must be a list of tiers")
+            if not (isinstance(untrusted, dict) and all(isinstance(k, str) and isinstance(v, str) for k, v in untrusted.items())):
+                problems.append("guardrails.untrusted_tools must map tool names to sources")
+
     limits = raw.get("limits")
     if not isinstance(limits, dict):
         problems.append("limits is required and must be an object")
@@ -282,6 +303,7 @@ def parse_spec(raw: Any) -> RunSpec:
         docker_image=docker_image if isinstance(docker_image, str) else "",
         docker_network=network,
         company_tools=list(dict.fromkeys(company_tools)) if company_tools is not None else None,
+        guardrails=guardrails if isinstance(guardrails, dict) else None,
     )
 
 

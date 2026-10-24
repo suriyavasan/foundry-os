@@ -33,8 +33,11 @@ from app.core.crypto import CredentialCipher, CredentialDecryptError
 from app.core.errors import AppError
 from app.core.keys import SecretKeyProvider
 from app.core.time import utcnow
+from app.guardrails import peer
+from app.guardrails import registry as guard_registry
 from app.models.agent import Agent
 from app.models.company import Company
+from app.models.run import TaskRun
 from app.models.work import Task
 from app.runtimes.base import (
     CancelToken,
@@ -307,8 +310,15 @@ class CompanyAgentAdapter(RuntimeAdapter):
             company = db.get(Company, request.company.id)
             if agent is None or company is None or agent.company_id != company.id:
                 raise RuntimeAdapterError(RuntimeErrorKind.REJECTED, "Agent or company not found")
+            run_row = db.get(TaskRun, request.run_id)
             try:
-                model = model_providers.resolve_for_agent(db, agent)
+                # M6 routing: the dispatcher may have routed this run to another provider/model.
+                model = model_providers.resolve_for_agent(
+                    db,
+                    agent,
+                    provider_id=run_row.model_provider_id if run_row else None,
+                    model_name=run_row.model_used if run_row else None,
+                )
             except model_providers.ModelResolutionError as exc:
                 raise RuntimeAdapterError(RuntimeErrorKind.CONFIG, str(exc)) from exc
             api_key, key_is_secret = self._api_key(db, agent, model)
@@ -334,6 +344,15 @@ class CompanyAgentAdapter(RuntimeAdapter):
             company_tools = agent_toolkit.company_tools_for(
                 db, agent, runtime_config.get("company_tools")
             )
+            task_peek = db.get(Task, request.task.id)
+            peer_target = (
+                peer.review_target(db, task_peek)
+                if task_peek is not None and task_peek.kind == "review"
+                else None
+            )
+            if peer_target is not None:
+                # A peer review run decides one thing; nothing else is on offer.
+                company_tools = ["company_decide_peer_review", "company_complete_task"]
             manager = db.get(Agent, agent.manager_agent_id) if agent.manager_agent_id else None
             reports = agent_toolkit.direct_reports(db, agent)
             role = agent_roles.role_of(db, agent)
@@ -407,6 +426,7 @@ class CompanyAgentAdapter(RuntimeAdapter):
                     "priority": task.priority,
                     "input_refs": list(task.input_refs),
                     "review_target": review_target,
+                    "peer_review": peer_target,
                 },
                 "model": {
                     "provider": model.runtime_provider,
@@ -418,6 +438,9 @@ class CompanyAgentAdapter(RuntimeAdapter):
                 },
                 "toolsets": toolsets,
                 "company_tools": company_tools,
+                # M6: the tier of every tool the run can reach (the runtime refuses any other),
+                # which results are untrusted data, and which tiers it asks the control plane about.
+                "guardrails": guard_registry.runtime_spec(toolsets, company_tools),
                 "limits": {
                     "max_iterations": max_iterations,
                     "max_run_seconds": request.limits.max_run_seconds,

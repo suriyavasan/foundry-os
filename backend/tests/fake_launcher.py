@@ -218,6 +218,7 @@ def main():
                 "spec_keys": sorted(spec),
                 "toolsets": spec["toolsets"],
                 "company_tools": spec.get("company_tools"),
+                "guardrails": spec.get("guardrails"),
                 "sandbox": spec["sandbox"],
                 "model": {k: v for k, v in spec["model"].items() if k != "api_key"},
                 "has_api_key": bool(secret_key),
