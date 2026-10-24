@@ -4,7 +4,7 @@
 #
 # RISK: whoever can talk to /var/run/docker.sock can start a privileged container and own the host. Mounting
 # it into the worker means a compromised worker or a prompt-injected agent is one step from host root.
-# Prefer running Company OS directly on a machine with Docker (`companyos up`), or a rootless/remote
+# Prefer running Foundry AI OS directly on a machine with Docker (`foundryos up`), or a rootless/remote
 # daemon. Not verified (no Docker daemon was available when this was written).
 services:
   worker:

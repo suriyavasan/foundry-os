@@ -1,19 +1,33 @@
 # syntax=docker/dockerfile:1
 #
-# Company OS: API + worker image (one image, two commands). Multi-stage, non-root, no secrets baked in.
-# STATUS: written but NOT built or run in the environment where M9 was done (no Docker daemon there).
+# Foundry AI OS: one image, API + worker. Multi-stage, multi-arch (linux/amd64, linux/arm64), non-root,
+# no secrets baked in, data in the /data volume.
 #
-#   docker build -t companyos .
-#   docker build --build-arg WITH_RUNTIME=0 -t companyos-lite .     # without the agent runtime venv (~180 MB less)
-#   docker build --build-arg WITH_POSTGRES=1 -t companyos-pg .      # adds the psycopg driver
+#   docker run -d --name foundry-os -p 127.0.0.1:8700:8700 -v foundry-os:/data ghcr.io/suriyavasan/foundry-os:latest
+#   docker exec foundry-os foundryos auth setup-token     # first run from another device only
+#   open http://localhost:8700
 #
+# The default command (`serve`) applies the database migrations, then runs the API with the worker
+# embedded in the same process: one container is a complete install. docker-compose.yml runs the same image as
+# three services instead (migrate -> api -> worker); see docs/deploy.md.
+#
+# Build (CI builds and smoke-tests this on native amd64 and arm64 runners, .github/workflows/release.yml):
+#   docker build -t foundry-os .
+#   docker build --build-arg WITH_RUNTIME=0 -t foundry-os-lite .     # without the agent runtime venv (~180 MB less)
+#   docker build --build-arg WITH_POSTGRES=1 -t foundry-os-pg .      # adds the psycopg driver
+#
+# STATUS: the build is exercised in CI (ci.yml "docker" job); it was NOT built on the machine where this
+# file was written (no Docker daemon there).
 ARG PYTHON_IMAGE=python:3.14-slim-bookworm
 ARG NODE_IMAGE=node:22-alpine
+ARG UV_VERSION=0.13.5
 
-# ---- 1. web UI -----------------------------------------------------------------------------------
-FROM ${NODE_IMAGE} AS web
+FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
+
+# ---- 1. web UI (built once, on the builder's own architecture: the output is plain JS) ---------------
+FROM --platform=$BUILDPLATFORM ${NODE_IMAGE} AS web
 WORKDIR /src/web
-RUN corepack enable
+RUN corepack enable && corepack prepare pnpm@10.6.2 --activate
 COPY web/package.json web/pnpm-lock.yaml ./
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store pnpm install --frozen-lockfile
 COPY web/ ./
@@ -21,7 +35,7 @@ RUN pnpm build
 
 # ---- 2. python environments (backend + agent runtime) -----------------------------------------------
 FROM ${PYTHON_IMAGE} AS build
-COPY --from=ghcr.io/astral-sh/uv:0.6.14 /uv /usr/local/bin/uv
+COPY --from=uv /uv /usr/local/bin/uv
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 ARG WITH_RUNTIME=1
 ARG WITH_POSTGRES=0
@@ -44,30 +58,43 @@ RUN --mount=type=cache,target=/root/.cache/uv \
       uv sync --frozen --no-install-project --extra anthropic --extra ddgs ; \
     fi
 
-# ---- 3. final image -------------------------------------------------------------------------------
+# ---- 3. final image ---------------------------------------------------------------------------------
 FROM ${PYTHON_IMAGE} AS final
 ARG INSTALL_DOCKER_CLI=0
-RUN useradd --system --uid 10001 --create-home --home-dir /home/companyos companyos \
- && mkdir -p /data && chown companyos:companyos /data \
+RUN useradd --system --uid 10001 --create-home --home-dir /home/foundry foundry \
+ && mkdir -p /data && chown foundry:foundry /data \
  && if [ "$INSTALL_DOCKER_CLI" = "1" ]; then \
       apt-get update && apt-get install -y --no-install-recommends docker.io && rm -rf /var/lib/apt/lists/* ; \
     fi
-COPY --from=build --chown=companyos:companyos /app /app
-COPY --from=web --chown=companyos:companyos /src/web/dist /app/web/dist
+COPY --from=build --chown=foundry:foundry /app /app
+COPY --from=web --chown=foundry:foundry /src/web/dist /app/web/dist
+COPY packaging/docker/entrypoint.sh /usr/local/bin/foundry-entrypoint
+# `foundryos` and `companyos` are the same CLI (it talks to the API in this container over HTTP)
+RUN chmod 0755 /usr/local/bin/foundry-entrypoint \
+ && ln -s /app/backend/.venv/bin/companyos /usr/local/bin/foundryos
 
 ENV PATH="/app/backend/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     COMPANY_OS_DATABASE_URL="sqlite:////data/company_os.db" \
     COMPANY_OS_DATA_DIR=/data \
-    COMPANY_OS_WEB_DIST=/app/web/dist \
+    COMPANY_OS_WEB_DIST_DIR=/app/web/dist \
     COMPANY_OS_RUNTIME_DIR=/app/runtime \
+    COMPANY_OS_RUNTIME_PYTHON=/app/runtime/.venv/bin/python \
     COMPANY_OS_BIND_HOST=0.0.0.0 \
-    COMPANY_OS_EMBEDDED_WORKER=false
+    COMPANY_OS_EMBEDDED_WORKER=true
 VOLUME ["/data"]
 WORKDIR /app/backend
-USER companyos
+USER foundry
 EXPOSE 8700
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
   CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8700/api/health', timeout=4).status == 200 else 1)"
-# Default: the API (+ the web UI). The worker is `companyos-worker`; migrations are `alembic upgrade head`.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8700", "--proxy-headers", "--forwarded-allow-ips", "*"]
+LABEL org.opencontainers.image.title="Foundry AI OS" \
+      org.opencontainers.image.description="Self-hosted operating system for an autonomous company of AI agents" \
+      org.opencontainers.image.source="https://github.com/suriyavasan/foundry-os" \
+      org.opencontainers.image.licenses="MIT"
+# serve = migrate + API (+ embedded worker); api = API only; anything else runs as given
+# (compose: `alembic upgrade head`, `companyos-worker`). The worker is `companyos-worker`.
+ENTRYPOINT ["foundry-entrypoint"]
+CMD ["serve"]
+# OPT-IN: let agents run terminal/code tools in sibling containers via the HOST Docker daemon
+# (docker-compose.sandbox.yml; read its warning first).

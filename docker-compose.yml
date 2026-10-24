@@ -1,22 +1,23 @@
-# Company OS with Docker Compose.
-# STATUS: `docker compose config` validates this file; the stack itself was NOT built or started
-# (no Docker daemon was available when it was written). See docs/deploy.md.
+# Foundry AI OS with Docker Compose: the same image as `docker run`, as three services
+# (migrate -> api -> worker). For a single container see the header of the Dockerfile.
+# STATUS: `docker compose config` validates this file (CI runs it); the stack itself has not been
+# started on the machine where this file was written (no Docker daemon there). See docs/deploy.md.
 #
 #   cp .env.example .env            # then edit it
 #   docker compose up -d --build
-#   docker compose exec api companyos auth setup-token      # first run: the setup token
+#   docker compose exec api foundryos auth setup-token      # first run from another device: the setup token
 #   open http://localhost:8700
 #
 # SQLite (default) keeps everything in the `data` volume. For PostgreSQL:
 #   docker compose --profile postgres up -d --build   with COMPANY_OS_DATABASE_URL set in .env (see .env.example)
 
-x-company-os: &company-os
+x-foundry-os: &foundry-os
   build:
     context: .
     args:
       WITH_POSTGRES: ${WITH_POSTGRES:-0}
       WITH_RUNTIME: ${WITH_RUNTIME:-1}
-  image: companyos:local
+  image: foundry-os:local
   restart: unless-stopped
   environment: &env
     COMPANY_OS_DATABASE_URL: ${COMPANY_OS_DATABASE_URL:-sqlite:////data/company_os.db}
@@ -32,12 +33,13 @@ x-company-os: &company-os
 
 services:
   migrate:
-    <<: *company-os
+    <<: *foundry-os
     command: ["alembic", "upgrade", "head"]
     restart: "no"
 
   api:
-    <<: *company-os
+    <<: *foundry-os
+    command: ["api"]            # the image's entrypoint: API only (migrations ran in `migrate`)
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -53,7 +55,7 @@ services:
       start_period: 30s
 
   worker:
-    <<: *company-os
+    <<: *foundry-os
     command: ["companyos-worker"]
     depends_on:
       api:

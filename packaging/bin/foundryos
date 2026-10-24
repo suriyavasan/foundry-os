@@ -1,0 +1,108 @@
+#!/bin/sh
+# foundryos: launcher of a Foundry AI OS release bundle (also reachable as `companyos`).
+#
+# It finds the bundle it lives in (following symlinks, so Homebrew's and the installer's links work),
+# points the control plane at the bundled interpreters / agent runtime / web UI and at the per-user
+# data directory, then hands over to the Python CLI (`python -m app.cli.main`). It never writes
+# inside the bundle: the bundle can sit on a read-only volume.
+#
+#   foundryos               start Foundry AI OS and open the browser (`up --no-build --open`)
+#   foundryos serve         foreground, no browser (what the Homebrew / launchd / systemd service runs)
+#   foundryos --version     print the bundle version
+#   foundryos <anything>    the regular CLI: `foundryos doctor`, `foundryos status`, `foundryos up ...`
+#
+# Environment (all optional):
+#   FOUNDRYOS_DATA_DIR   where the database, secrets, artifacts and logs live
+#                        (macOS: ~/Library/Application Support/Foundry AI OS,
+#                         Linux: ${XDG_DATA_HOME:-~/.local/share}/foundry-os)
+#   FOUNDRYOS_PORT       port of the API + UI (default 8700)
+# Any COMPANY_OS_* variable you set yourself wins over what this launcher derives.
+set -eu
+
+resolve_path() {
+    # Print the absolute, symlink-free path of $1 (readlink -f is not available everywhere).
+    p=$1
+    while [ -L "$p" ]; do
+        d=$(cd -P "$(dirname "$p")" && pwd)
+        t=$(readlink "$p")
+        case $t in
+            /*) p=$t ;;
+            *) p=$d/$t ;;
+        esac
+    done
+    d=$(cd -P "$(dirname "$p")" && pwd)
+    printf '%s/%s\n' "$d" "$(basename "$p")"
+}
+
+invoked_as=$(basename "$0")
+self=$(resolve_path "$0")
+ROOT=$(cd -P "$(dirname "$self")/.." && pwd)
+
+if [ ! -f "$ROOT/VERSION" ]; then
+    echo "foundryos: $ROOT is not a Foundry AI OS bundle (no VERSION file)." >&2
+    exit 1
+fi
+VERSION=$(cat "$ROOT/VERSION")
+
+case ${1:-} in
+    --version | -V)
+        printf 'foundryos %s\n' "$VERSION"
+        exit 0
+        ;;
+esac
+
+BACKEND_PY=$ROOT/python/backend/bin/python3
+RUNTIME_PY=$ROOT/python/runtime/bin/python3
+if [ ! -x "$BACKEND_PY" ]; then
+    echo "foundryos: the bundled Python is missing ($BACKEND_PY). Reinstall Foundry AI OS." >&2
+    exit 1
+fi
+
+# --- data directory ---------------------------------------------------------------------------
+: "${HOME:?foundryos: HOME is not set}"
+if [ -n "${FOUNDRYOS_DATA_DIR:-}" ]; then
+    DATA_DIR=$FOUNDRYOS_DATA_DIR
+else
+    case $(uname -s) in
+        Darwin) DATA_DIR="$HOME/Library/Application Support/Foundry AI OS" ;;
+        *) DATA_DIR=${XDG_DATA_HOME:-$HOME/.local/share}/foundry-os ;;
+    esac
+fi
+case $DATA_DIR in
+    /*) ;;
+    *) DATA_DIR=$PWD/$DATA_DIR ;;
+esac
+# secrets live in here: owner-only if we are the ones creating it
+(umask 077 && mkdir -p "$DATA_DIR")
+
+# --- environment for the control plane ------------------------------------------------------------
+# An absolute SQLite path has four slashes after the scheme: sqlite:/// + /abs/path
+: "${COMPANY_OS_DATABASE_URL:=sqlite:///$DATA_DIR/company_os.db}"
+: "${COMPANY_OS_DATA_DIR:=$DATA_DIR}"
+: "${COMPANY_OS_RUNTIME_PYTHON:=$RUNTIME_PY}"
+: "${COMPANY_OS_RUNTIME_DIR:=$ROOT/app/runtime}"
+: "${COMPANY_OS_WEB_DIST_DIR:=$ROOT/web/dist}"
+export COMPANY_OS_DATABASE_URL COMPANY_OS_DATA_DIR COMPANY_OS_RUNTIME_PYTHON \
+    COMPANY_OS_RUNTIME_DIR COMPANY_OS_WEB_DIST_DIR
+if [ -n "${FOUNDRYOS_PORT:-}" ]; then
+    : "${COMPANY_OS_PORT:=$FOUNDRYOS_PORT}"
+    export COMPANY_OS_PORT
+fi
+
+# A clean interpreter: nothing from the user's Python environment may leak into the bundle, and the
+# bundle is never written to (bytecode for the bundle's own modules ships pre-compiled).
+unset PYTHONHOME PYTHONPATH PYTHONSTARTUP PYTHONUSERBASE PYTHONSAFEPATH
+PYTHONNOUSERSITE=1
+PYTHONDONTWRITEBYTECODE=1
+export PYTHONNOUSERSITE PYTHONDONTWRITEBYTECODE
+
+# --- subcommand mapping (until the Python CLI grows these natively) -----------------------------------
+if [ "$#" -eq 0 ] && [ "$invoked_as" != companyos ]; then
+    set -- up --no-build --open
+elif [ "${1:-}" = serve ]; then
+    shift
+    set -- up --no-build "$@"
+fi
+
+# -P: do not put the current directory on sys.path (a project with its own `app/` must not shadow ours)
+exec "$BACKEND_PY" -P -m app.cli.main "$@"

@@ -1,0 +1,366 @@
+name: Release
+
+# A tag `v*` (cut with scripts/release.sh) builds the four bundles, smoke-tests each, publishes the GitHub
+# Release (bundles + SHA256SUMS), pushes the multi-arch Docker image to GHCR and updates the Homebrew tap.
+# Run by hand (workflow_dispatch) it builds and tests everything but publishes nothing.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/suriyavasan/foundry-os
+
+jobs:
+  prepare:
+    name: Version and release notes
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: v
+        run: |
+          version=$(cat VERSION)
+          if [ "${GITHUB_REF_TYPE}" = tag ] && [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match VERSION (${version}); use scripts/release.sh"
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          case $version in *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;; *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;; esac
+          scripts/release.sh --notes "$version" > RELEASE_NOTES.md
+          cat RELEASE_NOTES.md
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-notes
+          path: RELEASE_NOTES.md
+          retention-days: 7
+
+  web:
+    name: Web UI
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: 10.6.2
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - name: Licenses of the production dependencies (for THIRD_PARTY_NOTICES)
+        run: pnpm licenses list --prod --json > ../web-licenses.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: web-dist
+          path: |
+            web/dist
+            web-licenses.json
+          retention-days: 7
+
+  bundle:
+    name: Bundle ${{ matrix.platform }}
+    needs: [prepare, web]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: darwin-arm64
+            runner: macos-14
+          # macos-13 (the last Intel image) was retired by GitHub in December 2025; macos-15-intel is its successor
+          - platform: darwin-x86_64
+            runner: macos-15-intel
+          - platform: linux-x86_64
+            runner: ubuntu-22.04
+          - platform: linux-arm64
+            runner: ubuntu-22.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Pinned tool versions
+        run: grep '^UV_VERSION=' packaging/versions.env >> "$GITHUB_ENV"
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: ${{ env.UV_VERSION }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: web-dist
+          path: web-artifact
+      - name: Build the bundle
+        run: |
+          scripts/build_bundle.sh "${{ matrix.platform }}" \
+            --web-dist web-artifact/web/dist --web-licenses web-artifact/web-licenses.json --out dist
+          ls -l dist
+      - name: Install it with install.sh and smoke-test it (read-only bundle, health check, clean stop)
+        run: scripts/smoke_bundle.sh dist/foundry-os-*-${{ matrix.platform }}.tar.gz --installer
+      - name: Smoke-test the plain tarball too
+        run: scripts/smoke_bundle.sh dist/foundry-os-*-${{ matrix.platform }}.tar.gz
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bundle-${{ matrix.platform }}
+          path: dist/foundry-os-*
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [prepare, bundle]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: bundle-*
+          merge-multiple: true
+          path: release
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-notes
+      - name: SHA256SUMS
+        run: |
+          packaging/sums.sh release
+          [ "$(grep -c 'foundry-os-.*\.tar\.gz' release/SHA256SUMS)" = 4 ] || { echo "::error::expected 4 bundles"; exit 1; }
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+        run: |
+          cp install.sh release/install.sh
+          flags=""
+          [ "$PRERELEASE" = true ] && flags="--prerelease"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists (re-run): replacing its assets"
+            gh release upload "$TAG" release/* --clobber
+            gh release edit "$TAG" --notes-file RELEASE_NOTES.md
+          else
+            # shellcheck disable=SC2086
+            gh release create "$TAG" release/* --title "Foundry AI OS ${VERSION}" --notes-file RELEASE_NOTES.md --verify-tag $flags
+          fi
+
+  docker-build:
+    name: Docker image ${{ matrix.platform }}
+    needs: prepare
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-22.04
+            arch: amd64
+          - platform: linux/arm64
+            runner: ubuntu-22.04-arm
+            arch: arm64
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+      - name: Build (native, no emulation) and keep it local for the smoke test
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          load: true
+          tags: foundry-os:smoke
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=docker-${{ matrix.arch }}
+          cache-to: type=gha,scope=docker-${{ matrix.arch }},mode=max
+      - name: Run it and wait for the health check
+        run: |
+          docker run -d --name fos -p 127.0.0.1:8712:8700 -v fos-data:/data foundry-os:smoke
+          for _ in $(seq 1 90); do
+            status=$(docker inspect --format '{{.State.Health.Status}}' fos)
+            [ "$status" = healthy ] && break
+            [ "$(docker inspect --format '{{.State.Running}}' fos)" = true ] || { docker logs fos; exit 1; }
+            sleep 2
+          done
+          echo "health: $status"
+          [ "$status" = healthy ] || { docker logs fos; exit 1; }
+          curl -fsS http://127.0.0.1:8712/api/health
+          curl -fsS http://127.0.0.1:8712/ | grep -qi '<div id="root"'
+          test "$(docker exec fos id -u)" = 10001
+          docker exec fos foundryos --help > /dev/null
+          docker stop fos
+      - name: Log in to GHCR
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push this architecture by digest
+        id: push
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=docker-${{ matrix.arch }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+      - name: Export the digest
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          mkdir -p "${RUNNER_TEMP}/digests"
+          touch "${RUNNER_TEMP}/digests/${DIGEST#sha256:}"
+      - name: Upload the digest
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: digests-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  docker-merge:
+    name: Docker multi-arch manifest
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [prepare, docker-build]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ needs.prepare.outputs.prerelease != 'true' }}
+            type=raw,value=latest,enable=${{ needs.prepare.outputs.prerelease != 'true' }}
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create the manifest list
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          # shellcheck disable=SC2046
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf "${IMAGE}@sha256:%s " *)
+      - name: Inspect
+        run: docker buildx imagetools inspect "${IMAGE}:${{ steps.meta.outputs.version }}"
+
+  tap:
+    name: Homebrew tap
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [prepare, release]
+    runs-on: macos-14
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+      TAP_REPO: suriyavasan/homebrew-tap
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Render the formula from the published SHA256SUMS
+        run: |
+          mkdir release
+          gh release download "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --pattern SHA256SUMS --dir release
+          packaging/homebrew/render_formula.sh release -o foundry-os.rb
+          ruby -c foundry-os.rb
+          cat foundry-os.rb
+      - name: No HOMEBREW_TAP_TOKEN - print the change for the owner and fail this job
+        if: env.HOMEBREW_TAP_TOKEN == ''
+        run: |
+          echo "::error::The secret HOMEBREW_TAP_TOKEN is not set, so the tap was NOT updated (the release itself is published)."
+          echo
+          echo "To publish the formula by hand:"
+          echo "  1. git clone https://github.com/${TAP_REPO}.git && cd homebrew-tap"
+          echo "  2. save the formula printed above (also the 'foundry-os-formula' artifact of this run) as Formula/foundry-os.rb"
+          echo "  3. git add Formula/foundry-os.rb && git commit -m 'foundry-os ${GITHUB_REF_NAME#v}' && git push"
+          echo "To automate it from now on: create a fine-grained token with Contents: read and write on ${TAP_REPO} and add it"
+          echo "as the repository secret HOMEBREW_TAP_TOKEN (Settings > Secrets and variables > Actions)."
+          echo
+          if curl -fsSL "https://raw.githubusercontent.com/${TAP_REPO}/main/Formula/foundry-os.rb" -o current.rb; then
+            echo "Diff against the formula currently in the tap:"
+            diff -u current.rb foundry-os.rb || true
+          else
+            echo "(the tap has no Formula/foundry-os.rb yet: the whole file above is new)"
+          fi
+          exit 1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: foundry-os-formula
+          path: foundry-os.rb
+          retention-days: 30
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.HOMEBREW_TAP_TOKEN != ''
+        with:
+          repository: suriyavasan/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+      - name: Commit the formula to the tap
+        if: env.HOMEBREW_TAP_TOKEN != ''
+        run: |
+          mkdir -p tap/Formula
+          cp foundry-os.rb tap/Formula/foundry-os.rb
+          cd tap
+          if git diff --quiet -- Formula/foundry-os.rb && git ls-files --error-unmatch Formula/foundry-os.rb >/dev/null 2>&1; then
+            echo "The tap already has this formula."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/foundry-os.rb
+          git commit -m "foundry-os ${GITHUB_REF_NAME#v}"
+          git push
+      - name: Install it from the tap and run it (end-to-end check of the published formula)
+        if: env.HOMEBREW_TAP_TOKEN != ''
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+        run: |
+          brew install suriyavasan/tap/foundry-os
+          foundryos --version
+          brew test suriyavasan/tap/foundry-os
+          brew uninstall foundry-os

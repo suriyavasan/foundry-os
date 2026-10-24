@@ -1,0 +1,23 @@
+# systemd user unit for Foundry AI OS: ~/.config/systemd/user/foundry-os.service
+# Placeholders (filled in by `foundryos service install`):
+#   @FOUNDRYOS_BIN@  absolute path of the foundryos launcher (the stable link, so updates apply on restart)
+#   @PATH@           PATH for the service
+# Enable:  systemctl --user daemon-reload && systemctl --user enable --now foundry-os
+# Keep it running when you are logged out (opt in):  loginctl enable-linger "$USER"
+[Unit]
+Description=Foundry AI OS
+Documentation=https://github.com/suriyavasan/foundry-os
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=@FOUNDRYOS_BIN@ serve
+Environment=PATH=@PATH@
+Restart=on-failure
+RestartSec=5
+# `serve` stops its worker, then the API, giving each up to 20 s
+TimeoutStopSec=60
+
+[Install]
+WantedBy=default.target

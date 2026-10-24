@@ -16,3 +16,13 @@ docs
 backend/tests
 runtime/tests
 runtime/.git
+.github
+dist
+scripts
+install.sh
+packaging/bin
+packaging/homebrew
+packaging/service
+packaging/*.py
+packaging/*.sh
+packaging/*.env
