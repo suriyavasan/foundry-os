@@ -1,0 +1,5 @@
+# actionlint's built-in runner list predates GitHub's `macos-15-intel` hosted runner
+# (Intel macOS image used by release.yml); declare it so the label check passes.
+self-hosted-runner:
+  labels:
+    - macos-15-intel
