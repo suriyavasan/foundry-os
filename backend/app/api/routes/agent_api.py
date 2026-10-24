@@ -72,6 +72,13 @@ from app.schemas.hr import (
     RoleTemplate,
     RoleTemplateCreate,
 )
+from app.schemas.reflections import (
+    AgentReflectionPost,
+    AgentReflectionReply,
+    AgentReflectionRevise,
+    Reflection,
+    ReflectionResponse,
+)
 from app.schemas.schedule import Schedule, ScheduleCreate, ScheduleUpdate
 from app.schemas.skills import (
     AgentSkill,
@@ -105,6 +112,7 @@ from app.services import (
     notes,
     policy,
     projects,
+    reflections,
     role_templates,
     schedules,
     skills,
@@ -498,3 +506,32 @@ def provider_action(body: ProviderActionRequest, request: Request, rc: RunCtx, d
         company_name=company.name,
     )
     return ProviderActionResult(action=body.action, result=result)
+
+
+# ------------------------------------------------------ Milestone 10: reflections
+
+
+@router.post("/reflections", response_model=Reflection, status_code=201)
+def post_reflection(body: AgentReflectionPost, response: Response, rc: RunCtx, db: DbSession):
+    """The AI Co-founder posts a reflection for the Founder (kind observation, standard_proposal,
+    retro, risk or praise). A duplicate title within a week returns the existing one (200)."""
+    row, created = reflections.agent_post(db, rc, body)
+    if not created:
+        response.status_code = 200
+    return reflections.serialize(db, [row])[0]
+
+
+@router.post(
+    "/reflections/{reflection_id}/replies", response_model=ReflectionResponse, status_code=201
+)
+def reply_reflection(reflection_id: str, body: AgentReflectionReply, rc: RunCtx, db: DbSession):
+    reply = reflections.agent_reply(db, rc, reflection_id, body.body)
+    return reflections.serialize_response(db, reply)
+
+
+@router.post("/reflections/{reflection_id}/revise", response_model=Reflection)
+def revise_reflection(reflection_id: str, body: AgentReflectionRevise, rc: RunCtx, db: DbSession):
+    """Change the text of your own reflection (or its proposed standard) after the Founder's
+    reaction. The status becomes ``revised``; a standard still needs the Founder's endorsement."""
+    row = reflections.agent_revise(db, rc, reflection_id, body)
+    return reflections.serialize(db, [row])[0]

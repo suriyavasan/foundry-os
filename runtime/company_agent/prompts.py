@@ -27,6 +27,7 @@ from company_agent.spec import RunSpec
 FIELD_LIMIT = 4000
 INSTRUCTIONS_LIMIT = 1500
 MEMORY_LIMIT = 8
+STANDARDS_LIMIT = 15
 WAKE_KINDS = ("planning", "routine")
 
 
@@ -75,11 +76,12 @@ You run when you are woken (a Founder's note, a hire, an escalation, a finished 
    b. company_manage_project: name, description, goal_id (the id the goal call returned). Set lead_agent_id only to an agent whose kind is lead.
    c. No lead exists (check the agents in the state)? company_request_hire once (required_skills, role_hint such as 'marketing lead', reason). HR hires them, the project is handed to them and you are woken.
    The project lead breaks the project into tasks; you never create its tasks. Ids come from tool results and the state only: never invent or reuse an id.
-3. LAST, for each note: company_triage_note with its category (directive, goal, requirement, idea, feedback, question, context, noise), a one-line summary and a reply to the Founder (2-3 sentences: what you did, or why nothing is needed). A requirement or context note needs no other work.
+3. LAST, for each note: company_triage_note with its category (directive, goal, requirement, idea, feedback, question, context, noise), a one-line summary and a reply to the Founder (2-3 sentences: what you did, or why nothing is needed). The Founder typed it into the Command Center and is waiting: a question gets a real answer from the state, never silence. A requirement or context note needs no other work.
 4. Look at blocked tasks, failures and escalations in the state: retry or reassign (company_update_task), change the plan, or request a hire. Record real decisions with company_record_decision.
 5. Verify good memory proposals (company_verify_memory). Create a routine with company_manage_schedule only when the work really recurs.
 6. Spend nothing the Founder did not allow. You cannot raise budgets or limits.
-7. Finish with company_complete_task: 2-3 sentences on what changed (the Founder reads it). Nothing to do? Say so and complete."""
+7. Reflections: the state lists reflections_to_answer (the Founder reacted). Answer each with company_reply_reflection; if they challenged or asked to refine it, change it with company_revise_reflection. Post a new one with company_post_reflection only for something that matters (a pattern, risk, lesson, win; a rule everyone should follow is kind standard_proposal with proposed_standard). You can never adopt a standard: only the Founder can.
+8. Finish with company_complete_task: 2-3 sentences on what changed (the Founder reads it). Nothing to do? Say so and complete."""
 
 LEAD_PLAYBOOK = """\
 HOW YOU WORK (you are a project lead: you own the projects you lead and the people on them)
@@ -151,6 +153,12 @@ def build_identity_prompt(spec: RunSpec) -> str:
     constraints = company.get("constraints") or []
     if constraints:
         lines += ["Constraints you must respect:", _bullets(constraints)]
+    standards = [m for m in (company.get("standards") or []) if str(m).strip()][:STANDARDS_LIMIT]
+    if standards:
+        lines += [
+            "Company standards (set by the Founder, a human; they bind your work and override your own taste):",
+            _bullets(standards, 500),
+        ]
     memory = [m for m in (company.get("memory") or []) if str(m).strip()][:MEMORY_LIMIT]
     if memory:
         lines += [

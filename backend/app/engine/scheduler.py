@@ -9,7 +9,7 @@ from app.engine import recovery
 from app.engine.context import EngineContext
 from app.engine.dispatcher import DispatchReport, dispatch_tick
 from app.guardrails import ratelimit
-from app.services import emergency, events, jobs, schedules, wakes
+from app.services import command_center, emergency, events, jobs, schedules, wakes
 
 logger = logging.getLogger("company_os.scheduler")
 
@@ -53,6 +53,10 @@ class Scheduler:
         report = TickReport()
         if not self._stopped():
             report.fired_task_ids = schedules.fire_due(self.ctx.session_factory, now)
+            try:  # before the wakes: a retry joins the request that is already waiting
+                command_center.sweep(self.ctx.session_factory, now)
+            except Exception:  # a sweep problem must not stop dispatching
+                logger.exception("command center sweep failed")
             report.woke_task_ids = wakes.materialize_due(self.ctx.session_factory, now)
             report.dispatch = dispatch_tick(self.ctx, now)
         if self._last_recovery is None or now - self._last_recovery >= timedelta(

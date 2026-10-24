@@ -12,9 +12,15 @@ Timestamp = Annotated[datetime, PlainSerializer(format_ts, return_type=str, when
 
 
 class ApiModel(BaseModel):
-    """Base for response models (built from ORM objects)."""
+    """Base for response models (built from ORM objects).
 
-    model_config = ConfigDict(from_attributes=True)
+    Response fields are always serialized, defaults included, so the OpenAPI *output*
+    schema marks them required (the web's generated types then match reality).
+    """
+
+    model_config = ConfigDict(
+        from_attributes=True, json_schema_serialization_defaults_required=True
+    )
 
 
 class RequestModel(BaseModel):

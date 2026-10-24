@@ -1498,3 +1498,152 @@ No endpoints were added or changed. What changed around them (operator view: `do
 - **Process files.** The API and the worker create `<data dir>/run/<role>.<pid>.json` while they run (used by `backup restore` and `doctor`).
 - **Clients.** The `companyos` CLI is an ordinary API client (personal API token, or the owner token on the server machine); its exit codes
   (3 unauthenticated, 4 forbidden, 5 not found, 6 conflict, 7 unreachable) map the HTTP statuses above.
+
+---
+
+## Milestone 10 — AI setup, coding CLIs, Reflections, Command Center
+
+Spec: `docs/specs/m10-ai-setup-cli-reflections.md`. CLI facts and the isolation model: `docs/cli-runtimes.md`. Schema names in the OpenAPI document:
+`AiSetupStatus`, `AiSetupUpdate`, `CliRuntimeStatus`, `ProviderTest` (extended), `CommandRequest`, `CommandExchange`, `CommandOutput`, `Reflection`,
+`ReflectionDetail`, `ReflectionResponse`, `ReflectionResponseCreate`, `CompanyStandard`, `CompanyStandardCreate`, `CompanyStandardUpdate`.
+Migration `0009_ai_setup_cli_reflections` (existing companies get the `daily-reflection` routine and an exchange row per existing Founder's note).
+
+### New error codes (both 409)
+
+| code | when |
+|---|---|
+| `ai_setup_required` | creating a note, command, task or agent while the company has no working AI (`details.reason` = the blocking reason) |
+| `ai_not_ready` | `PUT /ai-setup` with a provider/model/CLI that is not ready (`details.reason` is a blocking reason, or `cli_not_installed` / `cli_not_configured`) |
+
+### The readiness gate (`/api/companies/{cid}/ai-setup`)
+
+`GET` (any member) → `AiSetupStatus`:
+
+```json
+{ "ready": false, "blocking_reason": "no_tested_provider",
+  "management": { "provider_id": null, "provider_name": null, "kind": null, "model": null, "last_test": null },
+  "work_mode": "api", "work_runtime": null, "clis": [CliRuntimeStatus] }
+```
+
+`blocking_reason` is `no_tested_provider` | `provider_test_failed` | `no_default_model` | `null`. A company is **ready** when an enabled model provider is the company
+default (`policy.default_model_provider_id` + `default_model_name`) and its latest test **for that model** has `ok: true`. Providers tested before M10 carry no
+`checks`, so an existing company is not ready until its provider is tested again.
+
+`PUT` (owner/admin) `AiSetupUpdate {management_provider_id, management_model, work_mode: "api"|"hybrid", work_runtime: "cli:claude_code"|"cli:codex"|"cli:opencode"|null}`
+→ `AiSetupStatus`. Makes the provider the company default (equipping the Co-founder and HR), stores the work mode. `hybrid` needs a `cli:*` runtime that is installed and has
+a sign-in mode; `api` clears the runtime. 409 `ai_not_ready` otherwise, 404 for a provider of another company, 403 for viewers/members.
+
+**What the gate does while not ready:** tasks stay in `backlog` with `blocked_reason: "ai_setup_required"` (they are released by the next scheduler tick once ready), nothing
+is dispatched, the wake queue wakes nobody (requests wait), and creating notes / commands / tasks / agents is 409 `ai_setup_required`. Reads, policy, providers,
+credentials, `ai-setup`, auth and team stay available. The gate has no configuration switch.
+
+### Provider test (extended) and model list
+
+`POST /model-providers/{id}/test` (optional body `{model}` tests another model than the provider's default) → `ModelProvider` whose `last_test` is now:
+
+```json
+{ "status": "ok|warning|error", "message": "…", "checked_at": "…Z", "tested_at": "…Z", "ok": true, "model": "qwen2.5:7b",
+  "checks": [ {"name": "reachable|auth|tool_calling|context|model_exists", "ok": true, "detail": "…"} ],
+  "served_context": 32768, "latency_ms": 7093,
+  "model_available": true, "tool_calling": true, "context_length_configured": 32768, "context_length_served": 32768, "warnings": [] }
+```
+
+`ok` is true only when all five checks pass. `tool_calling` is **really probed** with one tiny request carrying a tool (a few dozen tokens; OpenAI-style `tools`, Anthropic `tool_use`,
+Ollama's OpenAI endpoint). `context` needs ≥ 32 768 tokens: the served window for Ollama (`/api/ps`), the provider-declared window for cloud (OpenRouter's list value when it
+has one, else `context_length` of the provider). OpenRouter's public model list proves nothing about a key, so `auth` uses its `/auth/key` endpoint. A 4K-window Ollama is now
+`status: "error"` (it was a warning before M10). Supported kinds: `openrouter`, `anthropic`, `openai`, `openai_compatible` (any base URL), `ollama`.
+
+`GET /model-providers/{id}/models` (owner/admin) → `{items: [{id, name, context_length|null, tool_calling|null}], next_cursor: null, available: bool, detail: string|null}`.
+`available: false` (with `detail`) when the provider offers no readable list; `tool_calling` is known for Ollama only.
+
+### Coding CLIs (`/api/cli-runtimes`, installation owner only; an agent's run token → 403 `guardrail_denied`, a company admin who is not the installation owner → 403)
+
+| Method & path | Purpose |
+|---|---|
+| `GET /cli-runtimes` → `{items: [CliRuntimeStatus], next_cursor: null}`; `GET /cli-runtimes/{id}` | `id` ∈ `claude_code`, `codex`, `opencode` |
+| `POST /cli-runtimes/{id}/install` `{confirm: true}` → `202 CliInstallLog` | runs exactly `install.command` (`npm install -g <package>`) as a supervised child: no shell, no sudo, 15 min limit. `confirm` missing/false → 422 and nothing starts; no npm → 409; already installed → 409 |
+| `GET /cli-runtimes/{id}/install-log` → `CliInstallLog` | `{id, status: none|running|succeeded|failed, command, started_at, finished_at, exit_code, lines[≤400]}`, output scrubbed of secret-looking spans |
+| `PUT /cli-runtimes/{id}/auth` `{mode: "own_login"|"api_key", credential_id?, model_provider_id?, model?}` → `CliRuntimeStatus` | `api_key` needs `credential_id` (a credential of a company you administer; never returned). `model_provider_id` (OpenCode only) points the CLI at a company model provider (endpoint and key). OpenCode needs `model_provider_id` or a `provider/model` name in `model`. Clears `last_test` |
+| `POST /cli-runtimes/{id}/test` → `CliRuntimeStatus` | one tiny headless prompt ("Reply with the single word OK.") in a temp dir, 60 s limit, `$0.05` cap where the CLI supports one, no tools / no company tools; stores `auth.last_test` |
+
+`CliRuntimeStatus`: `{id, display_name, installed, binary_path, version, auth_modes: ["own_login","api_key"], auth: {mode, configured, credential_id, last_test: {ok, detail, tested_at}|null, model_provider_id, model},
+sandbox: {available, kind: "os"|"docker"|"none", detail}, install: {available, command, requires: ["npm"], status}, login_hint, warnings[]}`. `install.available` = npm is present and the CLI is not installed.
+Interactive logins (`claude` /login, `codex login`, `opencode auth login`) are the person's step in a terminal and are never automated.
+
+### Work modes and routing
+
+`policy.work_mode` / `policy.work_runtime` (set only through `PUT /ai-setup`; `GET /policy` also shows them). The dispatcher chooses the runtime **per run** and writes it to
+`run.runtime` with `run.routing_reason` (`hybrid: work task on cli:opencode`, `agent runtime pinned by the owner`, …):
+
+* `api`: the agent's own runtime (usually `company_agent`).
+* `hybrid`: `kind=work` tasks of non-management agents run on `work_runtime`. Founder, HR, leads, agents with reports, and every planning / review / hiring / routine task stay on `company_agent`
+  with the management model.
+* Override (owner only): an agent whose `runtime` is itself `cli:*` always uses it; `runtime_config.pin_runtime: true` keeps an agent on the company agent. An agent can never change either.
+* A usable work runtime is required: when the CLI is gone, work waits (`waiting_for_runtime`); it never silently falls back to a paid API model.
+* Cost kinds of CLI runs: a local model → `verified` $0; `api_key` with a CLI-reported cost → `estimated`; `api_key` without a cost → the reservation is charged as an `estimated` (the existing rule for
+  unknown cost); `own_login` → `unknown` with nothing charged (`subscription`).
+
+### Reflections and standards (`/api/companies/{cid}`; any member reads, owner/admin writes; agents → 403)
+
+| Method & path | Purpose |
+|---|---|
+| `GET /reflections?status=&limit=&cursor=` → `Page[Reflection]` (newest first) | `Reflection`: `{id, company_id, author_agent_id, author_name, kind: observation|standard_proposal|retro|risk|praise, title, body, evidence: [{type: task|artifact|run|project|agent|goal, id, label}], proposed_standard|null, status: open|endorsed|revised|rejected|adopted|archived, standard_id|null, response_count, last_response: ReflectionResponse|null, created_at, updated_at}` |
+| `GET /reflections/{id}` → `ReflectionDetail` | `Reflection` + `responses: [ReflectionResponse]` oldest first |
+| `POST /reflections/{id}/responses` `ReflectionResponseCreate {reaction: endorse|challenge|refine|comment, body?}` → `201 ReflectionResponse` | `body` is required except for `endorse`. Returns `{id, reflection_id, author_type, author_id, author_name, reaction, body, created_at, reflection_status, standard_id}`. Wakes the AI Co-founder (5 s debounce, urgent) |
+| `POST /reflections/{id}/archive` → `ReflectionDetail` | `archived` |
+| `GET /standards?status=active|retired` → `Page[CompanyStandard]`; `POST /standards` `CompanyStandardCreate {title, statement ≤ 500, applies_to[]}` (201); `PATCH /standards/{id}` `CompanyStandardUpdate {title?, statement?, status?, applies_to?}` | `CompanyStandard`: `{id, company_id, title, statement, source_reflection_id|null, adopted_by_user_id, adopted_at, status: active|retired, applies_to[], created_at, updated_at}`. At most 25 active; `applies_to` = role families / template slugs / agent ids (empty = everyone) |
+
+Rules (code, not prompts): **a standard exists only through a human** — endorsing a `standard_proposal` (original or revised) creates it and sets the reflection to `adopted`;
+`POST /standards` is human-authored; the AI Co-founder has no route that creates, edits or retires one. `challenge`/`refine` set a non-adopted reflection back to `open`;
+`endorse` on any other kind sets `endorsed`. `rejected` exists in the enum but no M10 action sets it. Active standards are injected into **every** agent's context: `GET /agent/v1/context`
+(`standards: [{id, title, statement}]`), `GET /agent/v1/state`, the `company_agent` run spec (`company.standards`, rendered in the role prompt) and the prompt of every CLI run.
+
+Stream events (company stream, invalidate-only): `reflection.created`, `reflection.updated`, `reflection.responded`, `standard.adopted`, `standard.updated`, `command.updated`, `cli_runtime.updated`,
+`ai_setup.updated`.
+
+#### Agent API additions (AI Co-founder only on the server; each route has a risk tier — `internal_write`)
+
+| Method & path | Tool |
+|---|---|
+| `POST /agent/v1/reflections` `{kind, title, body ≤ 6 KB, evidence: [{type,id}], proposed_standard ≤ 500 (standard_proposal only)}` → 201 `Reflection` (200 and the existing one for the same title within 7 days) | `company_post_reflection` |
+| `POST /agent/v1/reflections/{id}/replies` `{body}` → 201 `ReflectionResponse` | `company_reply_reflection` |
+| `POST /agent/v1/reflections/{id}/revise` `{body?, title?, proposed_standard?, note?}` → `Reflection` (status `revised`; refused for adopted/archived) | `company_revise_reflection` |
+
+Limits: 5 reflections per day, 20 waiting for the Founder, evidence ids must exist in the company, secret-looking text is refused (409). `GET /agent/v1/state` gains `standards` and (Co-founder)
+`reflections_to_answer` (reflections whose last response is the Founder's). The Co-founder's toolkit has 3 more tools (35 company tools in the runtime). The `daily-reflection` routine (cron `0 20 * * *`,
+company timezone, skipped when idle) is a built-in schedule of every AI Co-founder.
+
+### Command Center (`/api/companies/{cid}`)
+
+| Method & path | Purpose |
+|---|---|
+| `POST /command` `CommandRequest {input ≤ 10 KB}` → `201 CommandExchange` | `/command …` → executed now with the caller's own permissions, `status: "done"`. Anything else → a Founder's note, `status: "pending"` (owner/admin only; 403 for viewers and members). 409 `ai_setup_required` before the AI is ready |
+| `GET /command-center/feed?limit=&cursor=` → `Page[CommandExchange]` (newest first, commands and notes) | any member of the company, agents 403 |
+| `POST /command-center/{id}/retry` → `CommandExchange` | owner/admin; only a `failed` free-text exchange (409 otherwise): back to `pending`, the Co-founder is woken again |
+
+`CommandExchange`: `{id, input, input_kind: "command"|"note", created_at, status: "done"|"pending"|"processing"|"answered"|"failed", output: CommandOutput|null, note_id|null, run_id|null, actions: [{type, ref_id, label}], updated_at}`.
+`CommandOutput`: `{kind: "text"|"table"|"list"|"error", title, text, columns|null, rows|null, links|null}`; for a `table` `rows` are lists of strings aligned with `columns`; for a `list` each row is a one-string list; `links` = `[{label, panel}]`
+where `panel` is a canvas panel string (`tasks`, `approvals`, `finance`, `goals`, `org`, `standards`, `reflections`, `task:<id>`).
+
+Commands: `/help`, `/status`, `/goals`, `/agents`, `/tasks [status]`, `/spend [day|month]`, `/approvals`, `/standards`, `/pause`, `/resume`, `/goal <text>`, `/task <title> [@agent]`, `/hire <role template> [reason]`
+(creates a hiring task for HR), `/approve <id>`, `/reject <id> [note]`. They call the same services as the owner API, so the role matrix applies unchanged; a refusal (a viewer's `/pause`) is an
+`error` output with the reason, never a silent no-op. Created records come back as `actions` chips. Every note written through `POST /notes` also appears in the feed.
+
+**Free-text lifecycle and the guaranteed output.** `pending` → `processing` (a Co-founder run started: `run_id` is set, and its `run.event` stream is the live progress) → `answered` (its reply, or the triage summary when it never wrote one;
+`actions` = the triage records). If the run fails, times out, finishes without answering, or nothing answers within 15 minutes, the system writes an output saying what happened (`output` set, status back to `pending`) and
+retries **once** automatically; a second failure ends as `failed` with an `error` output. A run cancelled only because the company was paused / the worker stopped does not use up an attempt. Free text wakes the Co-founder after 5 s (not
+60 s) with an `urgent` wake task.
+
+### Deviations and notes
+
+- `POST /command` answers 201 for slash commands as well (a record is created either way).
+- The model list (`/models`) response shape, the `install.status` field, `model_provider_id`/`model` on the CLI auth call, and the panel strings in `links` are additions the spec did not fix.
+- The CLI settings live in the existing `system_state` table (one row per CLI, a credential id only, never a secret) — no table of their own.
+- CLI-runtime API keys reference a credential of a company the installation owner administers; a run uses the key only for agents of the credential's company.
+
+### Verified and not verified (Milestone 10)
+
+Verified: see the M10 report and `docs/cli-runtimes.md` ("What was and was not verified"). In short — the gate, provider checks (mocked HTTP), routing, the three adapters against fake binaries emitting
+recorded-format streams, the MCP server (stdio, against a stub API and against OpenCode live), reflections/standards rules, the Command Center, the migration; **live**: OpenCode + a temporary local Ollama
+(qwen2.5:7b) executing a hybrid-mode work task through the company MCP tools. **Not verified**: Claude Code and Codex runs (Claude Code was never started beyond `--version`; Codex is not installed), the
+real `npm install` path, `own_login` runs, Docker/Postgres.

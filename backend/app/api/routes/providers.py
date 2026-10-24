@@ -20,6 +20,8 @@ from app.schemas.providers import (
     ModelProvider,
     ModelProviderCreate,
     ModelProviderUpdate,
+    ProviderModelList,
+    ProviderTestRequest,
 )
 from app.services import credentials, model_providers
 from app.services.pagination import DEFAULT_LIMIT, MAX_LIMIT
@@ -140,11 +142,40 @@ def delete_provider(provider_id: str, ctx: CompanyCtx, db: DbSession):
 
 @router.post("/model-providers/{provider_id}/test", response_model=ModelProvider)
 async def test_provider(
-    provider_id: str, request: Request, ctx: CompanyCtx, db: DbSession, cipher: Cipher
+    provider_id: str,
+    request: Request,
+    ctx: CompanyCtx,
+    db: DbSession,
+    cipher: Cipher,
+    body: ProviderTestRequest | None = None,
 ):
-    """Connectivity test. For Ollama it loads the model and reports the *served* context window,
-    warning (with the fix) when it is smaller than the configured one. Result in ``last_test``."""
+    """Readiness test: reachable, authenticated, the model exists, **tool calling works** (a tiny
+    real request), served context >= 32K. For Ollama it loads the model and reads the *served*
+    window. The result (``last_test.ok`` / ``checks``) is what the AI readiness gate looks at. An
+    optional ``{model}`` tests another model than the provider's default."""
     row = await run_in_threadpool(
-        model_providers.test_provider, db, ctx, provider_id, cipher, transport=_transport(request)
+        model_providers.test_provider,
+        db,
+        ctx,
+        provider_id,
+        cipher,
+        model=body.model if body else None,
+        transport=_transport(request),
     )
     return model_providers.serialize(db, ctx.company_id, [row])[0]
+
+
+@router.get("/model-providers/{provider_id}/models", response_model=ProviderModelList)
+async def list_provider_models(
+    provider_id: str, request: Request, ctx: CompanyCtx, db: DbSession, cipher: Cipher
+):
+    """The provider's own model list, for a picker (``available: false`` when it has none)."""
+    listing = await run_in_threadpool(
+        model_providers.list_models, db, ctx, provider_id, cipher, transport=_transport(request)
+    )
+    return {
+        "items": listing.items,
+        "next_cursor": None,
+        "available": listing.available,
+        "detail": listing.detail,
+    }

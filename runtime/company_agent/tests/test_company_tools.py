@@ -27,6 +27,7 @@ TOOLS = [
     "company_manage_goal", "company_manage_project", "company_manage_schedule",
     "company_escalate", "company_request_help", "company_propose_memory", "company_verify_memory",
     "company_decide_peer_review", "company_provider_action",
+    "company_post_reflection", "company_reply_reflection", "company_revise_reflection",
 ]
 
 
@@ -51,7 +52,7 @@ def test_all_tools_registered_in_company_toolset():
 
     for name in TOOLS:
         assert registry.get_toolset_for_tool(name) == "company"
-    assert len(TOOLS) == 32
+    assert len(TOOLS) == 35
     assert sorted(TOOLS) == sorted(COMPANY_TOOL_NAMES)  # spec validation and registry cannot drift
 
 
@@ -570,3 +571,29 @@ def test_project_creation_retries_without_a_lead_that_is_not_a_lead(configured, 
     posts = api.calls("POST", "/projects")
     assert len(posts) == 2 and "lead_agent_id" in posts[0].body and "lead_agent_id" not in posts[1].body
     assert posts[1].body["goal_id"] == "g1" and out["id"] == "p-9" and "lead_agent_id was ignored" in out["next"]
+
+
+def test_reflection_tools_call_the_agent_api(configured, api: StubApi):
+    uuid = "11111111-2222-3333-4444-555555555555"
+    out = call("company_post_reflection", kind="standard_proposal", title="Review before ship",
+               body="Three launches slipped.", proposed_standard="Every launch gets a second review.",
+               evidence=[{"type": "task", "id": uuid}, f"project:{uuid}", {"type": "nonsense", "id": "x"}])
+    assert out["status"] == "open"
+    call("company_reply_reflection", reflection_id="r1", body="Thanks, noted.")
+    call("company_revise_reflection", reflection_id="r1", proposed_standard="Every launch gets a review.", note="shorter")
+    posted, reply, revise = (r for r in api.requests)
+    assert (posted.method, posted.path) == ("POST", "/api/agent/v1/reflections")
+    assert posted.body["kind"] == "standard_proposal"
+    assert posted.body["proposed_standard"] == "Every launch gets a second review."
+    assert posted.body["evidence"] == [{"type": "task", "id": uuid}, {"type": "project", "id": uuid}]
+    assert (reply.path, reply.body) == ("/api/agent/v1/reflections/r1/replies", {"body": "Thanks, noted."})
+    assert revise.path == "/api/agent/v1/reflections/r1/revise"
+    assert revise.body == {"proposed_standard": "Every launch gets a review.", "note": "shorter"}
+
+
+def test_reflection_tools_validate_before_calling(configured, api: StubApi):
+    assert call("company_post_reflection", kind="gossip", title="t", body="b")["error"] == "invalid_arguments"
+    assert call("company_post_reflection", kind="risk", title="t")["error"] == "invalid_arguments"
+    assert call("company_reply_reflection", reflection_id="r1")["error"] == "invalid_arguments"
+    assert call("company_revise_reflection", reflection_id="r1")["error"] == "invalid_arguments"
+    assert api.requests == []

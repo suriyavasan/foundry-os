@@ -359,6 +359,7 @@ def test_builtin_schedules_exist_from_the_start(app, client, w):
         "daily-standup",
         "weekly-strategy-review",
         "daily-budget-review",
+        "daily-reflection",
         "skills-review",
     }
     hb = by_name["heartbeat"]
@@ -373,6 +374,11 @@ def test_builtin_schedules_exist_from_the_start(app, client, w):
         and by_name["weekly-strategy-review"].cron == "30 9 * * 1"
     )
     assert by_name["daily-budget-review"].cron == "0 18 * * *"
+    assert (
+        by_name["daily-reflection"].cron == "0 20 * * *"
+        and by_name["daily-reflection"].agent_id == w.founder["id"]
+        and "company_post_reflection" in by_name["daily-reflection"].task_template["description"]
+    )
     assert (
         by_name["skills-review"].agent_id == w.hr["id"]
         and by_name["skills-review"].cron == "0 10 1 * *"

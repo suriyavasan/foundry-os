@@ -1033,3 +1033,21 @@ def test_the_spec_uses_the_model_the_dispatcher_routed_the_run_to(env):
     seen = next(e.payload for e in sink.events if e.type == "progress")
     assert seen["model"]["model"] == "llama3:8b"
     assert seen["model"]["base_url"] == "http://127.0.0.1:11435/v1"
+
+
+def test_active_company_standards_are_in_the_spec_of_every_run(env):
+    """M10: the standards the Founder set bind every agent; retired ones are gone."""
+    created = env.client.post(
+        api(env.cid, "/standards"),
+        json={"title": "Plain language", "statement": "Write plainly, no jargon."},
+    ).json()
+    sink = RecordingSink()
+    env.adapter.execute(env.request("t scenario:inspect", run_id="std-run"), sink, CancelToken())
+    seen = next(e.payload for e in sink.events if e.type == "progress")
+    assert seen["company"]["standards"] == ["Plain language: Write plainly, no jargon."]
+    env.client.patch(api(env.cid, f"/standards/{created['id']}"), json={"status": "retired"})
+    sink = RecordingSink()
+    env.adapter.execute(env.request("t scenario:inspect", run_id="std-run2"), sink, CancelToken())
+    assert (
+        next(e.payload for e in sink.events if e.type == "progress")["company"]["standards"] == []
+    )

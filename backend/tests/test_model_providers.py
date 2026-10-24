@@ -27,6 +27,26 @@ MODELS = {
 }
 
 
+# What a model that supports tools answers to the readiness probe (the OpenAI-compatible shape).
+TOOL_CALL_REPLY = {
+    "choices": [
+        {
+            "message": {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "report_status", "arguments": '{"status": "ok"}'},
+                    }
+                ],
+            }
+        }
+    ]
+}
+
+
 class FakeOllama:
     def __init__(self, models=None, served=32768, up=True, chat_status=200, loaded=True):
         self.models = MODELS if models is None else models
@@ -65,7 +85,7 @@ class FakeOllama:
             )
         if path == "/v1/chat/completions":
             assert request.headers["authorization"] == "Bearer ollama"
-            return httpx.Response(self.chat_status, json={"choices": []})
+            return httpx.Response(self.chat_status, json=TOOL_CALL_REPLY)
         if path == "/api/ps":
             if not self.loaded or self.served is None:
                 return httpx.Response(200, json={"models": []})
@@ -336,12 +356,16 @@ def test_ok_when_ollama_serves_the_configured_context(app, client, company):
     assert client.get(api(cid, f"/model-providers/{p['id']}")).json()["last_test"]["status"] == "ok"
 
 
-def test_warns_with_the_fix_when_ollama_serves_a_smaller_context(app, client, company):
+def test_fails_with_the_fix_when_ollama_serves_a_smaller_context(app, client, company):
     cid = company["id"]
     use_ollama(app, FakeOllama(served=4096))
     p = client.post(api(cid, "/model-providers"), json=provider_body()).json()
     test = client.post(api(cid, f"/model-providers/{p['id']}/test")).json()["last_test"]
-    assert test["status"] == "warning" and test["context_length_served"] == 4096
+    # M10: a window below 32K is no longer a warning, it fails the readiness check.
+    assert test["status"] == "error" and test["ok"] is False
+    assert test["context_length_served"] == 4096 and test["served_context"] == 4096
+    context = next(c for c in test["checks"] if c["name"] == "context")
+    assert context["ok"] is False and "OLLAMA_CONTEXT_LENGTH=32768" in context["detail"]
     (warning,) = test["warnings"]
     assert "4096" in warning and "32768" in warning
     assert "OLLAMA_CONTEXT_LENGTH=32768" in warning
@@ -373,8 +397,9 @@ def test_unreadable_served_context_is_reported_not_assumed(app, client, company)
     use_ollama(app, FakeOllama(loaded=False))
     p = client.post(api(cid, "/model-providers"), json=provider_body()).json()
     t = client.post(api(cid, f"/model-providers/{p['id']}/test")).json()["last_test"]
-    assert t["status"] == "warning" and t["context_length_served"] is None
-    assert "/api/ps" in t["warnings"][0]
+    assert t["status"] == "error" and t["context_length_served"] is None
+    assert t["ok"] is False and "/api/ps" in t["warnings"][0]
+    assert next(c for c in t["checks"] if c["name"] == "context")["ok"] is False
 
 
 def test_http_provider_test_uses_the_credential_and_never_echoes_it(app, client, company):
@@ -384,7 +409,11 @@ def test_http_provider_test_uses_the_credential_and_never_echoes_it(app, client,
     seen = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
-        seen["url"], seen["auth"] = str(request.url), request.headers.get("authorization")
+        if request.method == "GET":
+            seen["url"], seen["auth"] = str(request.url), request.headers.get("authorization")
+        if request.method == "POST":
+            seen["chat_url"] = str(request.url)
+            return httpx.Response(200, json=TOOL_CALL_REPLY)
         return httpx.Response(200, json={"data": [{"id": "big-model"}]})
 
     app.state.provider_transport = httpx.MockTransport(handler)
@@ -401,8 +430,16 @@ def test_http_provider_test_uses_the_credential_and_never_echoes_it(app, client,
     r = client.post(api(cid, f"/model-providers/{p['id']}/test"))
     t = r.json()["last_test"]
     assert t["status"] == "ok" and seen["url"] == "https://llm.example.com/v1/models"
+    assert seen["chat_url"] == "https://llm.example.com/v1/chat/completions"
     assert seen["auth"] == f"Bearer {key}"
-    assert key not in r.text and "not probed" in t["message"]  # honest: tool calling not verified
+    assert key not in r.text
+    assert t["ok"] is True and [c["name"] for c in t["checks"]] == [
+        "reachable",
+        "auth",
+        "tool_calling",
+        "context",
+        "model_exists",
+    ]  # tool calling is really probed with a tiny request
     # rejected key
     app.state.provider_transport = httpx.MockTransport(
         lambda req: httpx.Response(401, text=f"bad {key}")
@@ -419,11 +456,17 @@ def test_anthropic_probe_uses_its_own_headers(app, client, company):
     seen = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
-        seen.update(
-            url=str(request.url),
-            key=request.headers.get("x-api-key"),
-            ver=request.headers.get("anthropic-version"),
-        )
+        if request.method == "GET":
+            seen.update(
+                url=str(request.url),
+                key=request.headers.get("x-api-key"),
+                ver=request.headers.get("anthropic-version"),
+            )
+        if request.method == "POST":
+            seen["messages_url"] = str(request.url)
+            return httpx.Response(
+                200, json={"content": [{"type": "tool_use", "name": "report_status", "input": {}}]}
+            )
         return httpx.Response(200, json={"data": []})
 
     app.state.provider_transport = httpx.MockTransport(handler)
@@ -441,7 +484,7 @@ def test_anthropic_probe_uses_its_own_headers(app, client, company):
         seen["url"] == "https://api.anthropic.com/v1/models"
         and seen["key"] == "sk-ant-0123456789abcdef"
     )
-    assert seen["ver"]
+    assert seen["ver"] and seen["messages_url"] == "https://api.anthropic.com/v1/messages"
 
 
 # ------------------------------------------------------------------ detect + one-call register
@@ -485,7 +528,8 @@ def test_register_in_one_call_creates_tests_and_makes_it_the_default(app, client
         reg["name"] == "Local Ollama" and reg["default_model"] == "qwen2.5:7b" and reg["is_local"]
     )
     assert reg["is_company_default"] is True and reg["context_length"] == 32768
-    assert reg["last_test"]["status"] == "warning"  # the served-context trap surfaces immediately
+    assert reg["last_test"]["status"] == "error"  # the served-context trap surfaces immediately
+    assert reg["last_test"]["ok"] is False
     assert "OLLAMA_CONTEXT_LENGTH=32768" in reg["last_test"]["warnings"][0]
     assert body["already_registered_provider_id"] == reg["id"]
     assert {a["runtime"] for a in agents_by_name(client, cid).values()} == {"company_agent"}

@@ -49,6 +49,15 @@ class CredentialRotate(RequestModel):
     value: SecretStr = Field(min_length=1, max_length=8192)
 
 
+ProviderCheckName = Literal["reachable", "auth", "tool_calling", "context", "model_exists"]
+
+
+class ProviderTestCheck(ApiModel):
+    name: ProviderCheckName
+    ok: bool
+    detail: str
+
+
 class ProviderTest(ApiModel):
     status: Literal["ok", "warning", "error"]
     message: str
@@ -59,6 +68,33 @@ class ProviderTest(ApiModel):
     context_length_served: int | None = None
     warnings: list[str] = []
     latency_ms: int | None = None
+    # M10 (docs/specs/m10 section 1): the readiness checks. ``ok`` is true only when every check
+    # passed; tests made before M10 carry no checks and are never "ok".
+    ok: bool = False
+    checks: list[ProviderTestCheck] = []
+    served_context: int | None = None
+    tested_at: Timestamp | None = None
+    model: str | None = None  # the model that was tested
+
+
+class ProviderTestRequest(RequestModel):
+    """Optional body of ``POST .../test``: test another model than the provider's default."""
+
+    model: str | None = Field(default=None, min_length=1, max_length=160)
+
+
+class ProviderModel(ApiModel):
+    id: str
+    name: str
+    context_length: int | None = None
+    tool_calling: bool | None = None  # known for Ollama only
+
+
+class ProviderModelList(ApiModel):
+    items: list[ProviderModel]
+    next_cursor: str | None = None
+    available: bool  # false: the provider offers no readable model list (type the name instead)
+    detail: str | None = None
 
 
 class ModelProvider(ApiModel):

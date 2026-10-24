@@ -95,8 +95,13 @@ def _wait_for_line(lines: queue.Queue, needle: str, timeout: float = 30) -> list
             return seen
 
 
-def test_worker_process_shuts_down_gracefully_on_sigterm(client, company, db_url):
+def test_worker_process_shuts_down_gracefully_on_sigterm(app, client, company, db_url):
+    from tests.m10_helpers import make_ready
+
     cid = company["id"]
+    make_ready(
+        app, client, cid
+    )  # the worker is a real process: the AI readiness gate (M10) applies
     agent = new_agent(client, cid, script={"block_until_cancel": True})
     task = new_task(client, cid, assignee_agent_id=agent["id"])
 

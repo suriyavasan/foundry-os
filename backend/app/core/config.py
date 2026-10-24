@@ -118,6 +118,10 @@ class Settings(BaseSettings):
     # Resume a tunnel that was running when the server last stopped.
     tunnel_autoresume: bool = True
 
+    # --- Milestone 10: coding-CLI runtimes -------------------------------------------------------
+    # Extra directories searched (before PATH) for the claude / codex / opencode / npm binaries.
+    cli_search_paths: list[str] = []
+
     # Hermes runtime. These use the plain HERMES_* names (no COMPANY_OS_ prefix).
     hermes_api_url: str | None = Field(
         default=None, validation_alias=AliasChoices("HERMES_API_URL", "COMPANY_OS_HERMES_API_URL")
@@ -165,6 +169,10 @@ class Settings(BaseSettings):
         return (
             self.web_dist_dir if self.web_dist_dir.is_absolute() else REPO_DIR / self.web_dist_dir
         )
+
+    @property
+    def logs_dir(self) -> Path:
+        return self.resolved_data_dir / "logs"
 
     @property
     def local_url(self) -> str:

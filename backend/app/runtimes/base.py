@@ -192,6 +192,9 @@ class UsageReport:
     cost_micros: int | None = None  # integer micro-USD
     cost_kind: CostKind = CostKind.UNKNOWN
     provider_event_id: str | None = None
+    # "subscription": the run used the person's own CLI login. The cost is unknown (``cost_kind``
+    # stays unknown) but nothing is charged against the budgets either (M10).
+    billing_note: str | None = None
 
 
 @dataclass(frozen=True)

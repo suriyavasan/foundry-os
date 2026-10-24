@@ -89,6 +89,10 @@ _API_ACTIONS = [
     _a("memory.propose", T.INTERNAL_WRITE, "Propose a memory entry"),
     _a("memory.verify", T.INTERNAL_WRITE, "Verify a memory proposal"),
     _a("memory.reject", T.INTERNAL_WRITE, "Reject a memory proposal"),
+    # M10: reflections (the AI Co-founder writes; only people turn a proposal into a standard)
+    _a("reflection.post", T.INTERNAL_WRITE, "Post a reflection for the Founder"),
+    _a("reflection.reply", T.INTERNAL_WRITE, "Reply to the Founder on a reflection"),
+    _a("reflection.revise", T.INTERNAL_WRITE, "Revise one of your reflections"),
     _a("hire.request", T.ORG_CHANGE, "Ask HR for a hire"),
     _a("hire.create", T.ORG_CHANGE, "Hire an employee", rate_keys=(HIRES,)),
     _a("skills.catalog", T.EXTERNAL_READ, "Search the skill catalog (incl. GitHub)"),
@@ -228,6 +232,13 @@ _HUMAN_ONLY_ACTIONS = [
         human_only=True,
     ),
     _a(
+        "cli_runtime.manage",
+        T.IDENTITY,
+        "Install, configure or test a coding CLI on this machine",
+        kind="human_only",
+        human_only=True,
+    ),
+    _a(
         "reachability.manage",
         T.IDENTITY,
         "Change how this device is reached (network bind, tunnel, binaries)",
@@ -288,6 +299,10 @@ _ROUTES = [
     RouteSpec("POST", "/memory", "memory.propose"),
     RouteSpec("POST", "/memory/{entry_id}/verify", "memory.verify"),
     RouteSpec("POST", "/memory/{entry_id}/reject", "memory.reject"),
+    # Milestone 10
+    RouteSpec("POST", "/reflections", "reflection.post"),
+    RouteSpec("POST", "/reflections/{reflection_id}/replies", "reflection.reply"),
+    RouteSpec("POST", "/reflections/{reflection_id}/revise", "reflection.revise"),
     # Milestone 6
     RouteSpec("POST", "/guardrails/check-tool", "guardrail.tool_check"),
     RouteSpec("POST", "/guardrails/flags", "guardrail.flag"),

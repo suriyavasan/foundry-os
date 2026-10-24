@@ -98,7 +98,8 @@ SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 # Routes a ``write``-scoped API token may not call: team, policy, secrets, guardrails, system.
 _ADMIN_ONLY = re.compile(
     r"^/(companies/[^/]+/(members|invitations|policy|credentials|guardrails|model-providers"
-    r"|connected-accounts|domain|hosted-ui|email|mailboxes)(/|$)|system(/|$)|reachability(/|$))"
+    r"|connected-accounts|domain|hosted-ui|email|mailboxes|ai-setup)(/|$)|system(/|$)|reachability(/|$)"
+    r"|cli-runtimes(/|$))"
 )
 _COMPANY_ADMIN = re.compile(r"^/companies/[^/]+(/(pause|resume))?/?$")
 

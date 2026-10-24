@@ -204,12 +204,14 @@ def test_overview_aggregates_are_real_and_empty_for_a_new_company(client, compan
     }
     assert ov["artifacts"] == {"available": True, "total": 0, "latest": []}
     # M5: the built-in schedules (Co-founder heartbeat + routines, HR skills review) exist from the start
-    assert ov["routines"]["total"] == 5 and ov["routines"]["enabled"] == 5
-    assert {r["name"] for r in ov["routines"]["upcoming"]} == {
+    assert ov["routines"]["total"] == 6 and ov["routines"]["enabled"] == 6
+    upcoming = {r["name"] for r in ov["routines"]["upcoming"]}  # the soonest five of the six
+    assert len(upcoming) == 5 and upcoming <= {
         "heartbeat",
         "daily-standup",
         "weekly-strategy-review",
         "daily-budget-review",
+        "daily-reflection",
         "skills-review",
     }
     assert ov["company"]["id"] == cid

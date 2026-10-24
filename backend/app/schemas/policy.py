@@ -60,6 +60,9 @@ class Policy(ApiModel):
     max_tokens_per_run: int = 3_000_000
     ai_disclosure_enabled: bool = True
     ai_disclosure_text: str | None = None
+    # M10 (read-only here; set through PUT /ai-setup): api or hybrid, and the CLI for work tasks.
+    work_mode: str = "api"
+    work_runtime: str | None = None
     created_at: Timestamp
     updated_at: Timestamp
 

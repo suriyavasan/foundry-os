@@ -200,6 +200,13 @@ class StubApi:
             return 201, {"id": self._next_id("mem"), "status": "proposed", **b}
         if m == "POST" and sub.startswith("/memory/"):
             return 200, {"id": sub.split("/")[2], "status": "verified" if sub.endswith("verify") else "rejected"}
+        # ---- M10: reflections
+        if m == "POST" and sub == "/reflections":
+            return 201, {"id": self._next_id("refl"), "status": "open", **b}
+        if m == "POST" and sub.startswith("/reflections/") and sub.endswith("/replies"):
+            return 201, {"id": self._next_id("resp"), "reflection_id": sub.split("/")[2], "body": b.get("body")}
+        if m == "POST" and sub.startswith("/reflections/") and sub.endswith("/revise"):
+            return 200, {"id": sub.split("/")[2], "status": "revised", **b}
         # ---- M6: guardrails
         if m == "POST" and sub == "/guardrails/check-tool":
             return 200, {"allowed": True, "tool": b.get("tool"), "tier": "external_read"}

@@ -21,10 +21,11 @@ from app.schemas.agent_api import (
     CtxPolicy,
     CtxProject,
     CtxRun,
+    CtxStandard,
     CtxTask,
     CtxTaskBrief,
 )
-from app.services import agent_roles, memory, policy, reviews, skills, task_briefs
+from app.services import agent_roles, memory, policy, reviews, skills, standards, task_briefs
 from app.services.agent_auth import AgentRunContext
 from app.storage.base import ArtifactStorage
 
@@ -196,6 +197,7 @@ def build_context(
     ]
     return AgentContext(
         credentials=usable,
+        standards=[CtxStandard(**i) for i in standards.context_items(db, company_id, agent)],
         memory=[
             CtxMemory(id=m.id, kind=m.kind, title=m.title, body=m.body)
             for m in memory.relevant_for(db, company_id, agent)

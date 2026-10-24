@@ -44,6 +44,8 @@ COMPANY_TOOL_NAMES = (
     "company_escalate", "company_request_help", "company_propose_memory", "company_verify_memory",
     # M6: maker-checker review decisions and control-plane provider actions (credentials never reach the agent).
     "company_decide_peer_review", "company_provider_action",
+    # M10: reflections for the Founder (AI Co-founder only on the server).
+    "company_post_reflection", "company_reply_reflection", "company_revise_reflection",
 )
 
 MIN_CONTEXT_LENGTH = 8192

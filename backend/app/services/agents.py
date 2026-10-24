@@ -285,6 +285,10 @@ def create_agent(db: Session, ctx: CompanyContext, data: AgentCreate) -> Agent:
             raise Forbidden("Agents cannot set permissions, budgets or runtime, or create founders")
     elif not ctx.is_human_admin:
         raise Forbidden("Only company owners and admins can create agents")
+    else:
+        from app.services import ai_setup  # local: ai_setup -> tasks -> agents
+
+        ai_setup.require_ready(db, ctx.company_id)  # M10: no hires without a working AI
 
     template = None
     if data.role_template or data.skill_slugs:

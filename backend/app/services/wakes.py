@@ -48,6 +48,9 @@ logger = logging.getLogger("company_os.wakes")
 
 WAKE_KEY_PREFIX = "wake:"
 NOTE_DEBOUNCE_SECONDS = 60
+# M10: input typed into the Command Center (and the Founder's reactions to reflections) is answered
+# quickly: a short debounce, and the wake task is dispatched ahead of ordinary work.
+COMMAND_DEBOUNCE_SECONDS = 5
 EVENT_DELAY_SECONDS = 5
 MAX_REASONS = 15
 MAX_REASON_CHARS = 300
@@ -68,6 +71,8 @@ TRIGGER_LABELS = {
     "manual": "manual wake",
     "schedule": "schedule",
     "email": "new e-mail",
+    "command": "Command Center input",
+    "reflection": "reaction to a reflection",
 }
 
 
@@ -307,6 +312,10 @@ def _materialize_one(db: Session, request: WakeRequest, now: datetime) -> str | 
         return None
     if agent.status != AgentStatus.ACTIVE:
         return None  # paused / proposed: wait
+    from app.services import ai_setup  # local: ai_setup -> tasks -> wakes
+
+    if not ai_setup.is_ready(db, request.company_id):
+        return None  # no working AI model yet: the request waits for the AI setup (M10)
     reasons = list(request.reasons or [])
     existing = open_wake_task(db, request.company_id, agent.id)
     if existing is not None:
@@ -332,11 +341,13 @@ def _materialize_one(db: Session, request: WakeRequest, now: datetime) -> str | 
         return None
     role = agent_roles.role_of(db, agent)
     title, description = _compose(role, reasons)
-    priority = (
-        "high"
-        if any(r.get("trigger") in ("note", "escalation", "alert") for r in reasons)
-        else "normal"
-    )
+    triggers_now = {r.get("trigger") for r in reasons}
+    if triggers_now & {"command", "reflection"}:
+        priority = "urgent"  # a person is waiting for the answer
+    elif triggers_now & {"note", "escalation", "alert"}:
+        priority = "high"
+    else:
+        priority = "normal"
     data = TaskCreate(
         title=title,
         description=description,

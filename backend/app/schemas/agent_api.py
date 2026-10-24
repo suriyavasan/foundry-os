@@ -91,6 +91,14 @@ class CtxMemory(BaseModel):
     body: str
 
 
+class CtxStandard(BaseModel):
+    """A company standard set by the Founder: it binds every agent's work."""
+
+    id: str
+    title: str
+    statement: str
+
+
 class CtxTask(BaseModel):
     id: str
     title: str
@@ -179,5 +187,7 @@ class AgentContext(BaseModel):
     skills_available: bool = True
     # M5: verified company memory that applies to this agent (requirements, facts, lessons).
     memory: list[CtxMemory] = []
+    # M10: the company standards in force that apply to this agent.
+    standards: list[CtxStandard] = []
     # M6: credentials scoped for this agent's role family (ids to name in company_provider_action).
     credentials: list[CtxCredential] = []

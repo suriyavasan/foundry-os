@@ -223,6 +223,7 @@ def main():
                 "model": {k: v for k, v in spec["model"].items() if k != "api_key"},
                 "has_api_key": bool(secret_key),
                 "agent": spec["agent"],
+                "company": {k: v for k, v in spec["company"].items()},
                 "task": spec["task"],
                 "limits": spec["limits"],
                 "hermes_home": spec["hermes_home"],

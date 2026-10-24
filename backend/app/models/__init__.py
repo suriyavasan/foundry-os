@@ -5,6 +5,7 @@ from app.models.agent import Agent
 from app.models.artifact import Artifact, ArtifactVersion
 from app.models.audit import AuditEvent
 from app.models.autonomy import Alert, FounderNote, MemoryEntry, NoteReply, WakeRequest
+from app.models.commands import CommandExchange
 from app.models.company import Company, CompanyMember
 from app.models.department import Department
 from app.models.governance import Approval, Decision
@@ -29,6 +30,7 @@ from app.models.reachability import (
     MailMessage,
     NotificationPreference,
 )
+from app.models.reflections import CompanyStandard, Reflection, ReflectionResponse
 from app.models.run import CompanyEvent, Job, RunEvent, TaskRun
 from app.models.schedule import Schedule, ScheduleFire
 from app.models.skill import AgentSkill, RoleTemplate, Skill, SkillBlob
@@ -52,6 +54,10 @@ __all__ = [
     "BudgetAlertMark",
     "BudgetReservation",
     "Company",
+    "CommandExchange",
+    "CompanyStandard",
+    "Reflection",
+    "ReflectionResponse",
     "CompanyDomain",
     "CompanyEvent",
     "ConnectedAccount",

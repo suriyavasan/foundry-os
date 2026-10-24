@@ -43,9 +43,20 @@ from app.schemas.autonomy import (
     StateNotes,
     StateProject,
     StateSchedule,
+    StateStandard,
     StateTask,
 )
-from app.services import agent_roles, alerts, memory, notes, overview, policy, skills
+from app.services import (
+    agent_roles,
+    alerts,
+    memory,
+    notes,
+    overview,
+    policy,
+    reflections,
+    skills,
+    standards,
+)
 from app.services.agent_auth import AgentRunContext
 
 OPEN = [s for s in TaskStatus if s not in TERMINAL_TASK_STATUSES]
@@ -424,6 +435,8 @@ def build_state(db: Session, rc: AgentRunContext) -> AgentState:
         alerts=open_alerts,
         notes=note_block,
         schedules=schedules,
+        standards=[StateStandard(**i) for i in standards.context_items(db, company_id, agent)],
+        reflections_to_answer=reflections.attention(db, company_id) if founder else [],
         limits={
             "autonomy_mode": limits.autonomy_mode,
             "max_open_tasks": limits.max_open_tasks,

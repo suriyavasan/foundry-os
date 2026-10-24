@@ -32,7 +32,7 @@ from app.models.schedule import Schedule, ScheduleFire
 from app.models.work import Task
 from app.schemas.schedule import ScheduleCreate, ScheduleUpdate
 from app.schemas.work import TaskCreate
-from app.services import agent_roles, audit, events, tasks, wakes
+from app.services import agent_roles, ai_setup, audit, events, tasks, wakes
 from app.services.common import get_agent_or_404
 from app.services.pagination import paginate
 
@@ -341,7 +341,13 @@ def fire_due(factory: sessionmaker[Session], now: datetime) -> list[str]:
             ).all()
         )
     created: list[str] = []
-    for schedule_id, _company_id in due:
+    not_ready: dict[str, bool] = {}
+    for schedule_id, company_id in due:
+        if company_id not in not_ready:
+            with factory() as db:  # M10: a company without a working AI fires nothing
+                not_ready[company_id] = not ai_setup.is_ready(db, company_id)
+        if not_ready[company_id]:
+            continue  # the schedule stays due and fires once the AI is set up
         task_id = _fire_one(factory, schedule_id, now)
         if task_id:
             created.append(task_id)

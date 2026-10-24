@@ -6,6 +6,7 @@ import logging
 import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,11 +16,14 @@ from app.api.routes import (
     activity,
     agent_api,
     agents,
+    ai_setup,
     alerts,
     approvals,
     artifacts,
     auth,
+    cli_runtimes,
     cofounder,
+    commands,
     companies,
     control,
     departments,
@@ -34,6 +38,7 @@ from app.api.routes import (
     projects,
     providers,
     reachability,
+    reflections,
     runtimes,
     schedules,
     skills,
@@ -55,6 +60,7 @@ from app.integrations.context import IntegrationContext
 from app.integrations.executors import register_all
 from app.integrations.tunnel import TunnelSupervisor
 from app.ops import pidfile
+from app.runtimes.cli.env import CliEnvironment
 from app.runtimes.registry import RuntimeRegistry, build_default_registry
 from app.services import reachability as reachability_service
 from app.services.auth import AuthService
@@ -180,8 +186,12 @@ def create_app(
     app.state.owner_token = OwnerTokenProvider(settings)
     app.state.cipher = CredentialCipher(app.state.keys)
     app.state.auth = AuthService(settings, app.state.keys, app.state.cipher, app.state.owner_token)
+    app.state.cli_env = CliEnvironment(extra_dirs=[Path(p) for p in settings.cli_search_paths])
     app.state.runtimes = runtime_registry or build_default_registry(
-        settings, session_factory=session_factory, keys=app.state.keys
+        settings,
+        session_factory=session_factory,
+        keys=app.state.keys,
+        cli_env=app.state.cli_env,
     )
     app.state.storage = LocalFileStorage(settings.artifacts_dir)
     app.state.skills = skills_env or build_skills_env(settings)
@@ -253,6 +263,10 @@ def create_app(
         runtimes.router,
         policy.router,
         providers.router,
+        ai_setup.router,
+        cli_runtimes.router,
+        reflections.router,
+        commands.router,
         goals.router,
         projects.router,
         tasks.router,

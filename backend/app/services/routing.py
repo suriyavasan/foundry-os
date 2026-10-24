@@ -25,12 +25,45 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.agent import Agent
-from app.models.enums import ModelRouting
+from app.models.enums import ModelRouting, TaskKind
 from app.models.policy import CompanyPolicy
 from app.models.provider import ModelProvider
-from app.services import model_providers
+from app.models.work import Task
+from app.services import agent_roles, model_providers
 
 COMPANY_AGENT = "company_agent"
+CLI_PREFIX = "cli:"
+# Roles that always run on the company agent with the management model (spec M10 section 2).
+MANAGEMENT_ROLES = frozenset(
+    {agent_roles.FOUNDER, agent_roles.HR, agent_roles.LEAD, agent_roles.MANAGER}
+)
+
+
+def choose_runtime(
+    db: Session, agent: Agent, task: Task, limits: CompanyPolicy
+) -> tuple[str, str | None]:
+    """(runtime id, why) for a run of ``task`` by ``agent`` (docs/specs/m10 section 2).
+
+    * ``api`` mode: the agent's own runtime, as before;
+    * ``hybrid``: management roles (founder, HR, leads, managers) and every non-work task
+      (planning, review, hiring, routines) stay on the company agent with the management model;
+      ``kind=work`` tasks of everyone else go to ``policy.work_runtime`` (a coding CLI);
+    * a per-agent override wins and only an owner can set it: an agent whose runtime is itself a
+      CLI, or whose ``runtime_config`` pins it (``pin_runtime: true``).
+    """
+    if agent.runtime.startswith(CLI_PREFIX):
+        return agent.runtime, "agent runtime override"
+    if (agent.runtime_config or {}).get("pin_runtime") is True:
+        return agent.runtime, "agent runtime pinned by the owner"
+    if limits.work_mode != "hybrid" or not limits.work_runtime:
+        return agent.runtime, None
+    if task.kind != TaskKind.WORK:
+        return agent.runtime, f"hybrid: {task.kind} tasks stay on the company agent"
+    if agent_roles.role_of(db, agent) in MANAGEMENT_ROLES:
+        return agent.runtime, "hybrid: management roles stay on the company agent"
+    if agent.runtime != COMPANY_AGENT:
+        return agent.runtime, None  # not wired to the company agent: nothing to route away from
+    return limits.work_runtime, f"hybrid: work task on {limits.work_runtime}"
 
 
 @dataclass(frozen=True)
@@ -73,8 +106,9 @@ def _candidates(db: Session, company_id: str, limits: CompanyPolicy) -> list[Mod
     return rows
 
 
-def choose(db: Session, agent: Agent, limits: CompanyPolicy) -> Route:
-    if agent.runtime != COMPANY_AGENT:
+def choose(db: Session, agent: Agent, limits: CompanyPolicy, runtime: str | None = None) -> Route:
+    runtime = runtime or agent.runtime
+    if runtime != COMPANY_AGENT:
         return Route()
     try:
         own = model_providers.resolve_for_agent(db, agent)

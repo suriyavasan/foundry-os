@@ -10,6 +10,7 @@ from pydantic import Field, field_validator
 
 from app.schemas.common import ApiModel, RequestModel, Timestamp
 from app.schemas.governance import Decision
+from app.schemas.reflections import AgentReflection
 from app.schemas.work import (
     ActorTypeLiteral,
     GoalStatusLiteral,
@@ -420,6 +421,12 @@ class StateNotes(ApiModel):
     items: list[AgentNote] = Field(default_factory=list)
 
 
+class StateStandard(ApiModel):
+    id: str
+    title: str
+    statement: str
+
+
 class AgentState(ApiModel):
     role: str
     company: dict[str, Any]
@@ -439,3 +446,7 @@ class AgentState(ApiModel):
     notes: StateNotes | None
     schedules: list[StateSchedule]
     limits: dict[str, Any]
+    # M10: company standards in force; for the AI Co-founder also the reflections the Founder
+    # reacted to and it has not answered yet.
+    standards: list[StateStandard] = Field(default_factory=list)
+    reflections_to_answer: list[AgentReflection] = Field(default_factory=list)

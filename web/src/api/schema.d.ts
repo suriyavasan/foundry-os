@@ -1029,10 +1029,333 @@ export interface paths {
         put?: never;
         /**
          * Test Provider
-         * @description Connectivity test. For Ollama it loads the model and reports the *served* context window,
-         *     warning (with the fix) when it is smaller than the configured one. Result in ``last_test``.
+         * @description Readiness test: reachable, authenticated, the model exists, **tool calling works** (a tiny
+         *     real request), served context >= 32K. For Ollama it loads the model and reads the *served*
+         *     window. The result (``last_test.ok`` / ``checks``) is what the AI readiness gate looks at. An
+         *     optional ``{model}`` tests another model than the provider's default.
          */
         post: operations["test_provider_api_companies__company_id__model_providers__provider_id__test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/model-providers/{provider_id}/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Provider Models
+         * @description The provider's own model list, for a picker (``available: false`` when it has none).
+         */
+        get: operations["list_provider_models_api_companies__company_id__model_providers__provider_id__models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/ai-setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Ai Setup
+         * @description Is this company's AI ready (a tested management model)? Plus the work mode and the coding
+         *     CLIs on this machine.
+         */
+        get: operations["get_ai_setup_api_companies__company_id__ai_setup_get"];
+        /**
+         * Put Ai Setup
+         * @description Select the management model and the work mode. 409 ``ai_not_ready`` (with
+         *     ``details.reason``) when the provider's latest test did not pass, or a chosen CLI is not ready.
+         */
+        put: operations["put_ai_setup_api_companies__company_id__ai_setup_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cli-runtimes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Clis */
+        get: operations["list_clis_api_cli_runtimes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cli-runtimes/{cli_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Cli */
+        get: operations["get_cli_api_cli_runtimes__cli_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cli-runtimes/{cli_id}/install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Install
+         * @description Run the install command shown in ``install.command`` (npm global install). Never without
+         *     ``confirm: true``, never with sudo. Poll ``GET .../install-log``.
+         */
+        post: operations["install_api_cli_runtimes__cli_id__install_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cli-runtimes/{cli_id}/install-log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Install Log */
+        get: operations["get_install_log_api_cli_runtimes__cli_id__install_log_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cli-runtimes/{cli_id}/auth": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Auth
+         * @description How the CLI signs in: its own login (you ran its login in a terminal) or an API key from the
+         *     credential store. The key is never returned.
+         */
+        put: operations["put_auth_api_cli_runtimes__cli_id__auth_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cli-runtimes/{cli_id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Cli
+         * @description Run a tiny headless prompt ("Reply with OK") in a temp dir with a 60 s limit and a $0.05 cap.
+         */
+        post: operations["test_cli_api_cli_runtimes__cli_id__test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/reflections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Reflections */
+        get: operations["list_reflections_api_companies__company_id__reflections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/reflections/{reflection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Reflection */
+        get: operations["get_reflection_api_companies__company_id__reflections__reflection_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/reflections/{reflection_id}/responses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Respond
+         * @description Endorse / challenge / refine / comment. Endorsing a standard proposal adopts the standard.
+         */
+        post: operations["respond_api_companies__company_id__reflections__reflection_id__responses_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/reflections/{reflection_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive */
+        post: operations["archive_api_companies__company_id__reflections__reflection_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/standards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Standards */
+        get: operations["list_standards_api_companies__company_id__standards_get"];
+        put?: never;
+        /** Create Standard */
+        post: operations["create_standard_api_companies__company_id__standards_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/standards/{standard_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Standard */
+        patch: operations["update_standard_api_companies__company_id__standards__standard_id__patch"];
+        trace?: never;
+    };
+    "/api/companies/{company_id}/command": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Command
+         * @description ``/command`` -> answered at once (status ``done``, with the human's own permissions); free text
+         *     -> a Founder's note, status ``pending`` until the AI Co-founder answers. 409 ``ai_setup_required``
+         *     until the AI is set up.
+         */
+        post: operations["post_command_api_companies__company_id__command_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/command-center/feed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Feed */
+        get: operations["feed_api_companies__company_id__command_center_feed_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/command-center/{exchange_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry */
+        post: operations["retry_api_companies__company_id__command_center__exchange_id__retry_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3292,6 +3615,65 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agent/v1/reflections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Reflection
+         * @description The AI Co-founder posts a reflection for the Founder (kind observation, standard_proposal,
+         *     retro, risk or praise). A duplicate title within a week returns the existing one (200).
+         */
+        post: operations["post_reflection_api_agent_v1_reflections_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/v1/reflections/{reflection_id}/replies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reply Reflection */
+        post: operations["reply_reflection_api_agent_v1_reflections__reflection_id__replies_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/v1/reflections/{reflection_id}/revise": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revise Reflection
+         * @description Change the text of your own reflection (or its proposed standard) after the Founder's
+         *     reaction. The status becomes ``revised``; a standard still needs the Founder's endorsement.
+         */
+        post: operations["revise_reflection_api_agent_v1_reflections__reflection_id__revise_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3321,7 +3703,7 @@ export interface components {
             /** Manager Agent Id */
             manager_agent_id: string | null;
             /** Manager Ref */
-            manager_ref?: string | null;
+            manager_ref: string | null;
             /** Reports To Human */
             reports_to_human: boolean;
             /** Responsibilities */
@@ -3345,20 +3727,20 @@ export interface components {
             /** Daily Budget Micros */
             daily_budget_micros: number | null;
             /** Role Template */
-            role_template?: string | null;
+            role_template: string | null;
             /**
              * Role Family
              * @default generic
              * @enum {string}
              */
-            role_family?: "founder" | "hr" | "engineering" | "design" | "marketing" | "sales" | "customer_success" | "research" | "qa" | "operations" | "finance" | "generic";
+            role_family: "founder" | "hr" | "engineering" | "design" | "marketing" | "sales" | "customer_success" | "research" | "qa" | "operations" | "finance" | "generic";
             /** Created At */
             created_at: string;
             /** Updated At */
             updated_at: string;
             /** Status Changed At */
             status_changed_at: string;
-            live?: components["schemas"]["AgentLive"] | null;
+            live: components["schemas"]["AgentLive"] | null;
         };
         /** AgentContext */
         AgentContext: {
@@ -3382,6 +3764,11 @@ export interface components {
              * @default []
              */
             memory?: components["schemas"]["CtxMemory"][];
+            /**
+             * Standards
+             * @default []
+             */
+            standards?: components["schemas"]["CtxStandard"][];
             /**
              * Credentials
              * @default []
@@ -3503,9 +3890,9 @@ export interface components {
             created_at: string;
             /** Pinned */
             pinned: boolean;
-            previous_triage?: components["schemas"]["NoteTriage"] | null;
+            previous_triage: components["schemas"]["NoteTriage"] | null;
             /** Replies */
-            replies?: components["schemas"]["AgentNoteReply"][];
+            replies: components["schemas"]["AgentNoteReply"][];
         };
         /** AgentNoteReply */
         AgentNoteReply: {
@@ -3518,6 +3905,64 @@ export interface components {
             body: string;
             /** Created At */
             created_at: string;
+        };
+        /**
+         * AgentReflection
+         * @description A reflection as the AI Co-founder reads it back (state block).
+         */
+        AgentReflection: {
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "observation" | "standard_proposal" | "retro" | "risk" | "praise";
+            /** Title */
+            title: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "endorsed" | "revised" | "rejected" | "adopted" | "archived";
+            /** Proposed Standard */
+            proposed_standard: string | null;
+            /** Latest Response */
+            latest_response: string | null;
+            /** Latest Reaction */
+            latest_reaction: ("endorse" | "challenge" | "refine" | "comment") | null;
+        };
+        /** AgentReflectionPost */
+        AgentReflectionPost: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "observation" | "standard_proposal" | "retro" | "risk" | "praise";
+            /** Title */
+            title: string;
+            /** Body */
+            body: string;
+            /** Evidence */
+            evidence?: components["schemas"]["EvidenceIn"][];
+            /** Proposed Standard */
+            proposed_standard?: string | null;
+        };
+        /** AgentReflectionReply */
+        AgentReflectionReply: {
+            /** Body */
+            body: string;
+        };
+        /** AgentReflectionRevise */
+        AgentReflectionRevise: {
+            /** Body */
+            body?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Proposed Standard */
+            proposed_standard?: string | null;
+            /** Note */
+            note?: string | null;
         };
         /** AgentSkill */
         AgentSkill: {
@@ -3568,7 +4013,7 @@ export interface components {
             /** Memory */
             memory: components["schemas"]["StateMemory"][];
             /** Memory Proposals */
-            memory_proposals?: components["schemas"]["StateMemory"][];
+            memory_proposals: components["schemas"]["StateMemory"][];
             /** Alerts */
             alerts: {
                 [key: string]: unknown;
@@ -3580,6 +4025,10 @@ export interface components {
             limits: {
                 [key: string]: unknown;
             };
+            /** Standards */
+            standards: components["schemas"]["StateStandard"][];
+            /** Reflections To Answer */
+            reflections_to_answer: components["schemas"]["AgentReflection"][];
         };
         /** AgentStatusCounts */
         AgentStatusCounts: {
@@ -3681,6 +4130,50 @@ export interface components {
             /** Daily Budget Micros */
             daily_budget_micros?: number | null;
         };
+        /** AiSetupManagement */
+        AiSetupManagement: {
+            /** Provider Id */
+            provider_id: string | null;
+            /** Provider Name */
+            provider_name: string | null;
+            /** Kind */
+            kind: string | null;
+            /** Model */
+            model: string | null;
+            last_test: components["schemas"]["ProviderTest"] | null;
+        };
+        /** AiSetupStatus */
+        AiSetupStatus: {
+            /** Ready */
+            ready: boolean;
+            /** Blocking Reason */
+            blocking_reason: ("no_tested_provider" | "provider_test_failed" | "no_default_model") | null;
+            management: components["schemas"]["AiSetupManagement"];
+            /**
+             * Work Mode
+             * @enum {string}
+             */
+            work_mode: "api" | "hybrid";
+            /** Work Runtime */
+            work_runtime: ("company_agent" | "cli:claude_code" | "cli:codex" | "cli:opencode") | null;
+            /** Clis */
+            clis: components["schemas"]["CliRuntimeStatus"][];
+        };
+        /** AiSetupUpdate */
+        AiSetupUpdate: {
+            /** Management Provider Id */
+            management_provider_id: string;
+            /** Management Model */
+            management_model: string;
+            /**
+             * Work Mode
+             * @default api
+             * @enum {string}
+             */
+            work_mode?: "api" | "hybrid";
+            /** Work Runtime */
+            work_runtime?: ("company_agent" | "cli:claude_code" | "cli:codex" | "cli:opencode") | null;
+        };
         /** Alert */
         Alert: {
             /** Id */
@@ -3710,11 +4203,11 @@ export interface components {
             /** Created At */
             created_at: string;
             /** Resolved At */
-            resolved_at?: string | null;
+            resolved_at: string | null;
             /** Resolved By Type */
-            resolved_by_type?: ("human" | "agent" | "system") | null;
+            resolved_by_type: ("human" | "agent" | "system") | null;
             /** Resolved By Id */
-            resolved_by_id?: string | null;
+            resolved_by_id: string | null;
         };
         /** ApiToken */
         ApiToken: {
@@ -3728,15 +4221,15 @@ export interface components {
              */
             scope: "read" | "write" | "admin";
             /** Prefix */
-            prefix?: string | null;
+            prefix: string | null;
             /** Created At */
             created_at: string;
             /** Last Used At */
             last_used_at: string | null;
             /** Expires At */
-            expires_at?: string | null;
+            expires_at: string | null;
             /** Revoked At */
-            revoked_at?: string | null;
+            revoked_at: string | null;
         };
         /** ApiTokenCreate */
         ApiTokenCreate: {
@@ -3763,15 +4256,15 @@ export interface components {
              */
             scope: "read" | "write" | "admin";
             /** Prefix */
-            prefix?: string | null;
+            prefix: string | null;
             /** Created At */
             created_at: string;
             /** Last Used At */
             last_used_at: string | null;
             /** Expires At */
-            expires_at?: string | null;
+            expires_at: string | null;
             /** Revoked At */
-            revoked_at?: string | null;
+            revoked_at: string | null;
             /** Token */
             token: string;
         };
@@ -3836,20 +4329,20 @@ export interface components {
             /** Consumed At */
             consumed_at: string | null;
             /** Subject Type */
-            subject_type?: string | null;
+            subject_type: string | null;
             /** Subject Id */
-            subject_id?: string | null;
+            subject_id: string | null;
             /** Tier */
-            tier?: ("read" | "internal_write" | "org_change" | "external_read" | "external_communication" | "external_commitment" | "spend" | "identity" | "destructive") | null;
+            tier: ("read" | "internal_write" | "org_change" | "external_read" | "external_communication" | "external_commitment" | "spend" | "identity" | "destructive") | null;
             /** Action */
-            action?: string | null;
+            action: string | null;
             /** Reviewer Agent Id */
-            reviewer_agent_id?: string | null;
+            reviewer_agent_id: string | null;
             /** Approver Ref */
-            approver_ref?: string | null;
-            outbound?: components["schemas"]["ApprovalOutbound"] | null;
+            approver_ref: string | null;
+            outbound: components["schemas"]["ApprovalOutbound"] | null;
             /** Dlp Findings */
-            dlp_findings?: components["schemas"]["DlpFinding"][] | null;
+            dlp_findings: components["schemas"]["DlpFinding"][] | null;
             /** Created At */
             created_at: string;
             /** Updated At */
@@ -3909,11 +4402,11 @@ export interface components {
         /** ApprovalOutbound */
         ApprovalOutbound: {
             /** Channel */
-            channel?: string | null;
+            channel: string | null;
             /** To */
-            to?: string | null;
+            to: string | null;
             /** Subject */
-            subject?: string | null;
+            subject: string | null;
             /** Body */
             body: string;
         };
@@ -4020,7 +4513,7 @@ export interface components {
             /** Updated At */
             updated_at: string;
             /** Versions */
-            versions?: components["schemas"]["ArtifactVersion"][];
+            versions: components["schemas"]["ArtifactVersion"][];
         };
         /** ArtifactUpdate */
         ArtifactUpdate: {
@@ -4111,14 +4604,14 @@ export interface components {
              * Setup Token Required
              * @default false
              */
-            setup_token_required?: boolean;
+            setup_token_required: boolean;
             /**
              * Two Factor Required
              * @default false
              */
-            two_factor_required?: boolean;
+            two_factor_required: boolean;
             /** Expires At */
-            expires_at?: string | null;
+            expires_at: string | null;
         };
         /** AuthUser */
         AuthUser: {
@@ -4134,7 +4627,7 @@ export interface components {
              * Two Factor Enabled
              * @default false
              */
-            two_factor_enabled?: boolean;
+            two_factor_enabled: boolean;
         };
         /** BudgetStatus */
         BudgetStatus: {
@@ -4183,15 +4676,15 @@ export interface components {
              * @default skill
              * @enum {string}
              */
-            item_type?: "skill" | "repository";
+            item_type: "skill" | "repository";
             /** Installed */
             installed: boolean;
             /** Skill Id */
-            skill_id?: string | null;
+            skill_id: string | null;
             /** Status */
-            status?: string | null;
+            status: string | null;
             /** Stars */
-            stars?: number | null;
+            stars: number | null;
         };
         /**
          * Checklist
@@ -4225,6 +4718,145 @@ export interface components {
             /** Providers */
             providers: string[];
         };
+        /** CliAuth */
+        CliAuth: {
+            /** Mode */
+            mode: ("own_login" | "api_key") | null;
+            /**
+             * Configured
+             * @default false
+             */
+            configured: boolean;
+            /** Credential Id */
+            credential_id: string | null;
+            last_test: components["schemas"]["CliLastTest"] | null;
+            /** Model Provider Id */
+            model_provider_id: string | null;
+            /** Model */
+            model: string | null;
+        };
+        /** CliAuthUpdate */
+        CliAuthUpdate: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "own_login" | "api_key";
+            /** Credential Id */
+            credential_id?: string | null;
+            /** Model Provider Id */
+            model_provider_id?: string | null;
+            /** Model */
+            model?: string | null;
+        };
+        /** CliInstall */
+        CliInstall: {
+            /** Available */
+            available: boolean;
+            /** Command */
+            command: string;
+            /** Requires */
+            requires: string[];
+            /**
+             * Status
+             * @default none
+             * @enum {string}
+             */
+            status: "none" | "running" | "succeeded" | "failed";
+        };
+        /**
+         * CliInstallLog
+         * @description The supervised install: state plus the (redacted) output so far.
+         */
+        CliInstallLog: {
+            /**
+             * Id
+             * @enum {string}
+             */
+            id: "claude_code" | "codex" | "opencode";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "none" | "running" | "succeeded" | "failed";
+            /** Command */
+            command: string | null;
+            /** Started At */
+            started_at: string | null;
+            /** Finished At */
+            finished_at: string | null;
+            /** Exit Code */
+            exit_code: number | null;
+            /**
+             * Lines
+             * @default []
+             */
+            lines: string[];
+        };
+        /** CliInstallRequest */
+        CliInstallRequest: {
+            /**
+             * Confirm
+             * @default false
+             */
+            confirm?: boolean;
+        };
+        /** CliLastTest */
+        CliLastTest: {
+            /** Ok */
+            ok: boolean;
+            /** Detail */
+            detail: string;
+            /** Tested At */
+            tested_at: string;
+        };
+        /** CliRuntimeList */
+        CliRuntimeList: {
+            /** Items */
+            items: components["schemas"]["CliRuntimeStatus"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** CliRuntimeStatus */
+        CliRuntimeStatus: {
+            /**
+             * Id
+             * @enum {string}
+             */
+            id: "claude_code" | "codex" | "opencode";
+            /** Display Name */
+            display_name: string;
+            /** Installed */
+            installed: boolean;
+            /** Binary Path */
+            binary_path: string | null;
+            /** Version */
+            version: string | null;
+            /** Auth Modes */
+            auth_modes: ("own_login" | "api_key")[];
+            auth: components["schemas"]["CliAuth"];
+            sandbox: components["schemas"]["CliSandbox"];
+            install: components["schemas"]["CliInstall"];
+            /** Login Hint */
+            login_hint: string;
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: string[];
+        };
+        /** CliSandbox */
+        CliSandbox: {
+            /** Available */
+            available: boolean;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "os" | "docker" | "none";
+            /** Detail */
+            detail: string;
+        };
         /** CofounderBlocker */
         CofounderBlocker: {
             /** Task Id */
@@ -4255,7 +4887,7 @@ export interface components {
              */
             priority: "low" | "normal" | "high" | "urgent";
             /** Description */
-            description?: string | null;
+            description: string | null;
         };
         /** CofounderLastRun */
         CofounderLastRun: {
@@ -4273,7 +4905,7 @@ export interface components {
             /** Finished At */
             finished_at: string | null;
             /** Summary */
-            summary?: string | null;
+            summary: string | null;
         };
         /** CofounderPlan */
         CofounderPlan: {
@@ -4377,6 +5009,73 @@ export interface components {
             /** Open Tasks */
             open_tasks: number;
         };
+        /** CommandAction */
+        CommandAction: {
+            /** Type */
+            type: string;
+            /** Ref Id */
+            ref_id: string;
+            /** Label */
+            label: string | null;
+        };
+        /** CommandExchange */
+        CommandExchange: {
+            /** Id */
+            id: string;
+            /** Input */
+            input: string;
+            /**
+             * Input Kind
+             * @enum {string}
+             */
+            input_kind: "command" | "note";
+            /** Created At */
+            created_at: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "done" | "pending" | "processing" | "answered" | "failed";
+            output: components["schemas"]["CommandOutput"] | null;
+            /** Note Id */
+            note_id: string | null;
+            /** Run Id */
+            run_id: string | null;
+            /** Actions */
+            actions: components["schemas"]["CommandAction"][];
+            /** Updated At */
+            updated_at: string;
+        };
+        /** CommandLink */
+        CommandLink: {
+            /** Label */
+            label: string;
+            /** Panel */
+            panel: string;
+        };
+        /** CommandOutput */
+        CommandOutput: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "text" | "table" | "list" | "error";
+            /** Title */
+            title: string;
+            /** Text */
+            text: string;
+            /** Columns */
+            columns: string[] | null;
+            /** Rows */
+            rows: string[][] | null;
+            /** Links */
+            links: components["schemas"]["CommandLink"][] | null;
+        };
+        /** CommandRequest */
+        CommandRequest: {
+            /** Input */
+            input: string;
+        };
         /** Company */
         Company: {
             /** Id */
@@ -4423,6 +5122,54 @@ export interface components {
              */
             timezone?: string;
             founder?: components["schemas"]["FounderInput"];
+        };
+        /** CompanyStandard */
+        CompanyStandard: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string;
+            /** Title */
+            title: string;
+            /** Statement */
+            statement: string;
+            /** Source Reflection Id */
+            source_reflection_id: string | null;
+            /** Adopted By User Id */
+            adopted_by_user_id: string | null;
+            /** Adopted At */
+            adopted_at: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "retired";
+            /** Applies To */
+            applies_to: string[];
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /** CompanyStandardCreate */
+        CompanyStandardCreate: {
+            /** Title */
+            title: string;
+            /** Statement */
+            statement: string;
+            /** Applies To */
+            applies_to?: string[];
+        };
+        /** CompanyStandardUpdate */
+        CompanyStandardUpdate: {
+            /** Title */
+            title?: string | null;
+            /** Statement */
+            statement?: string | null;
+            /** Status */
+            status?: ("active" | "retired") | null;
+            /** Applies To */
+            applies_to?: string[] | null;
         };
         /** CompanyUpdate */
         CompanyUpdate: {
@@ -4479,7 +5226,7 @@ export interface components {
             /** Created At */
             created_at: string;
             /** Last Error */
-            last_error?: string | null;
+            last_error: string | null;
         };
         /** ConnectedAccountCreate */
         ConnectedAccountCreate: {
@@ -4551,17 +5298,17 @@ export interface components {
             /** Revoked At */
             revoked_at: string | null;
             /** Provider */
-            provider?: string | null;
+            provider: string | null;
             /**
              * Allowed Actions
              * @default []
              */
-            allowed_actions?: string[];
+            allowed_actions: string[];
             /**
              * Allowed Families
              * @default []
              */
-            allowed_families?: string[];
+            allowed_families: string[];
             /** Created At */
             created_at: string;
             /** Updated At */
@@ -4760,6 +5507,18 @@ export interface components {
             /** Attempt Number */
             attempt_number: number;
         };
+        /**
+         * CtxStandard
+         * @description A company standard set by the Founder: it binds every agent's work.
+         */
+        CtxStandard: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+            /** Statement */
+            statement: string;
+        };
         /** CtxTask */
         CtxTask: {
             /** Id */
@@ -4954,7 +5713,7 @@ export interface components {
              * @default ollama
              * @constant
              */
-            kind?: "ollama";
+            kind: "ollama";
             /** Base Url */
             base_url: string;
             /** Reachable */
@@ -4963,37 +5722,37 @@ export interface components {
              * Models
              * @default []
              */
-            models?: components["schemas"]["DetectedModel"][];
+            models: components["schemas"]["DetectedModel"][];
             /** Recommended Model */
-            recommended_model?: string | null;
+            recommended_model: string | null;
             /** Served Context Length */
-            served_context_length?: number | null;
+            served_context_length: number | null;
             /**
              * Warnings
              * @default []
              */
-            warnings?: string[];
+            warnings: string[];
             /** Already Registered Provider Id */
-            already_registered_provider_id?: string | null;
-            registered?: components["schemas"]["ModelProvider"] | null;
+            already_registered_provider_id: string | null;
+            registered: components["schemas"]["ModelProvider"] | null;
         };
         /** DetectedModel */
         DetectedModel: {
             /** Name */
             name: string;
             /** Parameter Size */
-            parameter_size?: string | null;
+            parameter_size: string | null;
             /** Quantization */
-            quantization?: string | null;
+            quantization: string | null;
             /** Context Length Native */
-            context_length_native?: number | null;
+            context_length_native: number | null;
             /** Tool Calling */
-            tool_calling?: boolean | null;
+            tool_calling: boolean | null;
             /**
              * Recommended
              * @default false
              */
-            recommended?: boolean;
+            recommended: boolean;
         };
         /**
          * DlpFinding
@@ -5003,11 +5762,11 @@ export interface components {
             /** Kind */
             kind: string;
             /** Severity */
-            severity?: ("low" | "medium" | "high") | null;
+            severity: ("low" | "medium" | "high") | null;
             /** Description */
-            description?: string | null;
+            description: string | null;
             /** Count */
-            count?: number | null;
+            count: number | null;
         };
         /**
          * DnsApplyRequest
@@ -5031,7 +5790,7 @@ export interface components {
              * Applied
              * @default false
              */
-            applied?: boolean;
+            applied: boolean;
         };
         /** DnsPlanStep */
         DnsPlanStep: {
@@ -5047,9 +5806,9 @@ export interface components {
             /** Value */
             value: string;
             /** Ttl */
-            ttl?: number | null;
+            ttl: number | null;
             /** Previous */
-            previous?: string | null;
+            previous: string | null;
         };
         /** DnsRecord */
         DnsRecord: {
@@ -5063,9 +5822,9 @@ export interface components {
             /** Value */
             value: string;
             /** Ttl */
-            ttl?: number | null;
+            ttl: number | null;
             /** Status */
-            status?: ("ok" | "missing" | "mismatch" | "pending") | null;
+            status: ("ok" | "missing" | "mismatch" | "pending") | null;
         };
         /** DomainAvailability */
         DomainAvailability: {
@@ -5080,7 +5839,7 @@ export interface components {
             /** Renewal Price Micros */
             renewal_price_micros: number | null;
             /** Cost Kind */
-            cost_kind?: ("verified" | "estimated" | "unknown") | null;
+            cost_kind: ("verified" | "estimated" | "unknown") | null;
         };
         /** DomainPlan */
         DomainPlan: {
@@ -5150,9 +5909,9 @@ export interface components {
             /** Updated At */
             updated_at: string;
             /** Cost Kind */
-            cost_kind?: ("verified" | "estimated" | "unknown") | null;
+            cost_kind: ("verified" | "estimated" | "unknown") | null;
             /** Max Price Micros */
-            max_price_micros?: number | null;
+            max_price_micros: number | null;
         };
         /** DomainRegistrationCreate */
         DomainRegistrationCreate: components["schemas"]["DomainRegistrationCreateRegistry"] | components["schemas"]["DomainRegistrationCreateFree"] | components["schemas"]["DomainRegistrationCreatePaid"];
@@ -5223,7 +5982,7 @@ export interface components {
             /** Warnings */
             warnings: string[];
             /** Target */
-            target?: string | null;
+            target: string | null;
         };
         /** DomainRegistrationPreviewRequest */
         DomainRegistrationPreviewRequest: {
@@ -5263,7 +6022,7 @@ export interface components {
              * Warnings
              * @default []
              */
-            warnings?: string[];
+            warnings: string[];
         };
         /** DomainSummary */
         DomainSummary: {
@@ -5380,7 +6139,7 @@ export interface components {
             /** Message */
             message: string;
             /** Run Id */
-            run_id?: string | null;
+            run_id: string | null;
         } & {
             [key: string]: unknown;
         };
@@ -5404,6 +6163,28 @@ export interface components {
             escalated_to_name: string;
             /** Wake Status */
             wake_status: string;
+        };
+        /** EvidenceIn */
+        EvidenceIn: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "task" | "artifact" | "run" | "project" | "agent" | "goal";
+            /** Id */
+            id: string;
+        };
+        /** EvidenceRef */
+        EvidenceRef: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "task" | "artifact" | "run" | "project" | "agent" | "goal";
+            /** Id */
+            id: string;
+            /** Label */
+            label: string | null;
         };
         /** ExternalExpense */
         ExternalExpense: {
@@ -5430,9 +6211,9 @@ export interface components {
              */
             incurred_on: string;
             /** Created By Type */
-            created_by_type?: ("human" | "agent" | "system") | null;
+            created_by_type: ("human" | "agent" | "system") | null;
             /** Created By Id */
-            created_by_id?: string | null;
+            created_by_id: string | null;
             /** Created At */
             created_at: string;
         };
@@ -5634,12 +6415,12 @@ export interface components {
             created_at: string;
             /** Updated At */
             updated_at: string;
-            last_reply?: components["schemas"]["NoteReply"] | null;
+            last_reply: components["schemas"]["NoteReply"] | null;
             /**
              * Reply Count
              * @default 0
              */
-            reply_count?: number;
+            reply_count: number;
         };
         /** FreeDomainProvider */
         FreeDomainProvider: {
@@ -5795,9 +6576,9 @@ export interface components {
                 [key: string]: unknown;
             };
             /** Created By Type */
-            created_by_type?: ("human" | "agent" | "system") | null;
+            created_by_type: ("human" | "agent" | "system") | null;
             /** Created By Id */
-            created_by_id?: string | null;
+            created_by_id: string | null;
             /** Created At */
             created_at: string;
             /** Updated At */
@@ -5970,7 +6751,7 @@ export interface components {
             /** Error */
             error: string | null;
             /** Approval Id */
-            approval_id?: string | null;
+            approval_id: string | null;
         };
         /** InjectionFlag */
         InjectionFlag: {
@@ -6008,7 +6789,7 @@ export interface components {
             /** Created At */
             created_at: string;
             /** Accepted At */
-            accepted_at?: string | null;
+            accepted_at: string | null;
         };
         /**
          * InvitationAccept
@@ -6027,11 +6808,11 @@ export interface components {
             /** Company Id */
             company_id: string;
             /** Company Name */
-            company_name?: string | null;
+            company_name: string | null;
             /** Role */
-            role?: ("owner" | "admin" | "member" | "viewer") | null;
+            role: ("owner" | "admin" | "member" | "viewer") | null;
             /** Member Id */
-            member_id?: string | null;
+            member_id: string | null;
         };
         /** InvitationCreate */
         InvitationCreate: {
@@ -6077,18 +6858,18 @@ export interface components {
             /** Created At */
             created_at: string;
             /** Accepted At */
-            accepted_at?: string | null;
+            accepted_at: string | null;
             /**
              * Delivery
              * @enum {string}
              */
             delivery: "email" | "link";
             /** Invite Url */
-            invite_url?: string | null;
+            invite_url: string | null;
             /** Token */
-            token?: string | null;
+            token: string | null;
             /** Delivery Note */
-            delivery_note?: string | null;
+            delivery_note: string | null;
         };
         /** LanAddress */
         LanAddress: {
@@ -6123,17 +6904,17 @@ export interface components {
              * Requested
              * @default false
              */
-            requested?: boolean;
+            requested: boolean;
             /**
              * Bind Host
              * @default 127.0.0.1
              */
-            bind_host?: string;
+            bind_host: string;
             /**
              * Restart Required
              * @default false
              */
-            restart_required?: boolean;
+            restart_required: boolean;
         };
         /** LifecycleAction */
         LifecycleAction: {
@@ -6198,7 +6979,7 @@ export interface components {
             /** Created At */
             created_at: string;
             /** Error */
-            error?: string | null;
+            error: string | null;
         };
         /** MailboxCreate */
         MailboxCreate: {
@@ -6328,7 +7109,7 @@ export interface components {
             /** Tags */
             tags: string[];
             /** Applies To */
-            applies_to?: string[];
+            applies_to: string[];
             /** Proposed By Type */
             proposed_by_type: ("human" | "agent" | "system") | null;
             /** Proposed By Id */
@@ -6340,9 +7121,9 @@ export interface components {
             /** Verified At */
             verified_at: string | null;
             /** Rejection Reason */
-            rejection_reason?: string | null;
+            rejection_reason: string | null;
             /** Superseded By Id */
-            superseded_by_id?: string | null;
+            superseded_by_id: string | null;
             /** Created At */
             created_at: string;
             /** Updated At */
@@ -6355,9 +7136,9 @@ export interface components {
             /** Id */
             id: string | null;
             /** Task Id */
-            task_id?: string | null;
+            task_id: string | null;
             /** Label */
-            label?: string | null;
+            label: string | null;
         };
         /** ModelProvider */
         ModelProvider: {
@@ -6393,7 +7174,7 @@ export interface components {
              * Is Company Default
              * @default false
              */
-            is_company_default?: boolean;
+            is_company_default: boolean;
             /** Created At */
             created_at: string;
             /** Updated At */
@@ -6464,7 +7245,7 @@ export interface components {
             /** Ref Id */
             ref_id: string;
             /** Label */
-            label?: string | null;
+            label: string | null;
         };
         /** NoteActionIn */
         NoteActionIn: {
@@ -6509,12 +7290,12 @@ export interface components {
             created_at: string;
             /** Updated At */
             updated_at: string;
-            last_reply?: components["schemas"]["NoteReply"] | null;
+            last_reply: components["schemas"]["NoteReply"] | null;
             /**
              * Reply Count
              * @default 0
              */
-            reply_count?: number;
+            reply_count: number;
             /** Replies */
             replies: components["schemas"]["NoteReply"][];
         };
@@ -6606,7 +7387,7 @@ export interface components {
             /** Unread Count */
             unread_count: number;
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /**
          * NotificationPreferences
@@ -6677,252 +7458,273 @@ export interface components {
             /** Items */
             items: components["schemas"]["AgentNote"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** Page[AgentSkill] */
         Page_AgentSkill_: {
             /** Items */
             items: components["schemas"]["AgentSkill"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** Page[Agent] */
         Page_Agent_: {
             /** Items */
             items: components["schemas"]["Agent"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** Page[Alert] */
         Page_Alert_: {
             /** Items */
             items: components["schemas"]["Alert"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** Page[ApiToken] */
         Page_ApiToken_: {
             /** Items */
             items: components["schemas"]["ApiToken"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** Page[Approval] */
         Page_Approval_: {
             /** Items */
             items: components["schemas"]["Approval"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** Page[Artifact] */
         Page_Artifact_: {
             /** Items */
             items: components["schemas"]["Artifact"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** Page[AuditEvent] */
         Page_AuditEvent_: {
             /** Items */
             items: components["schemas"]["AuditEvent"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** Page[CatalogItem] */
         Page_CatalogItem_: {
             /** Items */
             items: components["schemas"]["CatalogItem"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** Page[Colleague] */
         Page_Colleague_: {
             /** Items */
             items: components["schemas"]["Colleague"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
+        };
+        /** Page[CommandExchange] */
+        Page_CommandExchange_: {
+            /** Items */
+            items: components["schemas"]["CommandExchange"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** Page[CompanyStandard] */
+        Page_CompanyStandard_: {
+            /** Items */
+            items: components["schemas"]["CompanyStandard"][];
+            /** Next Cursor */
+            next_cursor: string | null;
         };
         /** Page[Company] */
         Page_Company_: {
             /** Items */
             items: components["schemas"]["Company"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** Page[ConnectedAccount] */
         Page_ConnectedAccount_: {
             /** Items */
             items: components["schemas"]["ConnectedAccount"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** Page[Credential] */
         Page_Credential_: {
             /** Items */
             items: components["schemas"]["Credential"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** Page[Decision] */
         Page_Decision_: {
             /** Items */
             items: components["schemas"]["Decision"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** Page[Department] */
         Page_Department_: {
             /** Items */
             items: components["schemas"]["Department"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** Page[DomainAvailability] */
         Page_DomainAvailability_: {
             /** Items */
             items: components["schemas"]["DomainAvailability"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** Page[DomainRegistry] */
         Page_DomainRegistry_: {
             /** Items */
             items: components["schemas"]["DomainRegistry"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** Page[ExternalExpense] */
         Page_ExternalExpense_: {
             /** Items */
             items: components["schemas"]["ExternalExpense"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** Page[FinanceRun] */
         Page_FinanceRun_: {
             /** Items */
             items: components["schemas"]["FinanceRun"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** Page[FounderNote] */
         Page_FounderNote_: {
             /** Items */
             items: components["schemas"]["FounderNote"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** Page[FreeDomainProvider] */
         Page_FreeDomainProvider_: {
             /** Items */
             items: components["schemas"]["FreeDomainProvider"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** Page[Goal] */
         Page_Goal_: {
             /** Items */
             items: components["schemas"]["Goal"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** Page[GuardrailEvent] */
         Page_GuardrailEvent_: {
             /** Items */
             items: components["schemas"]["GuardrailEvent"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** Page[GuardrailRule] */
         Page_GuardrailRule_: {
             /** Items */
             items: components["schemas"]["GuardrailRule"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** Page[Invitation] */
         Page_Invitation_: {
             /** Items */
             items: components["schemas"]["Invitation"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** Page[Mailbox] */
         Page_Mailbox_: {
             /** Items */
             items: components["schemas"]["Mailbox"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** Page[Member] */
         Page_Member_: {
             /** Items */
             items: components["schemas"]["Member"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** Page[MemoryEntry] */
         Page_MemoryEntry_: {
             /** Items */
             items: components["schemas"]["MemoryEntry"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** Page[ModelProvider] */
         Page_ModelProvider_: {
             /** Items */
             items: components["schemas"]["ModelProvider"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** Page[Project] */
         Page_Project_: {
             /** Items */
             items: components["schemas"]["Project"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
+        };
+        /** Page[Reflection] */
+        Page_Reflection_: {
+            /** Items */
+            items: components["schemas"]["Reflection"][];
+            /** Next Cursor */
+            next_cursor: string | null;
         };
         /** Page[RoleTemplate] */
         Page_RoleTemplate_: {
             /** Items */
             items: components["schemas"]["RoleTemplate"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** Page[Schedule] */
         Page_Schedule_: {
             /** Items */
             items: components["schemas"]["Schedule"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** Page[SessionInfo] */
         Page_SessionInfo_: {
             /** Items */
             items: components["schemas"]["SessionInfo"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** Page[Skill] */
         Page_Skill_: {
             /** Items */
             items: components["schemas"]["Skill"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** Page[TaskRun] */
         Page_TaskRun_: {
             /** Items */
             items: components["schemas"]["TaskRun"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** Page[Task] */
         Page_Task_: {
             /** Items */
             items: components["schemas"]["Task"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** PasswordChange */
         PasswordChange: {
@@ -6982,39 +7784,39 @@ export interface components {
              * Auto Activate Hires
              * @default true
              */
-            auto_activate_hires?: boolean;
+            auto_activate_hires: boolean;
             /** Hire Default Monthly Budget Micros */
-            hire_default_monthly_budget_micros?: number | null;
+            hire_default_monthly_budget_micros: number | null;
             /**
              * Max Agent Monthly Budget Micros
              * @default 25000000
              */
-            max_agent_monthly_budget_micros?: number;
+            max_agent_monthly_budget_micros: number;
             /**
              * Max Planning Runs Per Hour
              * @default 6
              */
-            max_planning_runs_per_hour?: number;
+            max_planning_runs_per_hour: number;
             /**
              * Max Open Tasks
              * @default 200
              */
-            max_open_tasks?: number;
+            max_open_tasks: number;
             /**
              * Circuit Breaker Failures
              * @default 8
              */
-            circuit_breaker_failures?: number;
+            circuit_breaker_failures: number;
             /** Default Model Provider Id */
-            default_model_provider_id?: string | null;
+            default_model_provider_id: string | null;
             /** Default Model Name */
-            default_model_name?: string | null;
+            default_model_name: string | null;
             /**
              * Sandbox Backend
              * @default auto
              * @enum {string}
              */
-            sandbox_backend?: "auto" | "none" | "docker";
+            sandbox_backend: "auto" | "none" | "docker";
             /**
              * Budget Alert Thresholds
              * @default [
@@ -7023,50 +7825,57 @@ export interface components {
              *       100
              *     ]
              */
-            budget_alert_thresholds?: number[];
+            budget_alert_thresholds: number[];
             /**
              * Model Routing
              * @default free_first
              * @enum {string}
              */
-            model_routing?: "free_first" | "pinned" | "quality_first";
+            model_routing: "free_first" | "pinned" | "quality_first";
             /**
              * Allow Paid Fallback
              * @default true
              */
-            allow_paid_fallback?: boolean;
+            allow_paid_fallback: boolean;
             /**
              * Auto Spend Limit Micros
              * @default 0
              */
-            auto_spend_limit_micros?: number;
+            auto_spend_limit_micros: number;
             /**
              * Stall Seconds
              * @default 180
              */
-            stall_seconds?: number;
+            stall_seconds: number;
             /**
              * Max Tool Calls Per Run
              * @default 300
              */
-            max_tool_calls_per_run?: number;
+            max_tool_calls_per_run: number;
             /**
              * Max Artifacts Per Run
              * @default 50
              */
-            max_artifacts_per_run?: number;
+            max_artifacts_per_run: number;
             /**
              * Max Tokens Per Run
              * @default 3000000
              */
-            max_tokens_per_run?: number;
+            max_tokens_per_run: number;
             /**
              * Ai Disclosure Enabled
              * @default true
              */
-            ai_disclosure_enabled?: boolean;
+            ai_disclosure_enabled: boolean;
             /** Ai Disclosure Text */
-            ai_disclosure_text?: string | null;
+            ai_disclosure_text: string | null;
+            /**
+             * Work Mode
+             * @default api
+             */
+            work_mode: string;
+            /** Work Runtime */
+            work_runtime: string | null;
             /** Created At */
             created_at: string;
             /** Updated At */
@@ -7287,6 +8096,28 @@ export interface components {
             /** Help */
             help: string;
         };
+        /** ProviderModel */
+        ProviderModel: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Context Length */
+            context_length: number | null;
+            /** Tool Calling */
+            tool_calling: boolean | null;
+        };
+        /** ProviderModelList */
+        ProviderModelList: {
+            /** Items */
+            items: components["schemas"]["ProviderModel"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+            /** Available */
+            available: boolean;
+            /** Detail */
+            detail: string | null;
+        };
         /** ProviderTest */
         ProviderTest: {
             /**
@@ -7299,20 +8130,56 @@ export interface components {
             /** Checked At */
             checked_at: string;
             /** Model Available */
-            model_available?: boolean | null;
+            model_available: boolean | null;
             /** Tool Calling */
-            tool_calling?: boolean | null;
+            tool_calling: boolean | null;
             /** Context Length Configured */
-            context_length_configured?: number | null;
+            context_length_configured: number | null;
             /** Context Length Served */
-            context_length_served?: number | null;
+            context_length_served: number | null;
             /**
              * Warnings
              * @default []
              */
-            warnings?: string[];
+            warnings: string[];
             /** Latency Ms */
-            latency_ms?: number | null;
+            latency_ms: number | null;
+            /**
+             * Ok
+             * @default false
+             */
+            ok: boolean;
+            /**
+             * Checks
+             * @default []
+             */
+            checks: components["schemas"]["ProviderTestCheck"][];
+            /** Served Context */
+            served_context: number | null;
+            /** Tested At */
+            tested_at: string | null;
+            /** Model */
+            model: string | null;
+        };
+        /** ProviderTestCheck */
+        ProviderTestCheck: {
+            /**
+             * Name
+             * @enum {string}
+             */
+            name: "reachable" | "auth" | "tool_calling" | "context" | "model_exists";
+            /** Ok */
+            ok: boolean;
+            /** Detail */
+            detail: string;
+        };
+        /**
+         * ProviderTestRequest
+         * @description Optional body of ``POST .../test``: test another model than the provider's default.
+         */
+        ProviderTestRequest: {
+            /** Model */
+            model?: string | null;
         };
         /** RateLimitList */
         RateLimitList: {
@@ -7358,15 +8225,138 @@ export interface components {
             /** Public Exposure Blocked Reason */
             public_exposure_blocked_reason: string | null;
             /** Public Exposure Blocked Code */
-            public_exposure_blocked_code?: string | null;
-            domain?: components["schemas"]["DomainSummary"] | null;
+            public_exposure_blocked_code: string | null;
+            domain: components["schemas"]["DomainSummary"] | null;
             /** Public Exposure Advice */
-            public_exposure_advice?: string | null;
+            public_exposure_advice: string | null;
             /**
              * Two Factor Enabled
              * @default false
              */
-            two_factor_enabled?: boolean;
+            two_factor_enabled: boolean;
+        };
+        /** Reflection */
+        Reflection: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string;
+            /** Author Agent Id */
+            author_agent_id: string;
+            /** Author Name */
+            author_name: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "observation" | "standard_proposal" | "retro" | "risk" | "praise";
+            /** Title */
+            title: string;
+            /** Body */
+            body: string;
+            /** Evidence */
+            evidence: components["schemas"]["EvidenceRef"][];
+            /** Proposed Standard */
+            proposed_standard: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "endorsed" | "revised" | "rejected" | "adopted" | "archived";
+            /** Standard Id */
+            standard_id: string | null;
+            /**
+             * Response Count
+             * @default 0
+             */
+            response_count: number;
+            last_response: components["schemas"]["ReflectionResponse"] | null;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /** ReflectionDetail */
+        ReflectionDetail: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string;
+            /** Author Agent Id */
+            author_agent_id: string;
+            /** Author Name */
+            author_name: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "observation" | "standard_proposal" | "retro" | "risk" | "praise";
+            /** Title */
+            title: string;
+            /** Body */
+            body: string;
+            /** Evidence */
+            evidence: components["schemas"]["EvidenceRef"][];
+            /** Proposed Standard */
+            proposed_standard: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "endorsed" | "revised" | "rejected" | "adopted" | "archived";
+            /** Standard Id */
+            standard_id: string | null;
+            /**
+             * Response Count
+             * @default 0
+             */
+            response_count: number;
+            last_response: components["schemas"]["ReflectionResponse"] | null;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+            /** Responses */
+            responses: components["schemas"]["ReflectionResponse"][];
+        };
+        /** ReflectionResponse */
+        ReflectionResponse: {
+            /** Id */
+            id: string;
+            /** Reflection Id */
+            reflection_id: string;
+            /**
+             * Author Type
+             * @enum {string}
+             */
+            author_type: "human" | "agent";
+            /** Author Id */
+            author_id: string | null;
+            /** Author Name */
+            author_name: string | null;
+            /**
+             * Reaction
+             * @enum {string}
+             */
+            reaction: "endorse" | "challenge" | "refine" | "comment";
+            /** Body */
+            body: string | null;
+            /** Created At */
+            created_at: string;
+            /** Reflection Status */
+            reflection_status: ("open" | "endorsed" | "revised" | "rejected" | "adopted" | "archived") | null;
+            /** Standard Id */
+            standard_id: string | null;
+        };
+        /** ReflectionResponseCreate */
+        ReflectionResponseCreate: {
+            /**
+             * Reaction
+             * @enum {string}
+             */
+            reaction: "endorse" | "challenge" | "refine" | "comment";
+            /** Body */
+            body?: string | null;
         };
         /** ReviewBody */
         ReviewBody: {
@@ -7409,11 +8399,11 @@ export interface components {
             /** Builtin */
             builtin: boolean;
             /** Id */
-            id?: string | null;
+            id: string | null;
             /** Created By Type */
-            created_by_type?: string | null;
+            created_by_type: string | null;
             /** Created By Id */
-            created_by_id?: string | null;
+            created_by_id: string | null;
         };
         /** RoleTemplateCreate */
         RoleTemplateCreate: {
@@ -7509,7 +8499,7 @@ export interface components {
             /** Items */
             items: components["schemas"]["RunEvent"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** RuntimeHealthOut */
         RuntimeHealthOut: {
@@ -7928,14 +8918,14 @@ export interface components {
             /** Status */
             status: string;
             /** Manager Agent Id */
-            manager_agent_id?: string | null;
+            manager_agent_id: string | null;
             /**
              * Open Tasks
              * @default 0
              */
-            open_tasks?: number;
+            open_tasks: number;
             /** Skills */
-            skills?: string[];
+            skills: string[];
         };
         /** StateApproval */
         StateApproval: {
@@ -7980,9 +8970,9 @@ export interface components {
             /** Priority */
             priority: string;
             /** Description */
-            description?: string | null;
+            description: string | null;
             /** Owner Agent Id */
-            owner_agent_id?: string | null;
+            owner_agent_id: string | null;
         };
         /** StateMemory */
         StateMemory: {
@@ -8000,7 +8990,7 @@ export interface components {
             /** Unprocessed */
             unprocessed: number;
             /** Items */
-            items?: components["schemas"]["AgentNote"][];
+            items: components["schemas"]["AgentNote"][];
         };
         /** StateProject */
         StateProject: {
@@ -8015,26 +9005,26 @@ export interface components {
             /** Lead Agent Id */
             lead_agent_id: string | null;
             /** Lead Name */
-            lead_name?: string | null;
+            lead_name: string | null;
             /** Budget Micros */
-            budget_micros?: number | null;
+            budget_micros: number | null;
             /** Description */
-            description?: string | null;
+            description: string | null;
             /**
              * Tasks Total
              * @default 0
              */
-            tasks_total?: number;
+            tasks_total: number;
             /**
              * Tasks Done
              * @default 0
              */
-            tasks_done?: number;
+            tasks_done: number;
             /**
              * Tasks Open
              * @default 0
              */
-            tasks_open?: number;
+            tasks_open: number;
         };
         /** StateSchedule */
         StateSchedule: {
@@ -8053,6 +9043,15 @@ export interface components {
             /** Next Run At */
             next_run_at: string | null;
         };
+        /** StateStandard */
+        StateStandard: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+            /** Statement */
+            statement: string;
+        };
         /** StateTask */
         StateTask: {
             /** Id */
@@ -8068,17 +9067,17 @@ export interface components {
             /** Assignee Agent Id */
             assignee_agent_id: string | null;
             /** Assignee Name */
-            assignee_name?: string | null;
+            assignee_name: string | null;
             /** Project Id */
-            project_id?: string | null;
+            project_id: string | null;
             /** Parent Task Id */
-            parent_task_id?: string | null;
+            parent_task_id: string | null;
             /** Blocked Reason */
-            blocked_reason?: string | null;
+            blocked_reason: string | null;
             /** Error */
-            error?: string | null;
+            error: string | null;
             /** Result Summary */
-            result_summary?: string | null;
+            result_summary: string | null;
         };
         /** SystemStatus */
         SystemStatus: {
@@ -8122,9 +9121,9 @@ export interface components {
             /** Reviewer Agent Id */
             reviewer_agent_id: string | null;
             /** Assignee Ref */
-            assignee_ref?: string | null;
+            assignee_ref: string | null;
             /** Reviewer Ref */
-            reviewer_ref?: string | null;
+            reviewer_ref: string | null;
             /** Required Skills */
             required_skills: string[];
             /** Budget Micros */
@@ -8151,7 +9150,7 @@ export interface components {
             /** Review Note */
             review_note: string | null;
             /** Blocked Reason */
-            blocked_reason?: string | null;
+            blocked_reason: string | null;
             /**
              * Created By Type
              * @enum {string}
@@ -8164,7 +9163,7 @@ export interface components {
             /** Idempotency Key */
             idempotency_key: string | null;
             /** Depends On */
-            depends_on?: string[];
+            depends_on: string[];
             /** Created At */
             created_at: string;
             /** Updated At */
@@ -8278,11 +9277,11 @@ export interface components {
             /** Activity At */
             activity_at: string | null;
             /** Routing Reason */
-            routing_reason?: string | null;
+            routing_reason: string | null;
             /** Model Provider Id */
-            model_provider_id?: string | null;
+            model_provider_id: string | null;
             /** Model Used */
-            model_used?: string | null;
+            model_used: string | null;
             /** Created At */
             created_at: string;
             /** Updated At */
@@ -8423,12 +9422,12 @@ export interface components {
             /** Sha256 */
             sha256: string;
             /** Size Bytes */
-            size_bytes?: number | null;
+            size_bytes: number | null;
             /**
              * Checksum Sources
              * @default []
              */
-            checksum_sources?: string[];
+            checksum_sources: string[];
         };
         /** TunnelInstallRequest */
         TunnelInstallRequest: {
@@ -8513,7 +9512,7 @@ export interface components {
             /** Enabled */
             enabled: boolean;
             /** Recovery Codes */
-            recovery_codes?: string[] | null;
+            recovery_codes: string[] | null;
         };
         /** UpcomingSchedule */
         UpcomingSchedule: {
@@ -10972,7 +11971,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ProviderTestRequest"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -10981,6 +11984,629 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ModelProvider"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_provider_models_api_companies__company_id__model_providers__provider_id__models_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderModelList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ai_setup_api_companies__company_id__ai_setup_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiSetupStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_ai_setup_api_companies__company_id__ai_setup_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AiSetupUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiSetupStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_clis_api_cli_runtimes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CliRuntimeList"];
+                };
+            };
+        };
+    };
+    get_cli_api_cli_runtimes__cli_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cli_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CliRuntimeStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    install_api_cli_runtimes__cli_id__install_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cli_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CliInstallRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CliInstallLog"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_install_log_api_cli_runtimes__cli_id__install_log_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cli_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CliInstallLog"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_auth_api_cli_runtimes__cli_id__auth_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cli_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CliAuthUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CliRuntimeStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_cli_api_cli_runtimes__cli_id__test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cli_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CliRuntimeStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_reflections_api_companies__company_id__reflections_get: {
+        parameters: {
+            query?: {
+                status?: ("open" | "endorsed" | "revised" | "rejected" | "adopted" | "archived") | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_Reflection_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_reflection_api_companies__company_id__reflections__reflection_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reflection_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReflectionDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    respond_api_companies__company_id__reflections__reflection_id__responses_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reflection_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReflectionResponseCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReflectionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_api_companies__company_id__reflections__reflection_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reflection_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReflectionDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_standards_api_companies__company_id__standards_get: {
+        parameters: {
+            query?: {
+                status?: ("active" | "retired") | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_CompanyStandard_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_standard_api_companies__company_id__standards_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompanyStandardCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyStandard"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_standard_api_companies__company_id__standards__standard_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                standard_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompanyStandardUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyStandard"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_command_api_companies__company_id__command_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommandRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommandExchange"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    feed_api_companies__company_id__command_center_feed_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_CommandExchange_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_api_companies__company_id__command_center__exchange_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exchange_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommandExchange"];
                 };
             };
             /** @description Validation Error */
@@ -15884,6 +17510,109 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProviderActionResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_reflection_api_agent_v1_reflections_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentReflectionPost"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Reflection"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reply_reflection_api_agent_v1_reflections__reflection_id__replies_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reflection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentReflectionReply"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReflectionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revise_reflection_api_agent_v1_reflections__reflection_id__revise_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reflection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentReflectionRevise"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Reflection"];
                 };
             };
             /** @description Validation Error */

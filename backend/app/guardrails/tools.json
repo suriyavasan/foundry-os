@@ -64,6 +64,9 @@
     "company_escalate": {"action": "escalation.create"},
     "company_request_help": {"action": "help.request"},
     "company_propose_memory": {"action": "memory.propose"},
-    "company_verify_memory": {"action": "memory.verify"}
+    "company_verify_memory": {"action": "memory.verify"},
+    "company_post_reflection": {"action": "reflection.post"},
+    "company_reply_reflection": {"action": "reflection.reply"},
+    "company_revise_reflection": {"action": "reflection.revise"}
   }
 }

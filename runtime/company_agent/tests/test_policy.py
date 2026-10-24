@@ -204,6 +204,18 @@ def test_prompts_carry_identity_task_and_safety_rules(raw):
         assert secret not in both
 
 
+def test_company_standards_are_in_every_roles_identity_prompt(raw):
+    raw["company"]["standards"] = ["Review first: every launch gets a second review.", "  "]
+    ident = build_identity_prompt(parse_spec(raw))
+    assert "Company standards" in ident and "every launch gets a second review" in ident
+    raw["agent"]["kind"] = "founder"
+    raw["agent"]["role"] = "founder"
+    assert "every launch gets a second review" in build_identity_prompt(parse_spec(raw))
+    assert "company_post_reflection" in build_identity_prompt(parse_spec(raw))
+    raw["company"]["standards"] = []
+    assert "Company standards" not in build_identity_prompt(parse_spec(raw))
+
+
 def test_long_fields_are_clipped(raw):
     raw["task"]["description"] = "d" * 50_000
     assert len(build_task_prompt(parse_spec(raw))) < 6000

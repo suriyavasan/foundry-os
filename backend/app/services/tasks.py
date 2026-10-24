@@ -254,12 +254,16 @@ def recompute_readiness(
         else set()
     )
     unfinished = _unfinished_dependency_counts(db, [t.id for t in candidates])
+    from app.services import ai_setup  # local: ai_setup -> tasks
+
+    ai_ready = ai_setup.is_ready(db, company_id)
     waiting = [t.id for t in candidates if t.blocked_reason == WAITING_ON_SUBTASKS]
     open_children = _open_child_counts(db, waiting)
     changed: list[Task] = []
     for task in candidates:
         ok = (
             company_status == CompanyStatus.ACTIVE
+            and ai_ready
             and (
                 task.assignee_agent_id in active_agents
                 or (
@@ -278,6 +282,11 @@ def recompute_readiness(
         elif not ok and current == S.READY:
             transition(db, task, S.BACKLOG, principal=principal, now=now)
             changed.append(task)
+        if not ai_ready and TaskStatus(task.status) == S.BACKLOG and task.blocked_reason is None:
+            # Parked behind the AI readiness gate (M10); released once a model works.
+            task.blocked_reason = ai_setup.AI_SETUP_REQUIRED
+        elif ai_ready and task.blocked_reason == ai_setup.AI_SETUP_REQUIRED:
+            task.blocked_reason = None
     return changed
 
 
@@ -1045,6 +1054,9 @@ def _create_task_core(
 def create_task(db: Session, ctx: CompanyContext, data: TaskCreate) -> tuple[Task, bool]:
     """Human-created task. Returns (task, created); created=False for an idempotent replay."""
     _require_writer(ctx, "create tasks")
+    from app.services import ai_setup  # local: ai_setup -> tasks
+
+    ai_setup.require_ready(db, ctx.company_id)
     task, created = _create_task_core(db, ctx.company_id, ctx.principal, data, run=None)
     db.commit()
     return task, created

@@ -2,7 +2,8 @@
 Schedule/ScheduleFire machinery. Created with the company (and by migration 0005 for older ones):
 
 * AI Co-founder: ``heartbeat`` (30 min), ``daily-standup`` (09:00), ``weekly-strategy-review``
-  (Mon 09:30), ``daily-budget-review`` (18:00), all in the company timezone;
+  (Mon 09:30), ``daily-budget-review`` (18:00), ``daily-reflection`` (20:00, M10), all in the company
+  timezone;
 * HR: ``skills-review`` (monthly);
 * a project lead: ``project-health-check`` every 6 h, one schedule per project that has a lead;
 * operations: ``failed-run-triage`` (daily), only once an operations agent exists.
@@ -97,6 +98,24 @@ COFOUNDER_SCHEDULES: list[dict[str, Any]] = [
     },
 ]
 
+DAILY_REFLECTION: dict[str, Any] = {
+    "name": "daily-reflection",
+    "kind": ScheduleKind.ROUTINE.value,
+    "interval_seconds": None,
+    "cron": "0 20 * * *",
+    "template": {
+        "title": "Daily reflection",
+        "description": STATE_HINT
+        + "Look back over the day: finished and failed work, revisions, blockers, spend. If you "
+        "noticed something the Founder should know, post ONE reflection with company_post_reflection "
+        "(kind observation, retro, risk or praise; kind standard_proposal with proposed_standard when "
+        "a rule should bind the whole company; evidence = real task/run/project ids from the state). "
+        "If nothing is noteworthy, post nothing. Answer Founder reactions listed in the state with "
+        "company_reply_reflection or company_revise_reflection. Then complete this task.",
+        "skip_when_idle": True,
+    },
+}
+
 HR_SCHEDULE: dict[str, Any] = {
     "name": "skills-review",
     "kind": ScheduleKind.ROUTINE.value,
@@ -110,6 +129,8 @@ HR_SCHEDULE: dict[str, Any] = {
         "skip_when_idle": True,
     },
 }
+
+COFOUNDER_SCHEDULES.append(DAILY_REFLECTION)
 
 OPS_SCHEDULE: dict[str, Any] = {
     "name": "failed-run-triage",

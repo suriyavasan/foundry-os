@@ -48,6 +48,16 @@ def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _ai_gate(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The AI readiness gate (M10) is off for the general suite (most tests build companies without a
+    model provider); tests marked ``ai_gate`` run with it enforced exactly as in production."""
+    if request.node.get_closest_marker("ai_gate") is None:
+        from app.services import ai_setup
+
+        monkeypatch.setattr(ai_setup, "ENFORCED", False)
+
+
+@pytest.fixture(autouse=True)
 def _close_browsers() -> Iterator[None]:
     from tests import accounts_helpers
 
@@ -102,11 +112,14 @@ def app(
     scripted: ScriptedRuntime,
     skills_env_override: SkillsEnv | None,
 ) -> FastAPI:
-    return create_app(
+    application = create_app(
         make_settings(),
         runtime_registry=RuntimeRegistry([scripted]),
         skills_env=skills_env_override,
     )
+    # Coding CLIs on the developer's machine must never matter to a test: only dirs a test adds.
+    application.state.cli_env.use_system_path = False
+    return application
 
 
 @pytest.fixture

@@ -124,6 +124,12 @@ class CompanyPolicy(Base):
         Boolean, default=True, server_default=true(), nullable=False
     )
     ai_disclosure_text: Mapped[str | None] = mapped_column(String(500))
+    # M10 work mode: ``api`` (every agent on the company agent runtime with API providers) or
+    # ``hybrid`` (management on the API, ``kind=work`` tasks of other agents on ``work_runtime``).
+    work_mode: Mapped[str] = mapped_column(
+        String(16), default="api", server_default="api", nullable=False
+    )
+    work_runtime: Mapped[str | None] = mapped_column(String(32))
     budget_lock_version: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)

@@ -51,7 +51,9 @@ def test_overview_aggregates_reflect_real_work(client, company, scheduler, worke
     assert ov["founder"]["live"]["state"] in ("idle", "working")
 
 
-BUILTIN_SCHEDULES = 5  # Co-founder heartbeat + 3 routines, HR skills review
+BUILTIN_SCHEDULES = (
+    6  # Co-founder heartbeat + 4 routines (incl. daily reflection), HR skills review
+)
 
 
 def test_overview_approvals_artifacts_routines(app, client, company):

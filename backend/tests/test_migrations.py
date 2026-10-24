@@ -357,6 +357,7 @@ def test_0005_backfills_budget_defaults_and_builtin_schedules(tmp_path):
             "daily-budget-review",
             "skills-review",
             "project-health-check: Site",
+            "daily-reflection",  # added to every existing AI Co-founder by migration 0009 (M10)
         }
         assert by_name["heartbeat"][1:4] == ("heartbeat", ids["founder"], 1800)
         assert by_name["daily-standup"][4] == "0 9 * * *"

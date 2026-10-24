@@ -28,7 +28,19 @@ from app.models.enums import (
 )
 from app.models.run import TaskRun
 from app.models.work import Task
-from app.services import emergency, hiring, jobs, ledger, policy, routing, runs, tasks, wakes
+from app.services import (
+    ai_setup,
+    cli_runtimes,
+    emergency,
+    hiring,
+    jobs,
+    ledger,
+    policy,
+    routing,
+    runs,
+    tasks,
+    wakes,
+)
 
 PRIORITY_RANK = case(
     (Task.priority == "urgent", 3),
@@ -101,7 +113,10 @@ def _dispatch_company(
         hiring.resolve_project_leads(db, company_id, now=now)
         wakes.nudge_goals_without_projects(db, company_id, now=now)
         tasks.recompute_readiness(db, company_id, now=now)
+        ready = ai_setup.is_ready(db, company_id)
         db.commit()
+    if not ready:  # no working AI model: tasks wait (blocked_reason=ai_setup_required)
+        return
 
     skipped: set[str] = set()
     while _dispatch_one(ctx, company_id, now, report, skipped):
@@ -120,6 +135,9 @@ def _dispatch_one(
         ledger.acquire_budget_lock(db, company_id)  # first statement of the transaction
         company = db.get(Company, company_id)
         if company is None or company.status != CompanyStatus.ACTIVE or emergency.is_active(db):
+            db.rollback()
+            return False
+        if not ai_setup.is_ready(db, company_id):
             db.rollback()
             return False
         limits = policy.load_policy(db, company_id)
@@ -176,7 +194,8 @@ def _dispatch_one(
                 db.commit()
                 report.policy_blocked_task_ids.append(task.id)
                 return True
-            if not ctx.health.usable(assignee.runtime):
+            runtime_id, runtime_reason = routing.choose_runtime(db, assignee, task, limits)
+            if not ctx.health.usable(runtime_id):
                 skipped.add(task.id)
                 report.waiting_for_runtime += 1
                 continue
@@ -186,7 +205,9 @@ def _dispatch_one(
             db.rollback()
             return False
 
-        route = routing.choose(db, agent, limits)
+        route = routing.choose(db, agent, limits, runtime_id)
+        if runtime_id.startswith(routing.CLI_PREFIX) and cli_runtimes.runs_free(db, runtime_id):
+            route = routing.Route(reason=route.reason, free=True)  # a local model: nothing to hold
         if route.needs_paid_approval:
             gate = _paid_model_gate(db, agent, candidate, route, limits, now)
             if gate is not None:
@@ -247,7 +268,16 @@ def _dispatch_one(
             report.budget_blocked_task_ids.append(candidate.id)
             return True
 
-        run = runs.create_queued_run(db, candidate, agent, reservation, now=now, route=route)
+        run = runs.create_queued_run(
+            db,
+            candidate,
+            agent,
+            reservation,
+            now=now,
+            route=route,
+            runtime=runtime_id,
+            runtime_reason=runtime_reason,
+        )
         jobs.enqueue(
             db,
             kind="execute_run",

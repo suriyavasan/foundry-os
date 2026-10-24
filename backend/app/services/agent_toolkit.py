@@ -84,6 +84,10 @@ FOUNDER_TOOLS = (
     "company_verify_memory",
     "company_propose_memory",
     "company_submit_artifact",
+    # M10: reflections for the Founder (only people adopt a standard)
+    "company_post_reflection",
+    "company_reply_reflection",
+    "company_revise_reflection",
 )
 HR_TOOLS = (
     "company_get_context",

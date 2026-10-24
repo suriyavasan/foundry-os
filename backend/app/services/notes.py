@@ -157,9 +157,19 @@ def _no_agents(ctx: CompanyContext) -> None:
 # ---------------------------------------------------------------- owner API
 
 
-def create_note(db: Session, ctx: CompanyContext, data: NoteCreate) -> FounderNote:
+def create_note(
+    db: Session,
+    ctx: CompanyContext,
+    data: NoteCreate,
+    *,
+    delay_seconds: int = wakes.NOTE_DEBOUNCE_SECONDS,
+    trigger: str = "note",
+) -> FounderNote:
+    from app.services import ai_setup, command_center
+
     _no_agents(ctx)
     require_human_admin(ctx, "write notes")
+    ai_setup.require_ready(db, ctx.company_id)
     _check_attachments(db, ctx.company_id, data.attachments)
     note = FounderNote(
         company_id=ctx.company_id,
@@ -182,14 +192,16 @@ def create_note(db: Session, ctx: CompanyContext, data: NoteCreate) -> FounderNo
         data={"chars": len(note.body)},  # never the text: it can be long and personal
     )
     _emit(db, note, "note.created")
+    command_center.register_note(db, note)
     wakes.wake_founder(
         db,
         ctx.company_id,
-        "note",
-        f'New Founder\'s note: "{_preview(note.body)}" - call company_list_notes and triage it.',
+        trigger,
+        f'New Founder\'s note: "{_preview(note.body)}" - call company_list_notes, reply to it with '
+        "company_reply_to_note and triage it.",
         ref_type="note",
         ref_id=note.id,
-        delay_seconds=wakes.NOTE_DEBOUNCE_SECONDS,
+        delay_seconds=delay_seconds,
     )
     db.commit()
     return note
@@ -252,6 +264,9 @@ def add_human_reply(db: Session, ctx: CompanyContext, note_id: str, body: str) -
     )
     _emit(db, note, "note.replied", reply_id=reply.id, author_type="human")
     if note.status == NoteStatus.NEW:
+        from app.services import command_center
+
+        command_center.on_note_reopened(db, note)
         wakes.wake_founder(
             db,
             ctx.company_id,
@@ -294,6 +309,9 @@ def update_note(db: Session, ctx: CompanyContext, note_id: str, data: NoteUpdate
         )
         _emit(db, note, "note.updated", changed=changed)
         if note.status == NoteStatus.NEW and "status" in changed:  # explicit re-open
+            from app.services import command_center
+
+            command_center.on_note_reopened(db, note)
             wakes.wake_founder(
                 db,
                 ctx.company_id,
@@ -501,6 +519,9 @@ def agent_triage(db: Session, rc: AgentRunContext, note_id: str, data: NoteTriag
     )
     if data.reply:
         _add_agent_reply(db, rc, note, data.reply)
+    from app.services import command_center
+
+    command_center.on_note_answered(db, note, rc.run.id)
     db.commit()
     return note
 
@@ -553,6 +574,9 @@ def agent_reply(db: Session, rc: AgentRunContext, note_id: str, body: str) -> No
     _require_cofounder(rc)
     note = _get(db, rc.ctx.company_id, note_id)
     reply = _add_agent_reply(db, rc, note, body)
+    from app.services import command_center
+
+    command_center.on_note_answered(db, note, rc.run.id)
     db.commit()
     return reply
 

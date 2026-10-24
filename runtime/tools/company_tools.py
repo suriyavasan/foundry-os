@@ -24,6 +24,9 @@ Guardrails (M6, docs/specs/m6-guardrails-and-governance.md):
     company_provider_action (ask the control plane to act with a stored credential -- the agent never
     sees the credential; outbound content is scanned, peer reviewed and rate limited server side)
 
+Reflections (M10, docs/specs/m10-ai-setup-cli-reflections.md section 4; AI Co-founder only on the server):
+    company_post_reflection, company_reply_reflection, company_revise_reflection
+
 Which of these a given employee sees is decided by the control plane (spec ``company_tools``
 subset, derived from the role template); the server remains the authority on every call.
 
@@ -895,6 +898,77 @@ def company_verify_memory(args: dict[str, Any], **_: Any) -> str:
                  json=_clean({"reason": args.get("reason")}))
 
 
+REFLECTION_KINDS = ["observation", "standard_proposal", "retro", "risk", "praise"]
+EVIDENCE_TYPES = ["task", "artifact", "run", "project", "agent", "goal"]
+
+
+def _parse_evidence(value: Any) -> list[dict[str, str]]:
+    """Evidence as models send it: [{type, id}], a JSON string, or "task:<id>" strings."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        text = value.strip()
+        if text[:1] in "[{":
+            import ast
+
+            for parse in (json.loads, ast.literal_eval):
+                try:
+                    value = parse(text)
+                    break
+                except (ValueError, SyntaxError):
+                    continue
+        if isinstance(value, str):
+            value = [part for part in re.split(r"[,\n;]", text) if part.strip()]
+    if isinstance(value, dict):
+        value = [value] if "type" in value else [{"type": k, "id": v} for k, v in value.items()]
+    out: list[dict[str, str]] = []
+    for item in value if isinstance(value, list) else []:
+        if isinstance(item, dict):
+            typ = str(item.get("type") or "").strip().lower()
+            ref = str(item.get("id") or item.get("ref_id") or "").strip()
+        else:
+            text = str(item)
+            match = _UUID_RE.search(text)
+            ref = match.group(0) if match else ""
+            typ = text.replace(ref, "").strip(" :=-#()[]").lower() if ref else ""
+        if typ in EVIDENCE_TYPES and ref:
+            out.append({"type": typ, "id": ref})
+    return out[:12]
+
+
+def company_post_reflection(args: dict[str, Any], **_: Any) -> str:
+    if (bad := _need(args, "kind", "title", "body")):
+        return bad
+    kind = str(args["kind"]).strip().lower()
+    if kind not in REFLECTION_KINDS:
+        return _err("invalid_arguments", f"kind must be one of: {', '.join(REFLECTION_KINDS)}")
+    return _call("POST", "/reflections", json=_clean({
+        "kind": kind, "title": str(args["title"]).strip()[:200], "body": str(args["body"]).strip()[:6000],
+        "evidence": _parse_evidence(args.get("evidence")),
+        "proposed_standard": (str(args["proposed_standard"]).strip()[:500]
+                              if args.get("proposed_standard") else None)}))
+
+
+def company_reply_reflection(args: dict[str, Any], **_: Any) -> str:
+    if (bad := _need(args, "reflection_id", "body")):
+        return bad
+    return _call("POST", f"/reflections/{str(args['reflection_id']).strip()}/replies",
+                 json={"body": str(args["body"]).strip()[:4000]})
+
+
+def company_revise_reflection(args: dict[str, Any], **_: Any) -> str:
+    if (bad := _need(args, "reflection_id")):
+        return bad
+    body = _clean({
+        "body": str(args["body"]).strip()[:6000] if args.get("body") else None,
+        "title": str(args["title"]).strip()[:200] if args.get("title") else None,
+        "proposed_standard": str(args["proposed_standard"]).strip()[:500] if args.get("proposed_standard") else None,
+        "note": str(args["note"]).strip()[:2000] if args.get("note") else None})
+    if not any(k in body for k in ("body", "title", "proposed_standard")):
+        return _err("invalid_arguments", "Give at least one of: body, title, proposed_standard")
+    return _call("POST", f"/reflections/{str(args['reflection_id']).strip()}/revise", json=body)
+
+
 # --------------------------------------------------------------------------- schemas
 # Kept deliberately terse: small local models degrade with long tool descriptions.
 
@@ -1205,6 +1279,38 @@ _TOOLS: dict[str, tuple[dict[str, Any], Callable[..., str], str]] = {
                                 "description": "Lessons: role families / agent ids it applies to (empty = everyone)"}},
                 ["kind", "body"]),
         company_propose_memory, "🧠"),
+    "company_post_reflection": (
+        _schema("company_post_reflection",
+                "AI Co-founder: post ONE reflection for the Founder (something noticed that matters: a pattern, "
+                "risk, lesson or win). Use kind standard_proposal with proposed_standard (one clear rule, max 500 "
+                "characters) when a rule should bind the whole company; only the Founder can adopt it. Evidence = "
+                "real ids from the state. Never include secrets.",
+                {"kind": {"type": "string", "enum": REFLECTION_KINDS},
+                 "title": _str("Short title"),
+                 "body": _str("What you noticed and why it matters (markdown, concise)"),
+                 "evidence": {"type": "array", "items": {"type": "object", "properties": {
+                     "type": {"type": "string", "enum": EVIDENCE_TYPES}, "id": _S}},
+                     "description": "Records that show it: [{type, id}]"},
+                 "proposed_standard": _str("The rule, for kind standard_proposal only")},
+                ["kind", "title", "body"]),
+        company_post_reflection, "💭"),
+    "company_reply_reflection": (
+        _schema("company_reply_reflection",
+                "AI Co-founder: answer the Founder's reaction to one of your reflections (brief, direct).",
+                {"reflection_id": _str("Reflection id (from the state: reflections_to_answer)"),
+                 "body": _str("Your reply")},
+                ["reflection_id", "body"]),
+        company_reply_reflection, "↩️"),
+    "company_revise_reflection": (
+        _schema("company_revise_reflection",
+                "AI Co-founder: change your reflection (or its proposed standard) after the Founder challenged or "
+                "asked to refine it. The Founder must endorse the revised version before it becomes a standard.",
+                {"reflection_id": _str("Reflection id"),
+                 "body": _str("New text (optional)"), "title": _str("New title (optional)"),
+                 "proposed_standard": _str("New rule text (optional, standard proposals only)"),
+                 "note": _str("What you changed and why (shown to the Founder)")},
+                ["reflection_id"]),
+        company_revise_reflection, "✏️"),
     "company_verify_memory": (
         _schema("company_verify_memory",
                 "AI Co-founder: verify (or reject) a memory proposal from another agent. Only verified memory "

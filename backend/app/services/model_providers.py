@@ -349,11 +349,12 @@ def test_provider(
     provider_id: str,
     cipher: CredentialCipher,
     *,
+    model: str | None = None,
     transport: httpx.BaseTransport | None = None,
 ) -> ModelProvider:
     require_human_admin(ctx, "test model providers")
     row = _load(db, ctx.company_id, provider_id)
-    outcome = _run_test(db, row, cipher, transport)
+    outcome = _run_test(db, row, cipher, transport, model=model)
     row.last_test = outcome.as_dict()
     audit.record(
         db,
@@ -363,10 +364,40 @@ def test_provider(
         target_type="model_provider",
         target_id=row.id,
         summary=f"Tested model provider {row.name}: {outcome.status}",
-        data={"status": outcome.status, "warnings": len(outcome.warnings)},
+        data={
+            "status": outcome.status,
+            "ok": outcome.ok,
+            "model": outcome.model,
+            "failed_checks": [c.name for c in outcome.checks if not c.ok],
+            "warnings": len(outcome.warnings),
+        },
     )
+    events.emit(db, ctx.company_id, "model_provider.updated", {"provider_id": row.id})
     db.commit()
     return row
+
+
+def list_models(
+    db: Session,
+    ctx: CompanyContext,
+    provider_id: str,
+    cipher: CredentialCipher,
+    *,
+    transport: httpx.BaseTransport | None = None,
+) -> probe.ModelListing:
+    """The provider's own model list for a picker (``GET .../models``). Never echoes keys."""
+    require_human_admin(ctx, "list a provider's models")
+    row = _load(db, ctx.company_id, provider_id)
+    api_key = None
+    if row.credential_id:
+        try:
+            api_key = credentials.reveal(db, cipher, row.company_id, row.credential_id)
+        except Exception:
+            return probe.ModelListing(
+                [], False, "The provider's credential is missing or unreadable"
+            )
+    base = row.base_url or KINDS[row.kind][0] or ""
+    return probe.list_models(row.kind, base, api_key, transport=transport)
 
 
 def _run_test(
@@ -374,11 +405,12 @@ def _run_test(
     row: ModelProvider,
     cipher: CredentialCipher,
     transport: httpx.BaseTransport | None,
+    *,
+    model: str | None = None,
 ) -> probe.CheckOutcome:
+    model = model or row.default_model
     if row.kind == "ollama":
-        return probe.check_ollama(
-            row.base_url, row.default_model, row.context_length, transport=transport
-        )
+        return probe.check_ollama(row.base_url, model, row.context_length, transport=transport)
     api_key = None
     if row.credential_id:
         try:
@@ -392,7 +424,12 @@ def _run_test(
         return probe.CheckOutcome(status="error", message="No credential is attached")
     base = row.base_url or KINDS[row.kind][0] or ""
     return probe.check_http_provider(
-        row.kind, base, api_key, row.default_model, transport=transport
+        row.kind,
+        base,
+        api_key,
+        model,
+        configured_context=row.context_length,
+        transport=transport,
     )
 
 

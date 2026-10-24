@@ -242,3 +242,20 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
         logger.exception("Unhandled error on %s %s", request.method, request.url.path)
         return _error_response(500, "internal_error", "Internal server error")
+
+
+# ---- Milestone 10: AI setup
+class AiSetupRequired(Conflict):
+    """The company has no working AI yet: nothing that needs an AI may be created or run."""
+
+    code = "ai_setup_required"
+    default_message = (
+        "Connect a working AI model first: Company OS cannot run without one (Settings > AI)"
+    )
+
+
+class AiNotReady(Conflict):
+    """The chosen AI configuration did not pass its checks (``details.reason`` says why)."""
+
+    code = "ai_not_ready"
+    default_message = "That AI configuration is not ready"

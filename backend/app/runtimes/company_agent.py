@@ -64,6 +64,7 @@ from app.services import (
     model_providers,
     policy,
     reviews,
+    standards,
 )
 from app.services import memory as memory_service
 from app.services import skills as skills_service
@@ -125,6 +126,8 @@ RUNTIME_CONFIG_KEYS = {
     "max_iterations": "integer 1-500 (default 30)",
     "toolsets": "list: restrict the role's toolsets further",
     "company_tools": "list: restrict the role's company tools further",
+    # M10: stay on the company agent even when the company's work mode is "hybrid" (owner only)
+    "pin_runtime": "true: never route this agent's work tasks to a coding CLI",
 }
 
 
@@ -223,6 +226,8 @@ class CompanyAgentAdapter(RuntimeAdapter):
                 isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= 500
             ):
                 issues.append(ConfigIssue(key, "must be an integer between 1 and 500"))
+            elif key == "pin_runtime" and not isinstance(value, bool):
+                issues.append(ConfigIssue(key, "must be true or false"))
             elif key in ("toolsets", "company_tools") and not (
                 isinstance(value, list) and all(isinstance(v, str) for v in value)
             ):
@@ -398,6 +403,8 @@ class CompanyAgentAdapter(RuntimeAdapter):
                     "constraints": list(company.constraints or []),
                     # Verified company memory that applies to this agent.
                     "memory": memory_lines,
+                    # M10: standards the Founder set; they bind every agent's work.
+                    "standards": standards.context_lines(db, company.id, agent),
                 },
                 "agent": {
                     "id": agent.id,

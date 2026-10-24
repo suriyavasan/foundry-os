@@ -161,6 +161,12 @@ def test_a_new_note_while_a_wake_task_has_not_started_merges_into_it(
         assert "(also)" in db.get(Task, task.id).description
 
 
+def answer_new_notes(call) -> None:
+    """A founder that answers what it was woken for (an unanswered note is retried since M10)."""
+    for note in call.api.ok("GET", "/notes")["items"]:
+        call.api.ok("POST", f"/notes/{note['id']}/replies", json={"body": "noted"})
+
+
 def test_events_during_a_running_wake_create_one_follow_up(
     app, client, w, scheduler, worker, scripted, clock
 ):
@@ -175,6 +181,7 @@ def test_events_during_a_running_wake_create_one_follow_up(
             # the request is due but the wake task is running: it must wait
             wakes.materialize_due(app.state.session_factory, clock() + timedelta(seconds=90))
             assert len(wake_tasks(app, cid)) == 1 and pending_wakes(app) == 1
+        answer_new_notes(call)
         call.api.ok(
             "POST", f"/tasks/{call.request.task.id}/complete", json={"result_summary": "ok"}
         )
@@ -191,9 +198,14 @@ def test_events_during_a_running_wake_create_one_follow_up(
 def test_wake_rate_limit_per_hour(app, client, w, scheduler, worker, scripted, clock):
     cid = w.cid
     set_policy(client, cid, max_planning_runs_per_hour=2)
-    scripted.handlers["Atlas"] = lambda call: call.api.ok(
-        "POST", f"/tasks/{call.request.task.id}/complete", json={"result_summary": "ok"}
-    )
+
+    def founder(call):
+        answer_new_notes(call)
+        call.api.ok(
+            "POST", f"/tasks/{call.request.task.id}/complete", json={"result_summary": "ok"}
+        )
+
+    scripted.handlers["Atlas"] = founder
     for i in range(4):
         post_note(client, cid, f"n{i}")
         wake_ready(clock)

@@ -38,6 +38,7 @@ from app.runtimes.base import (
 from app.services import (
     agent_auth,
     audit,
+    command_center,
     containment,
     emergency,
     events,
@@ -299,6 +300,7 @@ class RunExecutor:
                 .values(status=RunStatus.RUNNING, updated_at=now)
             )
             if started.rowcount == 1:
+                command_center.on_run_started(db, run, agent)
                 events.emit(
                     db,
                     run.company_id,
@@ -438,8 +440,13 @@ class RunExecutor:
         message = err.message if err else "Runtime reported failure"
         if result.status != "failed":
             code, message = "invalid_result", f"Runtime returned unknown status {result.status!r}"
+        # A failed CLI run keeps what it produced (files, the final message) as artifacts.
         return runs.RunOutcome(
-            RunStatus.FAILED, code, error={"code": code, "message": message}, usage=usage
+            RunStatus.FAILED,
+            code,
+            error={"code": code, "message": message},
+            usage=usage,
+            artifacts=list(result.artifacts),
         )
 
     def _finalize(

@@ -308,6 +308,7 @@ class ScriptedRuntime(RuntimeAdapter):
             output_tokens=raw.get("output_tokens"),
             cost_micros=raw.get("cost_micros"),
             cost_kind=CostKind(raw.get("cost_kind", "unknown")),
+            billing_note=raw.get("billing_note"),
         )
 
     @staticmethod

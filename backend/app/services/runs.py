@@ -106,9 +106,12 @@ def create_queued_run(
     *,
     now: datetime,
     route: Any = None,
+    runtime: str | None = None,
+    runtime_reason: str | None = None,
 ) -> TaskRun:
     """Queue a run for ``task`` (no commit). Bumps ``attempt_count`` and starts the task.
-    ``route`` is the model routing decision (``services.routing.Route``), stored on the run."""
+    ``route`` is the model routing decision (``services.routing.Route``), stored on the run;
+    ``runtime`` / ``runtime_reason`` the work-mode routing (M10), default the agent's own."""
     prior = db.scalar(select(func.count(TaskRun.id)).where(TaskRun.task_id == task.id))
     attempt_number = int(prior or 0) + 1
     task.attempt_count += 1
@@ -118,12 +121,15 @@ def create_queued_run(
         agent_id=agent.id,
         attempt_number=attempt_number,
         status=RunStatus.QUEUED,
-        runtime=agent.runtime,
+        runtime=runtime or agent.runtime,
         idempotency_key=f"{task.id}:{attempt_number}:{task.revision_count}",
         queued_at=now,
         reservation_id=reservation.id,
         cost_kind=CostKind.UNKNOWN,
-        routing_reason=route.reason if route is not None else None,
+        routing_reason=" | ".join(
+            r for r in (runtime_reason, route.reason if route is not None else None) if r
+        )
+        or None,
         model_provider_id=route.provider_id if route is not None else None,
         model_used=route.model if route is not None else None,
     )
@@ -146,7 +152,7 @@ def create_queued_run(
         target_type="run",
         target_id=run.id,
         summary=f"Queued run #{attempt_number} of '{task.title}' for {agent.name}",
-        data={"task_id": task.id, "agent_id": agent.id, "runtime": agent.runtime},
+        data={"task_id": task.id, "agent_id": agent.id, "runtime": runtime or agent.runtime},
     )
     events.emit(
         db,
@@ -358,6 +364,9 @@ def _finalize_locked(
             and usage.cost_kind != CostKind.UNKNOWN
         ):
             cost, kind = max(0, int(usage.cost_micros)), CostKind(usage.cost_kind)
+        elif usage is not None and usage.billing_note == "subscription":
+            # A CLI run on the person's own login: the price is unknown, but no budget is charged.
+            cost, kind = 0, CostKind.UNKNOWN
         else:
             # Unknown cost: charge the reservation as an *estimate*, never as a verified charge.
             cost, kind = reservation.amount_micros, CostKind.ESTIMATED
@@ -404,6 +413,12 @@ def _finalize_locked(
         safety.check_circuit_breaker(db, company_id, now)
     if outcome.executed:
         safety.check_budget_thresholds(db, company_id, now)
+    if agent is not None and agent.kind == "founder":
+        from app.services import command_center  # local: command_center -> notes -> ... -> runs
+
+        command_center.on_run_finished(
+            db, run, outcome.status.value, outcome.exit_reason, outcome.error, now
+        )
     audit.record(
         db,
         company_id=company_id,

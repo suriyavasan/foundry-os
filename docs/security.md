@@ -109,3 +109,17 @@ Open - listed so nobody assumes they are handled:
   not Company OS).
 * The standing design assumption "agents run on the same host as the owner token" still holds: `owner.token` is
   outside every agent jail and environment, and `auth reset-password` relies on that.
+
+
+## Coding-CLI runtimes (M10)
+
+| Control | Status | Evidence |
+|---|---|---|
+| Dangerous permission flags (`--dangerously-skip-permissions`, `bypassPermissions`, OpenCode `--auto`, Codex `danger-full-access`) never built; spawn refused if present | enforced | `backend/tests/test_m10_cli_*` argv assertions |
+| Shell only inside an OS sandbox (Codex `--sandbox workspace-write`); Claude Bash and OpenCode bash denied | enforced | adapter tests |
+| `api_key` mode: isolated HOME per agent, key only in the child env | enforced | adapter tests |
+| `own_login` mode: uses the real HOME — the CLI can read the user's files within its own tool permissions | **accepted risk, warned in UI** | docs/cli-runtimes.md |
+| Company actions only via the MCP server → agent API (tiers, rate limits, DLP) | enforced | MCP server tests, live OpenCode run |
+| Run token in a 0600 file deleted after the run (never argv/config); a CLI able to read outside its workspace could read it | partial | docs/cli-runtimes.md |
+| Install runs only with explicit confirmation, never sudo | enforced (fake npm in tests; real npm not exercised) | `test_m10_cli_install*` |
+| Claude Code and Codex executed for real | **not verified** (Claude Code not run under the owner's login; Codex not installed) | — |
