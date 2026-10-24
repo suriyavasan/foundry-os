@@ -30,6 +30,10 @@ UPDATABLE = (
     "allowed_model_providers",
     "auto_activate_hires",
     "hire_default_monthly_budget_micros",
+    "max_agent_monthly_budget_micros",
+    "max_planning_runs_per_hour",
+    "max_open_tasks",
+    "circuit_breaker_failures",
     "default_model_provider_id",
     "default_model_name",
     "sandbox_backend",
@@ -110,6 +114,12 @@ def update_policy(db: Session, ctx: CompanyContext, data: PolicyUpdate) -> Compa
 
         if _BUDGET_FIELDS & set(changed):
             tasks.release_budget_blocked(db, ctx.company_id, ctx.principal)
+        if "heartbeat_interval_seconds" in changed:
+            from app.services import builtin_schedules
+
+            builtin_schedules.sync_heartbeat_interval(
+                db, ctx.company_id, policy.heartbeat_interval_seconds, ctx.principal
+            )
         if "allowed_model_providers" in changed:
             tasks.release_budget_blocked(
                 db, ctx.company_id, ctx.principal, codes=("provider_not_allowed",)

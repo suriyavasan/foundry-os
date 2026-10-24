@@ -574,6 +574,8 @@ def test_run_token_is_valid_only_during_the_run(app, client, company, scheduler,
         id = "callsback"
 
         def execute(self, request, sink, cancel):
+            if "token" in seen:  # the subtask it creates for itself runs too: act once only
+                return super().execute(request, sink, cancel)
             headers = {"Authorization": f"Bearer {request.run_token}"}
             seen["token"] = request.run_token
             seen["context"] = client.get("/api/agent/v1/context", headers=headers).status_code

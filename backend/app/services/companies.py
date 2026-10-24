@@ -15,7 +15,7 @@ from app.models.department import Department
 from app.models.enums import AgentKind, AgentStatus, CompanyStatus, MemberRole, RoleFamily
 from app.roles.loader import get_builtin_template
 from app.schemas.company import CompanyCreate, CompanyUpdate
-from app.services import audit, jobs, policy
+from app.services import audit, builtin_schedules, jobs, policy
 from app.services.pagination import paginate
 
 UPDATABLE = ("name", "mission", "vision", "strategic_goal", "constraints", "timezone", "status")
@@ -146,6 +146,7 @@ def create_company(db: Session, principal: Principal, data: CompanyCreate) -> Co
         data={"founder_agent_id": founder.id, "slug": company.slug},
     )
     _create_hr_agent(db, company.id, founder, principal)
+    builtin_schedules.ensure_company_builtins(db, company.id, principal)
     # The skill library is imported by the worker (scans take a while; creation stays fast).
     jobs.enqueue(
         db,

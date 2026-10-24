@@ -175,6 +175,35 @@ class StubApi:
             return 201, {"agent": {"id": self._next_id("agent"), "name": b.get("name"), "status": "active"},
                          "auto_activated": True, "approval_id": None, "approver": None,
                          "reasons_not_auto_activated": [], "skills": b.get("skill_slugs", []), "skipped_default_skills": []}
+        # ---- M5: state, notes, goals/projects/schedules, escalation, help, memory
+        if m == "GET" and sub == "/state":
+            return 200, {"role": "founder", "goals": [], "projects": [{"id": "p1", "name": "P", "description": None}],
+                         "notes": {"unprocessed": 1, "items": []}, "alerts": [], "tasks": {"open": []}}
+        if m == "GET" and sub == "/notes":
+            return 200, {"items": [{"id": "note-1", "status": "new", "body": "Launch it", "replies": []}], "next_cursor": None}
+        if m == "POST" and sub.startswith("/notes/") and sub.endswith("/triage"):
+            return 200, {"id": sub.split("/")[2], "status": "triaged", "triage": b}
+        if m == "POST" and sub.startswith("/notes/") and sub.endswith("/replies"):
+            return 201, {"id": self._next_id("reply"), "body": b.get("body"), "author_type": "agent"}
+        if m in ("POST", "PATCH") and sub.split("/")[1:2] == ["goals"]:
+            return (201 if m == "POST" else 200), {"id": self._next_id("goal"), **b}
+        if m in ("POST", "PATCH") and sub.split("/")[1:2] == ["projects"]:
+            return (201 if m == "POST" else 200), {"id": self._next_id("project"), **b}
+        if m in ("POST", "PATCH") and sub.split("/")[1:2] == ["schedules"]:
+            return (201 if m == "POST" else 200), {"id": self._next_id("sched"), **b}
+        if m == "POST" and sub == "/escalations":
+            return 201, {"escalated_to_agent_id": "founder-1", "escalated_to_name": "Atlas", "wake_status": "queued"}
+        if m == "POST" and sub == "/help-requests":
+            return 201, {"task_id": self._next_id("task"), "assigned_to_agent_id": "lead-1",
+                         "assigned_to_name": "Lena", "created": True}
+        if m == "POST" and sub == "/memory":
+            return 201, {"id": self._next_id("mem"), "status": "proposed", **b}
+        if m == "POST" and sub.startswith("/memory/"):
+            return 200, {"id": sub.split("/")[2], "status": "verified" if sub.endswith("verify") else "rejected"}
+        if m == "POST" and sub.endswith("/retry"):
+            return 200, {"id": sub.split("/")[2], "status": "backlog", "error": None}
+        if m == "POST" and sub.endswith("/cancel"):
+            return 200, {"id": sub.split("/")[2], "status": "cancelled", "error": None}
         return 404, _err("not_found", "Not found")
 
 

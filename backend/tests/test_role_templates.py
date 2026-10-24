@@ -21,6 +21,9 @@ EXPECTED = {
     "qa-engineer": "qa",
     "devops-engineer": "operations",
     "finance-analyst": "finance",
+    "project-lead": "generic",
+    "marketing-lead": "marketing",
+    "engineering-lead": "engineering",
 }
 RUNTIME = REPO_DIR / "runtime"
 

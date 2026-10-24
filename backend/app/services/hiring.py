@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -20,6 +20,7 @@ from app.core.errors import Conflict, Forbidden, LimitExceeded, NotFound
 from app.core.principal import CompanyContext, Principal
 from app.core.time import utcnow
 from app.models.agent import Agent
+from app.models.audit import AuditEvent
 from app.models.company import Company
 from app.models.department import Department
 from app.models.enums import (
@@ -37,7 +38,7 @@ from app.models.enums import (
     TaskStatus,
 )
 from app.models.governance import Approval
-from app.models.policy import CompanyPolicy
+from app.models.policy import DEFAULT_HIRE_MONTHLY_BUDGET_MICROS, CompanyPolicy
 from app.models.provider import ModelProvider
 from app.models.skill import Skill
 from app.models.work import Project, Task
@@ -47,6 +48,7 @@ from app.schemas.work import TaskCreate
 from app.services import (
     approvals,
     audit,
+    autonomy_hooks,
     events,
     hr_access,
     policy,
@@ -119,6 +121,30 @@ def auto_activation_blockers(
     return reasons
 
 
+def hire_monthly_budget(limits: CompanyPolicy, requested: int | None) -> int:
+    """The monthly budget an agent-initiated hire gets. A request above
+    ``max_agent_monthly_budget_micros`` is refused (409 ``limit_exceeded``); without a request
+    the policy default applies (never none: $5 when unset), clamped to the cap. Only a human can
+    raise the cap."""
+    cap = limits.max_agent_monthly_budget_micros
+    if requested is not None:
+        if requested > cap:
+            raise LimitExceeded(
+                f"A hire's monthly budget cannot exceed {cap} micro-USD (policy "
+                "max_agent_monthly_budget_micros); only a human can raise that cap",
+                details={
+                    "limit": "max_agent_monthly_budget_micros",
+                    "max": cap,
+                    "requested": requested,
+                },
+            )
+        return requested
+    default = limits.hire_default_monthly_budget_micros
+    if default is None:
+        default = DEFAULT_HIRE_MONTHLY_BUDGET_MICROS
+    return min(default, cap)
+
+
 # ---------------------------------------------------------------- activation
 
 
@@ -144,6 +170,7 @@ def activate_agent(
     events.emit(db, company_id, "agent.updated", {"agent_id": agent.id, "status": "active"})
     tasks.recompute_readiness(db, company_id, agent_id=agent.id, principal=principal)
     resolve_skill_gaps(db, company_id, principal=principal)
+    autonomy_hooks.on_agent_activated(db, agent, principal)
 
 
 def apply_hire_decision(
@@ -274,11 +301,7 @@ def hire(db: Session, ctx: CompanyContext, data: HireCreate) -> HireOutcome:
         else None
     )
     founder = _live_founder(db, company_id)
-    monthly = (
-        data.monthly_budget_micros
-        if data.monthly_budget_micros is not None
-        else limits.hire_default_monthly_budget_micros
-    )
+    monthly = hire_monthly_budget(limits, data.monthly_budget_micros)
     if data.model_provider is not None:
         known_provider = db.scalar(
             select(ModelProvider.id).where(
@@ -429,6 +452,12 @@ def ensure_hiring_task(
     if hr is None:
         raise Conflict("This company has no active HR agent to take the hiring request")
     required = sorted({r.strip().lower() for r in required if r.strip()})
+    same_need = _open_hiring_for(db, company_id, required)
+    if same_need is not None:  # the same capability is already being hired for (any source task)
+        return same_need, False
+    already, hired = agents_hired_for(db, company_id, required)
+    if already is not None and hired:  # ...or was hired for already: do not hire it twice
+        return already, False
     lines = [
         f"Required skills: {', '.join(required)}",
         f"Source task: {source.title} ({source.id})",
@@ -437,6 +466,14 @@ def ensure_hiring_task(
         lines.append(f"Role hint: {role_hint}")
     if reason:
         lines.append(f"Reason: {reason}")
+    requester = (
+        db.get(Agent, principal.id) if principal is not None and principal.is_agent else None
+    )
+    if requester is not None and requester.company_id == company_id:
+        lines.append(
+            f"Requested by: {requester.name} [id {requester.id}]. The new hire reports to them "
+            "(manager_agent_id) unless the reason says otherwise."
+        )
     lines.append("Follow the hiring-playbook skill; complete this task with a short summary.")
     data = TaskCreate(
         title=f"Hire: {role_hint or ', '.join(required)}"[:300],
@@ -465,6 +502,55 @@ def ensure_hiring_task(
             {"hiring_task_id": task.id, "source_task_id": source.id},
         )
     return task, created
+
+
+def agents_hired_for(
+    db: Session, company_id: str, required: list[str]
+) -> tuple[Task | None, list[Agent]]:
+    """Active agents HR already hired for exactly this skill set (via a finished hiring task whose
+    ``hire.created`` audit trail names them), with that task."""
+    wanted = f"Required skills: {', '.join(required)}"
+    done = [
+        t
+        for t in db.scalars(
+            select(Task).where(
+                Task.company_id == company_id,
+                Task.kind == TaskKind.HIRING,
+                Task.status == TaskStatus.DONE,
+            )
+        )
+        if (t.description or "").split("\n", 1)[0].strip() == wanted
+    ]
+    if not done:
+        return None, []
+    ids = {t.id: t for t in done}
+    hired: list[Agent] = []
+    for event in db.scalars(
+        select(AuditEvent).where(
+            AuditEvent.company_id == company_id, AuditEvent.action == "hire.created"
+        )
+    ):
+        if (event.data or {}).get("task_id") in ids and event.target_id:
+            agent = db.get(Agent, event.target_id)
+            if agent is not None and agent.status == AgentStatus.ACTIVE:
+                hired.append(agent)
+    return (done[-1], hired) if hired else (None, [])
+
+
+def _open_hiring_for(db: Session, company_id: str, required: list[str]) -> Task | None:
+    """An open hiring task that asks for exactly this skill set, whoever requested it."""
+    wanted = f"Required skills: {', '.join(required)}"
+    for task in db.scalars(
+        select(Task).where(
+            Task.company_id == company_id,
+            Task.kind == TaskKind.HIRING,
+            Task.status.in_(OPEN_TASK_STATUSES),
+        )
+    ):
+        first = (task.description or "").split("\n", 1)[0].strip()
+        if first == wanted:
+            return task
+    return None
 
 
 def request_hire(db: Session, ctx: CompanyContext, data: HiringRequestCreate) -> tuple[Task, bool]:
@@ -683,6 +769,29 @@ def resolve_skill_gaps(
             )
             report.assigned.append((task.id, best.id))
             continue
+        _, hired_for = agents_hired_for(db, company_id, sorted(required))
+        if hired_for:  # HR already hired people for exactly this need: they take the task
+            best = min(hired_for, key=lambda a: (load.get(a.id, 0), a.created_at, a.id))
+            task.assignee_agent_id = best.id
+            task.blocked_reason = None
+            task.updated_at = now or utcnow()
+            load[best.id] = load.get(best.id, 0) + 1
+            audit.record(
+                db,
+                company_id=company_id,
+                principal=principal,
+                action="task.assigned",
+                target_type="task",
+                target_id=task.id,
+                summary=f"Assigned task '{task.title}' to {best.name} (hired for this need)",
+                data={"assignee_agent_id": best.id, "required_skills": sorted(required)},
+            )
+            events.emit(db, company_id, "task.updated", tasks.task_event_payload(task))
+            tasks.recompute_readiness(
+                db, company_id, task_ids=[task.id], principal=principal, now=now
+            )
+            report.assigned.append((task.id, best.id))
+            continue
         try:
             hiring_task, created = ensure_hiring_task(
                 db,
@@ -703,3 +812,139 @@ def resolve_skill_gaps(
             events.emit(db, company_id, "task.updated", tasks.task_event_payload(task))
         report.waiting.append(task.id)
     return report
+
+
+# ---------------------------------------------------------------- project lead gap
+
+LEAD_GAP_GRACE = timedelta(seconds=120)
+
+
+def orphan_projects(
+    db: Session, company_id: str, *, older_than: datetime | None = None
+) -> list[Project]:
+    stmt = select(Project).where(
+        Project.company_id == company_id,
+        Project.status.in_(["planned", "active"]),
+        Project.lead_agent_id.is_(None),
+    )
+    if older_than is not None:
+        stmt = stmt.where(Project.created_at <= older_than)
+    return list(db.scalars(stmt.order_by(Project.created_at, Project.id)))
+
+
+def ensure_lead_hiring_task(
+    db: Session, project: Project, principal: Principal | None
+) -> tuple[Task, bool] | None:
+    """A project without a lead and no lead to give it: one hiring task for HR per project."""
+    hr = _hr_agent(db, project.company_id)
+    founder = _live_founder(db, project.company_id)
+    if hr is None:
+        return None
+    lines = [
+        f"Hire a project lead for project '{project.name}' [id {project.id}].",
+        "Use a lead role template (marketing-lead, engineering-lead or project-lead; see "
+        "company_list_role_templates). The lead's skills should fit the project: "
+        + (project.description or project.name)[:300],
+    ]
+    if founder is not None:
+        lines.append(
+            f"The new hire reports to {founder.name} [id {founder.id}] (manager_agent_id)."
+        )
+    lines.append("The project is given to the lead automatically once it is active.")
+    data = TaskCreate(
+        title=f"Hire: lead for {project.name}"[:300],
+        description="\n".join(lines),
+        kind=TaskKind.HIRING.value,
+        priority="high",
+        assignee_agent_id=hr.id,
+        idempotency_key=f"hiring:lead:{project.id}",
+    )
+    task, created = tasks._create_task_core(db, project.company_id, principal, data, run=None)
+    if created:
+        audit.record(
+            db,
+            company_id=project.company_id,
+            principal=principal,
+            action="hire.requested",
+            target_type="task",
+            target_id=task.id,
+            summary=f"Requested a lead hire for project '{project.name}'",
+            data={"project_id": project.id, "hr_agent_id": hr.id},
+        )
+        events.emit(
+            db,
+            project.company_id,
+            "hire.requested",
+            {"hiring_task_id": task.id, "project_id": project.id},
+        )
+    return task, created
+
+
+def resolve_project_leads(
+    db: Session, company_id: str, *, now: datetime, principal: Principal | None = None
+) -> int:
+    """Deterministic safety net behind the AI Co-founder: a project that still has no lead after a
+    grace period gets the least loaded active lead, or - when there is none - a hiring request for
+    HR. Idempotent; no commit."""
+    from app.services import projects as project_service
+
+    company_status = db.scalar(select(Company.status).where(Company.id == company_id))
+    if company_status != CompanyStatus.ACTIVE:
+        return 0
+    orphans = orphan_projects(db, company_id, older_than=now - LEAD_GAP_GRACE)
+    if not orphans:
+        return 0
+    leads = list(
+        db.scalars(
+            select(Agent)
+            .where(
+                Agent.company_id == company_id,
+                Agent.kind == AgentKind.LEAD,
+                Agent.status == AgentStatus.ACTIVE,
+            )
+            .order_by(Agent.created_at, Agent.id)
+        )
+    )
+    handled = 0
+    for project in orphans:
+        if leads:
+            load = {
+                lead.id: int(
+                    db.scalar(
+                        select(func.count(Project.id)).where(
+                            Project.company_id == company_id,
+                            Project.lead_agent_id == lead.id,
+                            Project.status.in_(["planned", "active"]),
+                        )
+                    )
+                    or 0
+                )
+                for lead in leads
+            }
+            best = min(leads, key=lambda a: (load[a.id], a.created_at, a.id))
+            project_service.assign_lead(
+                db, project, best, principal, reason="no lead was named for it"
+            )
+            handled += 1
+        else:
+            result = ensure_lead_hiring_task(db, project, principal)
+            handled += bool(result and result[1])
+    return handled
+
+
+def cancel_lead_hiring(db: Session, project: Project, principal: Principal | None) -> None:
+    """The project has its lead: the platform's lead-hiring request for it is moot. No commit."""
+    from app.services import runs as run_service
+
+    task = db.scalar(
+        select(Task).where(
+            Task.company_id == project.company_id,
+            Task.idempotency_key == f"hiring:lead:{project.id}",
+        )
+    )
+    if task is None or task.status in TERMINAL_TASK_STATUSES:
+        return
+    tasks.transition(
+        db, task, TaskStatus.CANCELLED, principal=principal, reason="the project has a lead"
+    )
+    run_service.request_cancel_for_task(db, task, "task_cancelled", principal)

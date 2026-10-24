@@ -13,6 +13,8 @@ from app.db.types import UTCDateTime
 from app.models.enums import AutonomyMode
 
 DEFAULT_HUMAN_APPROVAL_KINDS = ["external_purchase", "budget_increase"]
+DEFAULT_HIRE_MONTHLY_BUDGET_MICROS = 5_000_000
+DEFAULT_MAX_AGENT_MONTHLY_BUDGET_MICROS = 25_000_000
 
 
 class CompanyPolicy(Base):
@@ -48,7 +50,31 @@ class CompanyPolicy(Base):
     auto_activate_hires: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=true(), nullable=False
     )
-    hire_default_monthly_budget_micros: Mapped[int | None] = mapped_column(BigInteger)
+    # Default monthly budget of a new hire when the hiring request names none ($5). NULL falls back
+    # to the same constant: an agent can never be hired without a budget.
+    hire_default_monthly_budget_micros: Mapped[int | None] = mapped_column(
+        BigInteger, default=DEFAULT_HIRE_MONTHLY_BUDGET_MICROS
+    )
+    # M5 autonomy limits. Only humans can change them.
+    # Hard cap on any monthly budget an agent-initiated action (a hire) may hand out ($25).
+    max_agent_monthly_budget_micros: Mapped[int] = mapped_column(
+        BigInteger,
+        default=DEFAULT_MAX_AGENT_MONTHLY_BUDGET_MICROS,
+        server_default=str(DEFAULT_MAX_AGENT_MONTHLY_BUDGET_MICROS),
+        nullable=False,
+    )
+    # Planning runs (wake tasks + planning schedules) per agent and hour: a planning-storm brake.
+    max_planning_runs_per_hour: Mapped[int] = mapped_column(
+        Integer, default=6, server_default="6", nullable=False
+    )
+    # Open (non-terminal) tasks in the company; agent-created tasks beyond it are refused.
+    max_open_tasks: Mapped[int] = mapped_column(
+        Integer, default=200, server_default="200", nullable=False
+    )
+    # Failed runs within 10 minutes that auto-pause the company (0 = disabled).
+    circuit_breaker_failures: Mapped[int] = mapped_column(
+        Integer, default=8, server_default="8", nullable=False
+    )
     # M3b: company default model (a ModelProvider id + model name) for agents without their own,
     # and the execution sandbox for code-running tools: auto | none | docker.
     default_model_provider_id: Mapped[str | None] = mapped_column(String(36))

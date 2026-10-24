@@ -11,7 +11,13 @@ from ruamel.yaml import YAML
 
 from company_agent import home
 from company_agent.approvals import make_approval_callback
-from company_agent.prompts import build_identity_prompt, build_role_prompt, build_task_prompt
+from company_agent.prompts import (
+    build_completion_nudge,
+    build_identity_prompt,
+    build_role_prompt,
+    build_task_prompt,
+    build_user_message,
+)
 from company_agent.spec import parse_spec
 from company_agent.tests.conftest import make_spec
 from company_agent.toolpolicy import resolve_toolsets
@@ -254,3 +260,53 @@ def test_an_inherited_opt_in_is_neutralised_by_apply_process_env(raw, monkeypatc
 
 def build_cfg(spec):
     return home.build_enforced_config(spec, ["company"])
+
+
+# ------------------------------------------------------------------ M5 role playbooks
+
+
+@pytest.mark.parametrize(
+    ("agent", "needle", "forbidden"),
+    [
+        ({"kind": "founder", "role": "founder"}, "company_triage_note", "company_request_help"),
+        ({"kind": "lead", "role": "lead"}, "ACCEPTANCE CRITERIA", "company_triage_note"),
+        ({"kind": "specialist", "role": "specialist"}, "company_request_help", "company_triage_note"),
+        ({"kind": "specialist", "role_family": "hr"}, "company_hire_agent", "company_triage_note"),
+    ],
+)
+def test_each_role_gets_its_own_short_playbook(raw, agent, needle, forbidden):
+    raw["agent"].update(agent)
+    ident = build_identity_prompt(parse_spec(raw))
+    assert needle in ident and forbidden not in ident
+    assert len(ident) < 6500  # 7B-class models: short system prompts
+
+
+def test_company_memory_is_part_of_the_identity_prompt(raw):
+    raw["company"]["memory"] = ["[requirement] Zero spend: Never spend money.", "[lesson] Check links."]
+    ident = build_identity_prompt(parse_spec(raw))
+    assert "Never spend money." in ident and "Check links." in ident and "verified requirements" in ident
+
+
+def test_review_tasks_render_the_work_under_review(raw):
+    raw["task"].update({"kind": "review", "review_target": {
+        "mode": "review", "task_id": "t-9", "title": "Write copy", "assignee": "Sam", "status": "in_review",
+        "acceptance_criteria": "Punchy", "result_summary": "written", "revision_count": 0, "error": None,
+        "artifacts": [{"id": "a1", "title": "Copy", "kind": "document", "excerpt": "Hello freelancers"}]}})
+    spec = parse_spec(raw)
+    task = build_task_prompt(spec)
+    assert "WORK UNDER REVIEW" in task and "Hello freelancers" in task and "t-9" in task and "Punchy" in task
+    assert "company_review_task" in build_user_message(spec)
+    raw["task"]["review_target"].update(mode="failure", error={"code": "boom", "message": "it broke"})
+    failure = build_task_prompt(parse_spec(raw))
+    assert "FAILED TASK" in failure and "it broke" in failure
+    assert "company_complete_task" in build_user_message(parse_spec(raw))
+
+
+def test_wake_runs_start_with_the_state_and_nudges_are_role_aware(raw):
+    raw["agent"].update(kind="founder", role="founder")
+    raw["task"].update(kind="planning", title="Planning run: Founder's note")
+    spec = parse_spec(raw)
+    assert "company_get_state" in build_user_message(spec)
+    assert "company_triage_note" in build_completion_nudge(spec)
+    raw["agent"].update(kind="lead", role="lead")
+    assert "company_create_task" in build_completion_nudge(parse_spec(raw))

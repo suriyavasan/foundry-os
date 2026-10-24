@@ -274,6 +274,7 @@ def test_context_includes_parent_dependencies_and_artifacts(app, client, world):
 
 def test_agent_creates_subtasks_attributed_and_audited(app, client, world):
     cid, agent, sess = world
+    new_agent(client, cid, name="Intern", manager_agent_id=agent["id"])  # managers may delegate
     helper = new_agent(client, cid, name="Helper")
     r = sess.post(
         "/tasks",
@@ -372,6 +373,7 @@ def test_subtask_budget_cannot_exceed_parents_remaining_budget(app, client, comp
 
 def test_agent_block_unblock_and_assign_permissions(app, client, world):
     cid, agent, sess = world
+    new_agent(client, cid, name="Intern", manager_agent_id=agent["id"])  # managers may delegate
     helper = new_agent(client, cid, name="Helper")
     mine = sess.post("/tasks", json={"title": "mine", "assignee_agent_id": helper["id"]}).json()
     outsider_task = new_task(client, cid, title="not mine", assignee_agent_id=helper["id"])

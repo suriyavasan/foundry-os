@@ -41,20 +41,41 @@ class CtxCompany(BaseModel):
     timezone: str
 
 
-class CtxTaskBrief(BaseModel):
-    id: str
-    title: str
-    status: str
-    result_summary: str | None = None
-    output_refs: list[str] = []
-
-
 class CtxArtifactBrief(BaseModel):
     id: str
     title: str
     kind: str
     status: str
     current_version: int
+    # M5: a text excerpt (secret-looking spans redacted) of the current version, for the
+    # artifacts of dependencies and subtasks so a worker can build on earlier results.
+    excerpt: str | None = None
+
+
+class CtxTaskBrief(BaseModel):
+    id: str
+    title: str
+    status: str
+    result_summary: str | None = None
+    output_refs: list[str] = []
+    assignee_name: str | None = None
+    artifacts: list[CtxArtifactBrief] = []
+
+
+class CtxProject(BaseModel):
+    id: str
+    name: str
+    description: str | None
+    status: str
+    lead_agent_id: str | None
+    lead_name: str | None
+
+
+class CtxMemory(BaseModel):
+    id: str
+    kind: str
+    title: str | None
+    body: str
 
 
 class CtxTask(BaseModel):
@@ -77,6 +98,12 @@ class CtxTask(BaseModel):
     parent: CtxTaskBrief | None
     dependencies: list[CtxTaskBrief]
     artifacts: list[CtxArtifactBrief]
+    blocked_reason: str | None = None
+    # M5
+    project: CtxProject | None = None
+    subtasks: list[CtxTaskBrief] = []
+    # Review / failure-analysis tasks: the task under review and its deliverables.
+    review_target: dict | None = None
 
 
 class CtxAgent(BaseModel):
@@ -107,6 +134,8 @@ class CtxPolicy(BaseModel):
     max_headcount: int
     own_daily_budget_micros: int | None
     own_monthly_budget_micros: int | None
+    max_open_tasks: int = 0
+    role: str = ""
 
 
 class CtxRun(BaseModel):
@@ -125,3 +154,5 @@ class AgentContext(BaseModel):
     policy: CtxPolicy
     # M4: agents (self, manager, reports, colleagues) carry their skill slugs and tags.
     skills_available: bool = True
+    # M5: verified company memory that applies to this agent (requirements, facts, lessons).
+    memory: list[CtxMemory] = []

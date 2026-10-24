@@ -139,6 +139,12 @@ def mark_task_blocked(task_id: str) -> None:
         _dispositions.setdefault(task_id, "blocked")
 
 
+def mark_task_handed_off(task_id: str) -> None:
+    """The agent gave its own running task to a colleague: this run is over."""
+    with _lock:
+        _dispositions.setdefault(task_id, "handed_off")
+
+
 def dispositions() -> dict[str, str]:
     """task_id -> "completed" | "blocked" for tasks the agent successfully disposed of this run."""
     with _lock:

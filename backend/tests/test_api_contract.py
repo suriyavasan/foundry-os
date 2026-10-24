@@ -139,7 +139,9 @@ def test_activity_pagination_newest_first_no_dupes(client, company):
         client.post(f"/api/companies/{cid}/departments", json={"name": f"D{i}"})
     url = f"/api/companies/{cid}/activity"
     full = client.get(url, params={"limit": 200}).json()
-    assert full["next_cursor"] is None and len(full["items"]) == 9  # + HR agent and People dept
+    assert (
+        full["next_cursor"] is None and len(full["items"]) == 10
+    )  # + HR agent, People dept, built-in schedules
     stamps = [e["created_at"] for e in full["items"]]
     assert [e["action"] for e in full["items"]][-1] == "company.created"
     assert [e["summary"] for e in full["items"]][0] == "Created department D5"
@@ -156,9 +158,9 @@ def test_activity_pagination_newest_first_no_dupes(client, company):
         pages += 1
         if cursor is None:
             break
-    assert pages == 3
+    assert pages == 4
     assert seen == [e["id"] for e in full["items"]]
-    assert len(set(seen)) == 9
+    assert len(set(seen)) == 10
     assert stamps == sorted(stamps, reverse=True)
 
 
@@ -195,7 +197,15 @@ def test_overview_aggregates_are_real_and_empty_for_a_new_company(client, compan
         "pending_by_approver": {"human": 0, "founder": 0},
     }
     assert ov["artifacts"] == {"available": True, "total": 0, "latest": []}
-    assert ov["routines"] == {"available": True, "total": 0, "enabled": 0, "upcoming": []}
+    # M5: the built-in schedules (Co-founder heartbeat + routines, HR skills review) exist from the start
+    assert ov["routines"]["total"] == 5 and ov["routines"]["enabled"] == 5
+    assert {r["name"] for r in ov["routines"]["upcoming"]} == {
+        "heartbeat",
+        "daily-standup",
+        "weekly-strategy-review",
+        "daily-budget-review",
+        "skills-review",
+    }
     assert ov["company"]["id"] == cid
     assert ov["founder"]["kind"] == "founder" and ov["founder"]["status"] == "active"
     assert ov["agents"] == {

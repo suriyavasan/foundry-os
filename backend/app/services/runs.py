@@ -30,7 +30,7 @@ from app.models.ledger import BudgetReservation
 from app.models.run import RunEvent, TaskRun
 from app.models.work import Task
 from app.runtimes.base import ArtifactRef, UsageReport
-from app.services import audit, events, ledger, tasks
+from app.services import audit, events, ledger, safety, tasks
 from app.services.pagination import paginate
 
 CANCEL_BY_USER = "cancelled_by_user"
@@ -394,6 +394,10 @@ def _finalize_locked(
     if task is not None and task.status == TaskStatus.IN_PROGRESS:
         _apply_to_task(db, task, run, outcome, artifact_ids, principal, now)
 
+    if outcome.status in (RunStatus.FAILED, RunStatus.TIMED_OUT):
+        safety.check_circuit_breaker(db, company_id, now)
+    if outcome.executed:
+        safety.check_budget_thresholds(db, company_id, now)
     audit.record(
         db,
         company_id=company_id,

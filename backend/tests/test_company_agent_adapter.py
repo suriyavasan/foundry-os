@@ -465,6 +465,8 @@ def test_hr_gets_the_hiring_tools_and_workers_get_a_lean_set(env):
         "company_complete_task",
         "company_update_task",
         "company_create_task",
+        "company_request_help",
+        "company_propose_memory",
     ]
     assert seen["toolsets"] == ["company", "file", "web", "search", "skills", "todo"]
     assert "skills_manage" not in seen["toolsets"]
@@ -680,6 +682,19 @@ def test_engine_success_end_to_end(env, engine):
     assert usage["cost_micros"] == 0 and usage["by_cost_kind"]["verified_micros"] == 0
     assert usage["by_cost_kind"]["estimated_micros"] == 0  # a local run is never an "estimate"
     assert (usage["input_tokens"], usage["output_tokens"], usage["records"]) == (500, 50, 1)
+
+
+def test_a_zero_project_budget_does_not_block_a_local_model(env, engine):
+    """Found live in M5: the Co-founder gave a project budget_usd 0 ("keep spend at zero") and every
+    task in it was blocked by the 50 000 micro-USD default reservation - for a model that costs nothing."""
+    project = env.client.post(
+        api(env.cid, "/projects"), json={"name": "Zero", "budget_micros": 0, "status": "active"}
+    ).json()
+    task = make_task(env, "success", project_id=project["id"])
+    settle(engine.scheduler, engine.worker)
+    assert get_task(env.client, env.cid, task["id"])["status"] == "done"
+    run = run_of(env, task["id"])
+    assert (run["cost_micros"], run["cost_kind"]) == (0, "verified")
 
 
 def test_engine_failure_retries_then_fails_the_task(env, engine):

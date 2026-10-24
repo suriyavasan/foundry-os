@@ -23,6 +23,22 @@ from app.schemas.agent_api import (
     ProgressOut,
 )
 from app.schemas.artifact import ArtifactDetail, ArtifactVersion
+from app.schemas.autonomy import (
+    AgentNote,
+    AgentState,
+    AgentTaskAction,
+    EscalationCreate,
+    EscalationResult,
+    FounderNote,
+    HelpRequestCreate,
+    HelpRequestResult,
+    MemoryCreate,
+    MemoryDecisionBody,
+    MemoryEntry,
+    NoteReply,
+    NoteReplyCreate,
+    NoteTriageIn,
+)
 from app.schemas.common import Page
 from app.schemas.governance import (
     AgentDecideBody,
@@ -41,6 +57,7 @@ from app.schemas.hr import (
     RoleTemplate,
     RoleTemplateCreate,
 )
+from app.schemas.schedule import Schedule, ScheduleCreate, ScheduleUpdate
 from app.schemas.skills import (
     AgentSkill,
     CatalogItem,
@@ -49,16 +66,33 @@ from app.schemas.skills import (
     SkillInstallResult,
     SkillRefs,
 )
-from app.schemas.work import ReviewBody, Task, TaskCreate
+from app.schemas.work import (
+    Goal,
+    GoalCreate,
+    GoalUpdate,
+    Project,
+    ProjectCreate,
+    ProjectUpdate,
+    ReviewBody,
+    Task,
+    TaskCreate,
+)
 from app.services import (
     agent_actions,
     agent_context,
     approvals,
     artifacts,
+    collab,
     decisions,
+    goals,
     hiring,
+    memory,
+    notes,
+    projects,
     role_templates,
+    schedules,
     skills,
+    state,
     tasks,
 )
 from app.storage.base import ArtifactStorage
@@ -71,8 +105,15 @@ def _one(db, task) -> Task:
 
 
 @router.get("/context", response_model=AgentContext)
-def get_context(rc: RunCtx, db: DbSession):
-    return agent_context.build_context(db, rc)
+def get_context(rc: RunCtx, db: DbSession, storage: ArtifactStorage = Depends(get_storage)):
+    return agent_context.build_context(db, rc, storage)
+
+
+@router.get("/state", response_model=AgentState)
+def get_state(rc: RunCtx, db: DbSession):
+    """Live company state, sliced by the caller's role (founder: everything; lead: its projects;
+    HR: team and hiring; others: their own tasks)."""
+    return state.build_state(db, rc)
 
 
 @router.post("/tasks", response_model=Task, status_code=201)
@@ -262,3 +303,102 @@ def hiring_request(body: HiringRequestCreate, response: Response, rc: RunCtx, db
     task, created = hiring.request_hire(db, rc.ctx, body)
     response.status_code = 201 if created else 200
     return HiringRequestResult(hiring_task_id=task.id, created=created, status=task.status)
+
+
+# ------------------------------------------------------ Milestone 5: autonomous operating model
+
+
+@router.post("/tasks/{task_id}/retry", response_model=Task)
+def retry_task(task_id: str, body: AgentTaskAction, rc: RunCtx, db: DbSession):
+    """Retry a failed task you manage (optionally with another assignee)."""
+    task = tasks.retry_as_agent(
+        db, rc.ctx, task_id, reason=body.reason, assignee_id=body.assignee_agent_id
+    )
+    return _one(db, task)
+
+
+@router.post("/tasks/{task_id}/cancel", response_model=Task)
+def cancel_task(task_id: str, body: AgentTaskAction, rc: RunCtx, db: DbSession):
+    return _one(db, tasks.cancel_as_agent(db, rc.ctx, task_id, body.reason))
+
+
+@router.post("/escalations", response_model=EscalationResult, status_code=201)
+def escalate(body: EscalationCreate, rc: RunCtx, db: DbSession):
+    return collab.escalate(db, rc, body)
+
+
+@router.post("/help-requests", response_model=HelpRequestResult)
+def request_help(body: HelpRequestCreate, response: Response, rc: RunCtx, db: DbSession):
+    result = collab.request_help(db, rc, body)
+    response.status_code = 201 if result.created else 200
+    return result
+
+
+@router.post("/goals", response_model=Goal, status_code=201)
+def create_goal(body: GoalCreate, rc: RunCtx, db: DbSession):
+    return goals.create_goal(db, rc.ctx, body)
+
+
+@router.patch("/goals/{goal_id}", response_model=Goal)
+def update_goal(goal_id: str, body: GoalUpdate, rc: RunCtx, db: DbSession):
+    return goals.update_goal(db, rc.ctx, goal_id, body)
+
+
+@router.post("/projects", response_model=Project, status_code=201)
+def create_project(body: ProjectCreate, rc: RunCtx, db: DbSession):
+    return projects.create_project(db, rc.ctx, body)
+
+
+@router.patch("/projects/{project_id}", response_model=Project)
+def update_project(project_id: str, body: ProjectUpdate, rc: RunCtx, db: DbSession):
+    return projects.update_project(db, rc.ctx, project_id, body)
+
+
+@router.post("/schedules", response_model=Schedule, status_code=201)
+def create_schedule(body: ScheduleCreate, rc: RunCtx, db: DbSession):
+    return schedules.create_schedule(db, rc.ctx, body)
+
+
+@router.patch("/schedules/{schedule_id}", response_model=Schedule)
+def update_schedule(schedule_id: str, body: ScheduleUpdate, rc: RunCtx, db: DbSession):
+    return schedules.update_schedule(db, rc.ctx, schedule_id, body)
+
+
+@router.get("/notes", response_model=Page[AgentNote])
+def list_notes(rc: RunCtx, db: DbSession, status: str | None = "new", limit: int = 20):
+    """The Founder's notes, for the AI Co-founder (``status=new`` = unprocessed)."""
+    return {
+        "items": notes.agent_list(db, rc, status=status or None, limit=limit),
+        "next_cursor": None,
+    }
+
+
+@router.post("/notes/{note_id}/triage", response_model=FounderNote)
+def triage_note(note_id: str, body: NoteTriageIn, rc: RunCtx, db: DbSession):
+    note = notes.agent_triage(db, rc, note_id, body)
+    return notes.serialize(db, [note])[0]
+
+
+@router.post("/notes/{note_id}/replies", response_model=NoteReply, status_code=201)
+def reply_to_note(note_id: str, body: NoteReplyCreate, rc: RunCtx, db: DbSession):
+    return notes.agent_reply(db, rc, note_id, body.body)
+
+
+@router.post("/memory", response_model=MemoryEntry)
+def propose_memory(body: MemoryCreate, response: Response, rc: RunCtx, db: DbSession):
+    """Propose a memory entry (a lesson, a fact...); others see it once it is verified."""
+    entry, created = memory.create_as_agent(
+        db, rc.ctx, body, run_task_id=rc.run.task_id, run_id=rc.run.id
+    )
+    response.status_code = 201 if created else 200
+    return entry
+
+
+@router.post("/memory/{entry_id}/verify", response_model=MemoryEntry)
+def verify_memory(entry_id: str, rc: RunCtx, db: DbSession, body: MemoryDecisionBody | None = None):
+    return memory.decide(db, rc.ctx, entry_id, "verify", body.reason if body else None)
+
+
+@router.post("/memory/{entry_id}/reject", response_model=MemoryEntry)
+def reject_memory(entry_id: str, rc: RunCtx, db: DbSession, body: MemoryDecisionBody | None = None):
+    return memory.decide(db, rc.ctx, entry_id, "reject", body.reason if body else None)

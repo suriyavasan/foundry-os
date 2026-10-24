@@ -14,11 +14,24 @@ constructor's default script. Script keys (all optional):
     raise_exception:      str, raise RuntimeError(str) (tests worker exception handling)
     usage:                {"input_tokens", "output_tokens", "cost_micros", "cost_kind"}
     artifacts:            [{"title", "content", "kind", "mime_type"}]
+    agent_api:            [{"method", "path", "json", "save_as", "expect"}, ...] steps run with
+                          the run token against the agent API, in-process (see "Agent API steps")
+
+Agent API steps (Milestone 5): a scripted run can act like a real agent. Set ``api_client`` (a
+TestClient bound to the app, ideally without the owner cookie) and either put ``agent_api`` steps
+into the script - ``{"method": "POST", "path": "/tasks", "json": {...}, "save_as": "t1",
+"expect": 201}``; ``{t1.id}``-style placeholders in strings are replaced from earlier ``save_as``
+responses - or register a Python ``handlers[<agent name or id>] = fn(call)`` where ``call`` is an
+``AgentCall`` (``call.api.post(...)``, ``call.request``, ``call.saved``). A failed ``expect`` or an
+exception in a handler is recorded in ``runtime.errors`` and fails the run.
 """
 
 from __future__ import annotations
 
+import re
 import threading
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import Any
 
 from app.core.time import utcnow
@@ -52,7 +65,70 @@ _KNOWN_KEYS = {
     "raise_exception",
     "usage",
     "artifacts",
+    "agent_api",
 }
+
+
+_PLACEHOLDER = re.compile(r"\{([A-Za-z0-9_]+)((?:\.[A-Za-z0-9_]+)*)\}")
+
+
+class AgentApi:
+    """The agent API as one run sees it: every call carries that run's token."""
+
+    BASE = "/api/agent/v1"
+
+    def __init__(self, client: Any, token: str) -> None:
+        self._client, self._token = client, token
+
+    def _call(self, method: str, path: str, **kwargs: Any):
+        headers = {"Authorization": f"Bearer {self._token}", **kwargs.pop("headers", {})}
+        return self._client.request(method, self.BASE + path, headers=headers, **kwargs)
+
+    def get(self, path: str, **kw: Any):
+        return self._call("GET", path, **kw)
+
+    def post(self, path: str, **kw: Any):
+        return self._call("POST", path, **kw)
+
+    def patch(self, path: str, **kw: Any):
+        return self._call("PATCH", path, **kw)
+
+    def delete(self, path: str, **kw: Any):
+        return self._call("DELETE", path, **kw)
+
+    def ok(self, method: str, path: str, *, expect: int | tuple[int, ...] = (200, 201), **kw: Any):
+        """Call and return the JSON body; raises AssertionError on an unexpected status."""
+        resp = self._call(method, path, **kw)
+        wanted = (expect,) if isinstance(expect, int) else expect
+        if resp.status_code not in wanted:
+            raise AssertionError(f"{method} {path} -> {resp.status_code} {resp.text[:300]}")
+        return resp.json() if resp.content else None
+
+
+@dataclass
+class AgentCall:
+    """What a handler receives: the API as this agent, the request and a scratch dict."""
+
+    api: AgentApi
+    request: ExecutionRequest
+    saved: dict[str, Any] = field(default_factory=dict)
+
+
+def _substitute(value: Any, saved: dict[str, Any]) -> Any:
+    if isinstance(value, str):
+
+        def repl(match: re.Match[str]) -> str:
+            cur: Any = saved[match.group(1)]
+            for part in [p for p in match.group(2).split(".") if p]:
+                cur = cur[part]
+            return str(cur)
+
+        return _PLACEHOLDER.sub(repl, value)
+    if isinstance(value, list):
+        return [_substitute(v, saved) for v in value]
+    if isinstance(value, dict):
+        return {k: _substitute(v, saved) for k, v in value.items()}
+    return value
 
 
 class ScriptedRuntime(RuntimeAdapter):
@@ -68,6 +144,10 @@ class ScriptedRuntime(RuntimeAdapter):
         self._default = dict(default_script or {})
         self.requests: list[ExecutionRequest] = []  # recorded for assertions
         self._lock = threading.Lock()
+        # Agent API steps (Milestone 5): see the module docstring.
+        self.api_client: Any = None
+        self.handlers: dict[str, Callable[[AgentCall], Any]] = {}
+        self.errors: list[str] = []
 
     @property
     def capabilities(self) -> frozenset[Capability]:
@@ -130,6 +210,13 @@ class ScriptedRuntime(RuntimeAdapter):
         if script.get("raise_exception"):
             raise RuntimeError(str(script["raise_exception"]))
 
+        failure = self._act_through_the_api(request, script, emit)
+        if failure:
+            emit("run.failed", {"message": failure})
+            return ExecutionResult(
+                status="failed", error=ExecutionError(RuntimeErrorKind.FAILED, failure)
+            )
+
         delay = float(script.get("delay_seconds", 0) or 0)
         if delay and cancel.wait(delay):
             return self._cancelled(emit)
@@ -170,6 +257,42 @@ class ScriptedRuntime(RuntimeAdapter):
             usage=usage,
             artifacts=artifacts,
         )
+
+    def _act_through_the_api(
+        self, request: ExecutionRequest, script: dict[str, Any], emit
+    ) -> str | None:
+        """Run the script's ``agent_api`` steps and the registered handler (if any)."""
+        steps = script.get("agent_api") or []
+        handler = self.handlers.get(request.agent.name) or self.handlers.get(request.agent.id)
+        if not steps and handler is None:
+            return None
+        if self.api_client is None:
+            return "ScriptedRuntime.api_client is not set; agent API steps cannot run"
+        call = AgentCall(AgentApi(self.api_client, request.run_token), request)
+        try:
+            for step in steps:
+                body = _substitute(step.get("json"), call.saved)
+                path = _substitute(step["path"], call.saved)
+                resp = call.api._call(
+                    step.get("method", "GET"), path, **({"json": body} if body is not None else {})
+                )
+                expect = step.get("expect", (200, 201))
+                wanted = (expect,) if isinstance(expect, int) else tuple(expect)
+                if resp.status_code not in wanted:
+                    raise AssertionError(
+                        f"{step.get('method', 'GET')} {path} -> {resp.status_code} "
+                        f"{resp.text[:300]}"
+                    )
+                if step.get("save_as"):
+                    call.saved[step["save_as"]] = resp.json() if resp.content else None
+                emit("tool.completed", {"name": f"{step.get('method', 'GET')} {path}"})
+            if handler is not None:
+                handler(call)
+        except Exception as exc:  # recorded for the test; the run fails like a crashed agent
+            message = f"{type(exc).__name__}: {exc}"
+            self.errors.append(message)
+            return message
+        return None
 
     @staticmethod
     def _usage(raw: dict[str, Any] | None) -> UsageReport | None:

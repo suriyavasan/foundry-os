@@ -9,30 +9,61 @@ from app.models.agent import Agent
 from app.models.artifact import Artifact
 from app.models.company import Company
 from app.models.enums import AgentStatus
-from app.models.work import Task, TaskDependency
+from app.models.work import Project, Task, TaskDependency
 from app.schemas.agent_api import (
     AgentContext,
     CtxAgent,
     CtxArtifactBrief,
     CtxCompany,
+    CtxMemory,
     CtxPolicy,
+    CtxProject,
     CtxRun,
     CtxTask,
     CtxTaskBrief,
 )
-from app.services import policy, skills
+from app.services import agent_roles, memory, policy, reviews, skills, task_briefs
 from app.services.agent_auth import AgentRunContext
+from app.storage.base import ArtifactStorage
 
 MAX_COLLEAGUES = 100
 
 
-def _task_brief(task: Task) -> CtxTaskBrief:
+MAX_SUBTASKS = 12
+MAX_DEPENDENCY_ARTIFACTS = 2
+
+
+def _task_brief(
+    task: Task,
+    *,
+    db: Session | None = None,
+    storage: ArtifactStorage | None = None,
+    names: dict[str, str] | None = None,
+    artifacts: bool = False,
+) -> CtxTaskBrief:
+    briefs: list[CtxArtifactBrief] = []
+    if artifacts and db is not None:
+        briefs = [
+            CtxArtifactBrief(
+                id=a["id"],
+                title=a["title"],
+                kind=a["kind"],
+                status=a["status"],
+                current_version=a["version"],
+                excerpt=a["excerpt"],
+            )
+            for a in task_briefs.artifact_briefs(
+                db, storage, task.company_id, task.id, max_artifacts=MAX_DEPENDENCY_ARTIFACTS
+            )
+        ]
     return CtxTaskBrief(
         id=task.id,
         title=task.title,
         status=task.status,
         result_summary=task.result_summary,
         output_refs=list(task.output_refs),
+        assignee_name=(names or {}).get(task.assignee_agent_id or ""),
+        artifacts=briefs,
     )
 
 
@@ -57,7 +88,9 @@ def _agent_brief(
     )
 
 
-def build_context(db: Session, rc: AgentRunContext) -> AgentContext:
+def build_context(
+    db: Session, rc: AgentRunContext, storage: ArtifactStorage | None = None
+) -> AgentContext:
     company_id = rc.ctx.company_id
     company = db.get(Company, company_id)
     assert company is not None
@@ -123,7 +156,34 @@ def build_context(db: Session, rc: AgentRunContext) -> AgentContext:
             Task.company_id == company_id, Task.created_by_run_id == rc.run.id
         )
     )
+    names = {a.id: a.name for a in [*reports, *colleagues, agent]}
+    subtasks = list(
+        db.scalars(
+            select(Task)
+            .where(Task.company_id == company_id, Task.parent_task_id == task.id)
+            .order_by(Task.created_at)
+            .limit(MAX_SUBTASKS)
+        )
+    )
+    project = (
+        db.scalar(
+            select(Project).where(Project.id == task.project_id, Project.company_id == company_id)
+        )
+        if task.project_id
+        else None
+    )
+    lead_name = None
+    if project is not None and project.lead_agent_id:
+        lead_name = names.get(project.lead_agent_id) or db.scalar(
+            select(Agent.name).where(Agent.id == project.lead_agent_id)
+        )
+    target = reviews.review_target(db, storage, task) if task.kind == "review" else None
+    role = agent_roles.role_of(db, agent)
     return AgentContext(
+        memory=[
+            CtxMemory(id=m.id, kind=m.kind, title=m.title, body=m.body)
+            for m in memory.relevant_for(db, company_id, agent)
+        ],
         company=CtxCompany(
             id=company.id,
             name=company.name,
@@ -150,8 +210,28 @@ def build_context(db: Session, rc: AgentRunContext) -> AgentContext:
             review_note=task.review_note,
             due_at=task.due_at,
             project_id=task.project_id,
+            blocked_reason=task.blocked_reason,
+            project=(
+                CtxProject(
+                    id=project.id,
+                    name=project.name,
+                    description=project.description,
+                    status=project.status,
+                    lead_agent_id=project.lead_agent_id,
+                    lead_name=lead_name,
+                )
+                if project
+                else None
+            ),
+            subtasks=[
+                _task_brief(t, db=db, storage=storage, names=names, artifacts=True)
+                for t in subtasks
+            ],
+            review_target=target,
             parent=_task_brief(parent) if parent else None,
-            dependencies=[_task_brief(d) for d in deps],
+            dependencies=[
+                _task_brief(d, db=db, storage=storage, names=names, artifacts=True) for d in deps
+            ],
             artifacts=[
                 CtxArtifactBrief(
                     id=a.id,
@@ -179,5 +259,7 @@ def build_context(db: Session, rc: AgentRunContext) -> AgentContext:
             max_headcount=limits.max_headcount,
             own_daily_budget_micros=agent.daily_budget_micros,
             own_monthly_budget_micros=agent.monthly_budget_micros,
+            max_open_tasks=limits.max_open_tasks,
+            role=role,
         ),
     )

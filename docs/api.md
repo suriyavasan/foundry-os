@@ -808,3 +808,133 @@ Verified by mocked transports only: cloud providers (OpenRouter, Anthropic, Open
 **Not verified:** the docker sandbox (daemon not running; the probe bug that treated a dead daemon as available was found live and
 fixed), a Windows/Linux host, Hermes' native OpenRouter/Anthropic base-URL handling, worker hard-kill recovery of an orphaned
 launcher (it ends by its own time limit; its run token dies when recovery finalizes the run).
+
+
+---
+
+# Milestone 5: autonomous operating model
+
+Spec: `docs/specs/m5-autonomous-company.md`. Migration `0005_autonomy` (run `uv run alembic upgrade head`; the API refuses to
+start without the `founder_notes` table). Existing companies get the policy defaults below and the built-in schedules; a NULL
+`hire_default_monthly_budget_micros` becomes $5.
+
+New tables: `founder_notes`, `note_replies`, `memory_entries`, `alerts`, `wake_requests`. New policy fields (humans only):
+
+| field | default | meaning |
+|---|---|---|
+| `max_agent_monthly_budget_micros` | 25 000 000 ($25) | cap for any monthly budget an agent-initiated action hands out (hires, agent-set project budgets). Above it: `409 limit_exceeded`, `details.limit = max_agent_monthly_budget_micros` |
+| `hire_default_monthly_budget_micros` | 5 000 000 ($5) | budget of a hire when none is requested (NULL = the same $5; clamped to the cap). An agent-proposed colleague (`POST /agents` with a run token) gets it too |
+| `max_planning_runs_per_hour` | 6 | planning tasks (wakes and planning schedules) per agent and hour |
+| `max_open_tasks` | 200 | open tasks in the company; agent-created work beyond it is `409 limit_exceeded` (`details.limit = max_open_tasks`) |
+| `circuit_breaker_failures` | 8 | failed/timed-out runs within 10 minutes that auto-pause the company (0 = off) |
+
+## Founder's notes (owner API, `/api/companies/{cid}`)
+
+```json
+FounderNote = { "id", "company_id", "author_user_id", "body", "attachments": ["artifact id"], "status": "new|triaged|archived",
+                "triage": { "category": "directive|goal|requirement|idea|feedback|question|context|noise", "summary",
+                            "actions": [{ "type", "ref_id", "label" }], "confidence": null } | null,
+                "triaged_by_run_id", "pinned", "created_at", "updated_at", "last_reply": NoteReply | null, "reply_count" }
+NoteDetail  = FounderNote + { "replies": [NoteReply] }
+NoteReply   = { "id", "note_id", "author_type": "human|agent", "author_id", "body", "created_at" }
+```
+- `POST /notes {body (1-10240 chars), attachments?: [artifact ids of this company]}` -> 201. Owner/admin only (viewers read; agent tokens 403).
+  Emits `note.created` and adds a reason to the AI Co-founder's wake request (60 s debounce).
+- `GET /notes?status=&category=&pinned=` (newest first), `GET /notes/{id}` -> `NoteDetail`.
+- `POST /notes/{id}/replies {body}` -> 201 `NoteReply`; a reply on a triaged note re-opens it (`status: new`) and wakes the Co-founder.
+- `PATCH /notes/{id} {pinned?, status?: archived|new|triaged}` (`triaged` needs an existing triage; `new` re-opens and wakes).
+- Audit `note.created|replied|updated|triaged` (never the note text). Events `note.created|updated|triaged|replied`
+  (payloads carry `note_id`; replies also `author_type`).
+
+## AI Co-founder (owner API)
+
+- `GET /cofounder/summary` -> `CofounderSummary {agent_id, goals[], plan: {summary, updated_at, projects[{id, goal_id, name, status,
+  lead_agent_id, tasks_done, tasks_total, open_tasks[]}]}, decisions[], blockers[], alerts[], last_run, wake_pending, unprocessed_notes}`.
+  `plan.summary` is the `result_summary` of the Co-founder's last finished planning/routine task.
+- `POST /cofounder/wake` (owner/admin) -> `{status: "queued"|"coalesced", task_id}`; 409 if the company is paused or has no founder.
+  Event `cofounder.woke` whenever a wake task is created for the Co-founder.
+
+## Memory and alerts (owner API)
+
+```json
+MemoryEntry = { "id", "company_id", "kind": "fact|decision|requirement|lesson|research", "title", "body",
+                "status": "proposed|verified|rejected|superseded", "source": { "type", "id", "task_id", "label" } | null, "tags": [],
+                "applies_to": [], "proposed_by_type", "proposed_by_id", "verified_by_type", "verified_by_id", "verified_at",
+                "rejection_reason", "superseded_by_id", "created_at", "updated_at" }
+Alert = { "id", "company_id", "severity": "info|warning|critical", "kind", "title", "body", "status": "open|resolved",
+          "related_type", "related_id", "created_at", "resolved_at", "resolved_by_type", "resolved_by_id" }
+```
+- `GET /memory?status=&kind=&q=&tag=` (newest first), `GET /memory/{id}`, `POST /memory {kind, title?, body, tags?, applies_to?}`
+  (humans only; verified immediately; identical live entries are reused), `POST /memory/{id}/verify|reject {reason?}`.
+  Text that looks like a secret (API keys, tokens, private keys, `password=...`) is `422`. Events `memory.created|updated`.
+- `GET /alerts?status=&severity=`, `GET /alerts/{id}`, `POST /alerts/{id}/resolve` (humans). Raised by the platform:
+  `circuit_breaker` (critical, resolves itself on resume), `budget_threshold` (80 % warning / 100 % critical, daily and monthly,
+  from the ledger), `task_failed`, `loop_guard`. One open alert per dedupe key. Events `alert.raised|resolved`.
+
+## Agent API additions (`/api/agent/v1`, run token; roles enforced in the services)
+
+| Method & path | Who | Notes |
+|---|---|---|
+| `GET /state` | any agent | role-scoped live state: founder = everything (goals, projects, tasks by status/open/blocked/unassigned, failures 24 h, pending approvals, budget with `cost_note`, headcount, agents with load and skills, hiring requests, decisions, verified memory + proposals to verify, alerts, schedules, unprocessed notes with text); lead = its projects/tasks/reports; HR = team + hiring requests; others = own tasks and project |
+| `GET /context` | any agent | now also `memory` (verified entries that apply), `task.project`, `task.subtasks`, dependency/subtask artifacts with text excerpts, `task.review_target` (review / failure-analysis tasks), `policy.role`, `policy.max_open_tasks` |
+| `GET /notes?status=new`, `POST /notes/{id}/triage`, `POST /notes/{id}/replies` | AI Co-founder only | triage `{category, summary, actions: [{type: goal\|project\|task\|schedule\|agent\|hire\|decision\|memory\|approval, ref_id}], confidence?, reply?}`: every `ref_id` must be a record of this company (`422`, `details[].loc = [body, actions, i, ref_id]`). `requirement`/`context` notes become verified memory (source = the note, verified by its author) unless the text contains a secret. Note text is shown with secret-looking spans redacted. When a planning run that triaged one note finishes, the goals/projects/tasks/decisions it created are linked to the triage. Identical consecutive replies are not duplicated |
+| `POST/PATCH /goals`, `POST/PATCH /projects` | goals: AI Co-founder; projects: AI Co-founder (all fields), the project's lead (`description`, `status` only) | an agent can only name an active agent of kind `lead` as project lead (`409`, with the instruction to hire one); agent-set project budgets are capped by the company monthly budget (else the per-agent cap) |
+| `POST/PATCH /schedules` | AI Co-founder (any agent), leads (self and direct reports) | routines only, at least 900 s apart (cron too), at most 40 enabled per company, heartbeats are human-only |
+| `POST /escalations {reason, task_id?, block_task?}` | anyone but the Co-founder | event `escalation.raised` + wakes the Co-founder |
+| `POST /help-requests {message, task_id?}` | anyone | a task for the requester's manager (else the Co-founder), at most 3 open, idempotent per (task, message) |
+| `POST /tasks/{id}/retry`, `POST /tasks/{id}/cancel` `{reason?, assignee_agent_id?}` | founder, project lead, task creator, manager of the assignee | retry = failed -> backlog, attempts reset |
+| `POST /memory`, `POST /memory/{id}/verify|reject` | propose: any agent (proposed only, 20 open per agent); verify: AI Co-founder for others' proposals, never its own | |
+
+Task creation rules for agents (`POST /tasks`): specialists and HR may only create tasks for themselves (assignee defaults to
+self; `403` otherwise - ask with `help-requests`); leads only inside projects they lead (the single led project is the default) or as
+subtasks of their own tasks; agent-created tasks are always kind `work`, inherit the parent's project, and a planning/routine/review/
+hiring run is **not** the default parent. A task nobody owns in a project with a lead goes to the lead (created by the lead: to its
+least loaded report); tasks with `required_skills` are left to skill-gap detection. Loop guard: creating an identical open task
+(same normalized title, project and assignee) returns the existing one (`200`). `max_open_tasks` and the per-run cap apply.
+A manager can hand its own running task to a colleague with `PATCH /tasks/{id} {assignee_agent_id}`.
+
+## Orchestration (control plane)
+
+- **Wake queue** (`wake_requests`): events add a reason to one pending request per agent - Founder's notes (60 s debounce), goal
+  created/changed, project paused/ended, escalation, new hire (wakes the hire's manager), approval decided (wakes the requester), alert
+  raised, project assigned (wakes the lead), all work of a project finished (wakes the lead, else the Co-founder), task without owner.
+  An agent never wakes itself for its own change. The scheduler turns due requests into one `planning` task per agent: merged into a
+  wake task that has not started, deferred while one runs, held back by `max_planning_runs_per_hour`, never created while the company
+  is paused. Idempotency key `wake:<request id>`.
+- **Subtask waiting**: completing a task that still has open subtasks parks it as `backlog` + `blocked_reason: waiting_on_subtasks`
+  (attempt refunded); it runs again when every subtask is closed (done, failed or cancelled) to integrate their results (at most 6 runs).
+- **Reviews as tasks**: entering `in_review` creates one `review` task (key `review:<task>:<revision>`) for the reviewer (explicit, a QA
+  agent for code deliverables, else the assignee's manager). Recording the review - by anyone, also with the review task's own id - closes
+  it (completed if running, cancelled if never started). Revision limits are `policy.max_revisions`.
+- **Failure analysis**: a task that fails for good (attempts or revisions exhausted) creates a `review` task (key `failure:<task>:<runs>`)
+  for the project lead, else the assignee's manager, else the Co-founder, with the error and the options (retry, split, give up), plus a
+  `task_failed` alert.
+- **Project lead gap**: a project still without a lead after 120 s gets the least loaded active lead or, if none exists, a hiring task for HR
+  (`hiring:lead:<project>`); activating a lead hands it every project waiting for one; the hiring task is cancelled once the project has a lead.
+  Hiring requests for the same skill set are deduplicated, and a need HR already hired for is not hired twice (waiting tasks go to the hire).
+- **Supervised mode**: tasks that managers (founder, leads, managers) create are held (`blocked_reason: awaiting_plan_approval`) behind one
+  human approval per run (`kind: other`, `subject_type: agent_plan`); approving releases them, rejecting cancels them.
+- **Circuit breaker / alerts**: see `circuit_breaker_failures`; the auto-pause is audited as `company.auto_paused`.
+
+## Built-in schedules
+
+Created with every company (and by the migration): AI Co-founder `heartbeat` (1800 s; follows `policy.heartbeat_interval_seconds` when a human
+changes it), `daily-standup` (09:00), `weekly-strategy-review` (Mon 09:30), `daily-budget-review` (18:00), HR `skills-review` (monthly),
+a lead's `project-health-check: <project>` (6 h, one per open project with a lead, follows the lead, disabled when the project ends), and an
+operations agent's `failed-run-triage` (daily). `task_template.skip_when_idle` makes a due schedule fire without creating a task (audited as
+skipped) while there is nothing to review; planning schedules respect the hourly planning limit.
+
+## Role toolkits (`company_tools`, server-side per role; the runtime registers 30 company tools)
+
+Specialist: `get_context, report_progress, submit_artifact, complete_task, update_task, create_task, request_help, propose_memory`.
+Lead: `get_state, get_context, report_progress, submit_artifact, complete_task, update_task, create_task, review_task, record_decision,
+find_colleagues, request_hire, manage_project, escalate, propose_memory`. AI Co-founder: `get_state, list_notes, triage_note, reply_to_note,
+manage_goal, manage_project, manage_schedule, create_task, update_task, complete_task, review_task, record_decision, request_hire,
+request_approval, decide_approval, verify_memory, propose_memory, submit_artifact`. HR: the M4 tools + `propose_memory`. Other managers keep
+the M4 manager set. New built-in role templates: `project-lead`, `marketing-lead`, `engineering-lead` (kind `lead`); the founder template's
+toolsets are `company, todo`.
+
+Other M5 rules worth knowing: triaging a `directive` or `goal` note is refused (`409`, `details.code = act_first`) until the Co-founder created
+something in the same run (goal, project, task, schedule, decision or hire request); runs of agents on a **local** model reserve 0 micro-USD
+(they cost nothing, so a project budget of 0 no longer blocks them - found in the live run); a "new hire" wake tells the founder there is
+nothing to onboard and tells a lead to use the hire.

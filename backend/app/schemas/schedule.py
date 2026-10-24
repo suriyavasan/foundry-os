@@ -20,6 +20,10 @@ class TaskTemplate(BaseModel):
     kind: TaskKindLiteral | None = None
     priority: PriorityLiteral = "normal"
     acceptance_criteria: str | None = Field(default=None, max_length=20_000)
+    # M5: skip this firing (no task, no model run) while the company has nothing to review; with
+    # ``project_id`` the check is scoped to that project's open work.
+    skip_when_idle: bool | None = None
+    project_id: str | None = Field(default=None, max_length=36)
 
 
 def check_cron(value: str) -> str:

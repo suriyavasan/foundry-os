@@ -248,6 +248,24 @@ def decide(
         from app.services import hiring  # local: hiring depends on this module
 
         hiring.apply_hire_decision(db, ctx, approval, decision)
+    elif approval.subject_type == "agent_plan":
+        from app.services import tasks  # local: tasks depends on this module
+
+        tasks.apply_plan_decision(db, ctx, approval, decision)
+    if approval.requested_by_agent_id and approval.subject_type != "agent_hire":
+        # the requester continues once it is decided (a hire wakes the new hire's manager instead)
+        from app.services import wakes
+
+        wakes.wake_agent(
+            db,
+            ctx.company_id,
+            approval.requested_by_agent_id,
+            "approval",
+            f"Approval {status.value}: {approval.title}",
+            ref_type="approval",
+            ref_id=approval.id,
+            actor_agent_id=principal.id if principal.is_agent else None,
+        )
     db.commit()
     return approval
 

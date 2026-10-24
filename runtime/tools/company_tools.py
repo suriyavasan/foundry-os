@@ -14,6 +14,11 @@ Colleagues and hiring (M4):
     company_search_skills, company_install_skill, company_author_skill, company_assign_skills,
     company_list_role_templates, company_create_role_template, company_hire_agent
 
+Autonomous operating model (M5, docs/specs/m5-autonomous-company.md):
+    company_get_state (live company state, sliced by role), company_manage_goal / _project / _schedule,
+    company_escalate, company_request_help, company_propose_memory, company_verify_memory,
+    company_list_notes / company_triage_note / company_reply_to_note (AI Co-founder: the Founder's notes)
+
 Which of these a given employee sees is decided by the control plane (spec ``company_tools``
 subset, derived from the role template); the server remains the authority on every call.
 
@@ -128,7 +133,8 @@ def _is_error(parsed: Any) -> bool:
 
 
 def _clean(d: dict[str, Any]) -> dict[str, Any]:
-    return {k: v for k, v in d.items() if v is not None}
+    """Drop unset arguments: None and empty strings (small models send "" for ids they do not have)."""
+    return {k: v for k, v in d.items() if v is not None and v != ""}
 
 
 def _task_id(args: dict[str, Any], key: str = "task_id") -> str:
@@ -188,6 +194,7 @@ def company_create_task(args: dict[str, Any], **_: Any) -> str:
         "assignee_agent_id": args.get("assignee_agent_id"),
         "reviewer_agent_id": args.get("reviewer_agent_id"),
         "parent_task_id": args.get("parent_task_id"),
+        "project_id": args.get("project_id"),
         "depends_on": _str_list(args.get("depends_on")),
         "required_skills": _str_list(args.get("required_skills")),
         "budget_micros": budget,
@@ -201,23 +208,32 @@ def company_update_task(args: dict[str, Any], **_: Any) -> str:
     action = str(args.get("action") or "").strip().lower()
     if not task_id:
         return _err("invalid_arguments", "task_id is required")
-    body: dict[str, Any]
+    own = task_id == ctx.config().task_id
+    result: str
     if action == "block":
         if not str(args.get("reason") or "").strip():
             return _err("invalid_arguments", "A reason is required when blocking a task.")
-        body = {"status": "blocked", "reason": str(args["reason"])}
+        result = _call("PATCH", f"/tasks/{task_id}", json={"status": "blocked", "reason": str(args["reason"])})
     elif action == "unblock":
-        body = _clean({"status": "unblocked", "reason": args.get("reason")})
+        result = _call("PATCH", f"/tasks/{task_id}", json=_clean({"status": "unblocked", "reason": args.get("reason")}))
     elif action == "reassign":
         if not args.get("assignee_agent_id"):
             return _err("invalid_arguments", "assignee_agent_id is required to reassign a task.")
-        body = {"assignee_agent_id": args["assignee_agent_id"]}
+        result = _call("PATCH", f"/tasks/{task_id}", json={"assignee_agent_id": str(args["assignee_agent_id"]).strip()})
+    elif action == "retry":
+        result = _call("POST", f"/tasks/{task_id}/retry", json=_clean({
+            "reason": args.get("reason"), "assignee_agent_id": args.get("assignee_agent_id")}))
+    elif action == "cancel":
+        result = _call("POST", f"/tasks/{task_id}/cancel", json=_clean({"reason": args.get("reason")}))
     else:
-        return _err("invalid_arguments", "action must be one of: block, unblock, reassign")
-    result = _call("PATCH", f"/tasks/{task_id}", json=body)
+        return _err("invalid_arguments", "action must be one of: block, unblock, reassign, retry, cancel")
     parsed = _json_of(result)
-    if action == "block" and isinstance(parsed, dict) and not _is_error(parsed) and task_id == ctx.config().task_id:
+    ok = isinstance(parsed, dict) and not _is_error(parsed)
+    if ok and own and action == "block":
         ctx.mark_task_blocked(task_id)
+    elif ok and own and action == "reassign" and parsed.get("status") in ("ready", "backlog"):
+        # The server moved the running task to its new assignee's queue: this run is over.
+        ctx.mark_task_handed_off(task_id)
     return result
 
 
@@ -422,12 +438,12 @@ def company_request_hire(args: dict[str, Any], **_: Any) -> str:
     task_id = _task_id(args)
     if not task_id:
         return _err("invalid_arguments", "task_id is required")
-    return _call("POST", "/hiring-requests", json=_clean({
+    return _with_next(_call("POST", "/hiring-requests", json=_clean({
         "required_skills": skills,
         "role_hint": args.get("role_hint"),
         "reason": str(args["reason"]).strip(),
         "task_id": task_id,
-    }))
+    })), "HR will hire them and you are woken when they join. Do not request the same hire again.")
 
 
 def company_search_skills(args: dict[str, Any], **_: Any) -> str:
@@ -529,6 +545,292 @@ def company_hire_agent(args: dict[str, Any], **_: Any) -> str:
     return _call("POST", "/hires", json=body)
 
 
+# ------------------------------------------------------------------ M5: autonomous operating model
+
+
+def _compact(value: Any) -> Any:
+    """Drop empty fields (None, "", [], {}) so a state dump costs the model fewer tokens."""
+    if isinstance(value, dict):
+        out = {k: _compact(v) for k, v in value.items()}
+        return {k: v for k, v in out.items() if v not in (None, "", [], {})}
+    if isinstance(value, list):
+        return [_compact(v) for v in value]
+    return value
+
+
+def _compact_result(result: str) -> str:
+    parsed = _json_of(result)
+    if parsed is None or _is_error(parsed):
+        return result
+    return _out(_compact(parsed))
+
+
+def _with_next(result: str, text: str) -> str:
+    """Scaffolding for small models: append the natural next step to a successful result."""
+    parsed = _json_of(result)
+    if isinstance(parsed, dict) and not _is_error(parsed):
+        parsed["next"] = text
+        return _out(parsed)
+    return result
+
+
+def _with_hint(result: str, needle: str, hint: str) -> str:
+    """Append a recovery hint to an error whose message mentions ``needle``."""
+    parsed = _json_of(result)
+    if _is_error(parsed) and needle.lower() in str(parsed.get("message", "")).lower():
+        parsed["hint"] = hint
+        return _out(parsed)
+    return result
+
+
+def company_get_state(args: dict[str, Any], **_: Any) -> str:
+    return _compact_result(_call("GET", "/state"))
+
+
+def company_list_notes(args: dict[str, Any], **_: Any) -> str:
+    status = str(args.get("status") or "new").strip()
+    params = {"status": "" if status == "all" else status, "limit": 20}
+    return _compact_result(_call("GET", "/notes", params=params))
+
+
+NOTE_CATEGORIES = ["directive", "goal", "requirement", "idea", "feedback", "question", "context", "noise"]
+NOTE_ACTION_TYPES = ["goal", "project", "task", "schedule", "agent", "hire", "decision", "memory", "approval"]
+_UUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+
+
+def _parse_actions(value: Any) -> list[dict[str, str]]:
+    """Triage actions as models send them: a list of {type, ref_id}, a JSON string, "type:id" strings,
+    or a {type: id} mapping. Anything else becomes an empty list (the server validates the rest)."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        text = value.strip()
+        if text[:1] in "[{":
+            import ast
+
+            for parse in (json.loads, ast.literal_eval):
+                try:
+                    value = parse(text)
+                    break
+                except (ValueError, SyntaxError):
+                    continue
+        if isinstance(value, str):
+            value = [part for part in re.split(r"[,\n;]", text) if part.strip()]
+    if isinstance(value, dict):
+        if "type" in value and ("ref_id" in value or "id" in value):
+            value = [value]
+        else:
+            value = [{"type": k, "ref_id": v} for k, v in value.items()]
+    out: list[dict[str, str]] = []
+    for item in value if isinstance(value, list) else []:
+        if isinstance(item, dict):
+            typ = str(item.get("type") or item.get("kind") or "").strip().lower()
+            ref = str(item.get("ref_id") or item.get("id") or item.get("record_id") or "").strip()
+        else:
+            text = str(item)
+            match = _UUID_RE.search(text)
+            ref = match.group(0) if match else ""
+            typ = text.replace(ref, "").strip(" :=-#()[]").lower() if ref else ""
+        if typ in NOTE_ACTION_TYPES and ref:
+            out.append({"type": typ, "ref_id": ref})
+    return out
+
+
+def company_triage_note(args: dict[str, Any], **_: Any) -> str:
+    if (bad := _need(args, "note_id", "category", "summary")):
+        return bad
+    category = str(args["category"]).strip().lower()
+    if category not in NOTE_CATEGORIES:
+        return _err("invalid_arguments", f"category must be one of: {', '.join(NOTE_CATEGORIES)}")
+    body: dict[str, Any] = {
+        "category": category,
+        "summary": str(args["summary"]).strip()[:1000],
+        "actions": _parse_actions(args.get("actions")),
+    }
+    if args.get("reply") and str(args["reply"]).strip():
+        body["reply"] = str(args["reply"]).strip()
+    confidence = args.get("confidence")
+    try:
+        if confidence is not None and str(confidence) != "":
+            body["confidence"] = max(0.0, min(1.0, float(confidence)))
+    except (TypeError, ValueError):
+        pass
+    result = _call("POST", f"/notes/{str(args['note_id']).strip()}/triage", json=body)
+    parsed = _json_of(result)
+    if isinstance(parsed, dict) and not _is_error(parsed) and "reply" not in body:
+        parsed["next"] = "Now answer the Founder: call company_reply_to_note (2-3 sentences: what you did)."
+        return _out(parsed)
+    return result
+
+
+def company_reply_to_note(args: dict[str, Any], **_: Any) -> str:
+    if (bad := _need(args, "note_id", "body")):
+        return bad
+    return _call("POST", f"/notes/{str(args['note_id']).strip()}/replies", json={"body": str(args["body"]).strip()})
+
+
+def _micros_or_none(args: dict[str, Any], key: str) -> tuple[Optional[int], Optional[str]]:
+    if args.get(key) is None or str(args.get(key)) == "":
+        return None, None
+    try:
+        return _usd_to_micros(args[key], key), None
+    except ValueError as exc:
+        return None, _err("invalid_arguments", str(exc))
+
+
+def company_manage_goal(args: dict[str, Any], **_: Any) -> str:
+    goal_id = str(args.get("goal_id") or "").strip()
+    action = str(args.get("action") or ("update" if goal_id else "create")).strip().lower()
+    fields = _clean({
+        "title": (str(args["title"]).strip() if args.get("title") else None),
+        "description": args.get("description"),
+        "status": args.get("status"),
+        "priority": args.get("priority"),
+        "target_date": args.get("target_date"),
+        "owner_agent_id": args.get("owner_agent_id"),
+    })
+    if action == "create":
+        if (bad := _need(args, "title")):
+            return bad
+        fields.setdefault("status", "active")
+        return _with_next(
+            _call("POST", "/goals", json=fields),
+            "Now create the project for this goal with company_manage_project (goal_id = the id above). "
+            "Use ids from tool results only.")
+    if action == "update":
+        if not goal_id:
+            return _err("invalid_arguments", "goal_id is required to update a goal.")
+        return _call("PATCH", f"/goals/{goal_id}", json=fields)
+    return _err("invalid_arguments", "action must be 'create' or 'update'")
+
+
+def company_manage_project(args: dict[str, Any], **_: Any) -> str:
+    project_id = str(args.get("project_id") or "").strip()
+    action = str(args.get("action") or ("update" if project_id else "create")).strip().lower()
+    budget, problem = _micros_or_none(args, "budget_usd")
+    if problem:
+        return problem
+    fields = _clean({
+        "name": (str(args["name"]).strip() if args.get("name") else None),
+        "description": args.get("description"),
+        "goal_id": args.get("goal_id"),
+        "status": args.get("status"),
+        "lead_agent_id": args.get("lead_agent_id"),
+        "budget_micros": budget,
+    })
+    if action == "create":
+        if (bad := _need(args, "name")):
+            return bad
+        fields.setdefault("status", "active")
+        result = _call("POST", "/projects", json=fields)
+        parsed = _json_of(result)
+        if (_is_error(parsed) and fields.get("lead_agent_id")
+                and "not an active project lead" in str(parsed.get("message", "")).lower()):
+            # Small models name whoever they know (HR, themselves) as lead. The project is created without
+            # one; the control plane gives it a lead as soon as one exists (or hires one).
+            fields.pop("lead_agent_id")
+            result = _with_next(_call("POST", "/projects", json=fields),
+                                "lead_agent_id was ignored: that agent is not a project lead. The project gets a lead "
+                                "automatically once one exists; if the state shows no lead, call company_request_hire "
+                                "(role_hint 'project lead') once. Then triage the note and complete your task.")
+            return result
+        result = _with_hint(result, "goal not found",
+                            "goal_id must be the id returned by company_manage_goal. Create the goal first.")
+        result = _with_hint(result, "not an active project lead",
+                            "Leave lead_agent_id out and call company_request_hire for a lead; it is assigned when hired.")
+        if not fields.get("lead_agent_id"):
+            return _with_next(result, "The project has no lead yet. If the state shows no agent with kind lead, call "
+                              "company_request_hire (role_hint 'marketing lead'); the lead is assigned automatically "
+                              "once hired. Then triage the note and complete your task.")
+        return _with_next(result, "The lead is woken and plans the work. Now triage the note (company_triage_note) "
+                          "and complete your task.")
+    if action == "update":
+        if not project_id:
+            return _err("invalid_arguments", "project_id is required to update a project.")
+        return _call("PATCH", f"/projects/{project_id}", json=fields)
+    return _err("invalid_arguments", "action must be 'create' or 'update'")
+
+
+def company_manage_schedule(args: dict[str, Any], **_: Any) -> str:
+    schedule_id = str(args.get("schedule_id") or "").strip()
+    action = str(args.get("action") or ("update" if schedule_id else "create")).strip().lower()
+    if action in ("pause", "resume"):
+        if not schedule_id:
+            return _err("invalid_arguments", "schedule_id is required.")
+        return _call("PATCH", f"/schedules/{schedule_id}", json={"enabled": action == "resume"})
+    timing: dict[str, Any] = {}
+    if args.get("every_minutes") is not None and str(args.get("every_minutes")) != "":
+        try:
+            timing["interval_seconds"] = int(float(args["every_minutes"]) * 60)
+        except (TypeError, ValueError):
+            return _err("invalid_arguments", "every_minutes must be a number")
+    elif args.get("cron"):
+        timing["cron"] = str(args["cron"]).strip()
+    template = _clean({
+        "title": args.get("task_title"), "description": args.get("task_description"),
+        "acceptance_criteria": args.get("acceptance_criteria"),
+    })
+    if action == "create":
+        if (bad := _need(args, "name", "agent_id")):
+            return bad
+        if not timing:
+            return _err("invalid_arguments", "Give every_minutes (at least 15) or a 5-field cron expression.")
+        return _call("POST", "/schedules", json=_clean({
+            "name": str(args["name"]).strip(), "agent_id": str(args["agent_id"]).strip(), "kind": "routine",
+            **timing, "task_template": template or None}))
+    if action == "update":
+        if not schedule_id:
+            return _err("invalid_arguments", "schedule_id is required to update a schedule.")
+        return _call("PATCH", f"/schedules/{schedule_id}", json=_clean({
+            "name": args.get("name"), "agent_id": args.get("agent_id"), **timing,
+            "task_template": template or None}))
+    return _err("invalid_arguments", "action must be one of: create, update, pause, resume")
+
+
+def company_escalate(args: dict[str, Any], **_: Any) -> str:
+    if (bad := _need(args, "reason")):
+        return bad
+    block = str(args.get("block_task") if args.get("block_task") is not None else "").lower() in ("1", "true", "yes")
+    task_id = _task_id(args)
+    result = _call("POST", "/escalations", json=_clean({
+        "reason": str(args["reason"]).strip(), "task_id": task_id or None, "block_task": block}))
+    parsed = _json_of(result)
+    if block and isinstance(parsed, dict) and not _is_error(parsed) and task_id == ctx.config().task_id:
+        ctx.mark_task_blocked(task_id)
+    return result
+
+
+def company_request_help(args: dict[str, Any], **_: Any) -> str:
+    if (bad := _need(args, "message")):
+        return bad
+    return _call("POST", "/help-requests", json=_clean({
+        "message": str(args["message"]).strip(), "task_id": args.get("task_id") or None}))
+
+
+MEMORY_KINDS = ["fact", "decision", "requirement", "lesson", "research"]
+
+
+def company_propose_memory(args: dict[str, Any], **_: Any) -> str:
+    if (bad := _need(args, "kind", "body")):
+        return bad
+    kind = str(args["kind"]).strip().lower()
+    if kind not in MEMORY_KINDS:
+        return _err("invalid_arguments", f"kind must be one of: {', '.join(MEMORY_KINDS)}")
+    return _call("POST", "/memory", json=_clean({
+        "kind": kind, "title": args.get("title"), "body": str(args["body"]).strip(),
+        "tags": _str_list(args.get("tags")) or [], "applies_to": _str_list(args.get("applies_to")) or []}))
+
+
+def company_verify_memory(args: dict[str, Any], **_: Any) -> str:
+    if (bad := _need(args, "memory_id")):
+        return bad
+    decision = str(args.get("decision") or "verify").strip().lower()
+    if decision not in ("verify", "reject"):
+        return _err("invalid_arguments", "decision must be 'verify' or 'reject'")
+    return _call("POST", f"/memory/{str(args['memory_id']).strip()}/{decision}",
+                 json=_clean({"reason": args.get("reason")}))
+
+
 # --------------------------------------------------------------------------- schemas
 # Kept deliberately terse: small local models degrade with long tool descriptions.
 
@@ -553,8 +855,10 @@ _TOOLS: dict[str, tuple[dict[str, Any], Callable[..., str], str]] = {
         company_get_context, "🏢"),
     "company_create_task": (
         _schema("company_create_task",
-                "Create a task or subtask (delegate work). Assign it to a colleague by agent id.",
+                "Create a task or subtask. Managers delegate by agent id (or just give required_skills and "
+                "the system assigns the best fit); everyone else creates tasks for themselves.",
                 {"title": _str("Short task title"),
+                 "project_id": _str("Project the task belongs to (leads: required unless it is a subtask of yours)"),
                  "description": _str("What needs to be done"),
                  "acceptance_criteria": _str("How the result will be judged"),
                  "assignee_agent_id": _str("Agent id of the colleague who should do it"),
@@ -568,11 +872,12 @@ _TOOLS: dict[str, tuple[dict[str, Any], Callable[..., str], str]] = {
         company_create_task, "➕"),
     "company_update_task": (
         _schema("company_update_task",
-                "Block or unblock a task (with a reason), or reassign one you manage. Defaults to your task.",
-                {"action": {"type": "string", "enum": ["block", "unblock", "reassign"]},
+                "Block/unblock a task (with a reason), reassign one you manage (or hand your own running task to "
+                "a colleague), retry a failed task you manage, or cancel one. Defaults to your task.",
+                {"action": {"type": "string", "enum": ["block", "unblock", "reassign", "retry", "cancel"]},
                  "task_id": _str("Task id (default: your current task)"),
                  "reason": _str("Why (required for block)"),
-                 "assignee_agent_id": _str("New assignee (for reassign)")},
+                 "assignee_agent_id": _str("New assignee (for reassign, or retry with another agent)")},
                 ["action"]),
         company_update_task, "✏️"),
     "company_complete_task": (
@@ -720,6 +1025,111 @@ _TOOLS: dict[str, tuple[dict[str, Any], Callable[..., str], str]] = {
                  "task_id": _str("The hiring task id (default: your task)")},
                 ["role_template", "name", "manager_agent_id"]),
         company_hire_agent, "🤝"),
+
+    "company_get_state": (
+        _schema("company_get_state",
+                "Read the live state of the company for your role: goals, projects, tasks, blockers, failures, "
+                "people, budget, approvals, unprocessed Founder's notes. Call it first when you are woken.",
+                {}, []),
+        company_get_state, "📊"),
+    "company_list_notes": (
+        _schema("company_list_notes",
+                "AI Co-founder: list the Founder's notes (default: unprocessed ones) with their thread.",
+                {"status": {"type": "string", "enum": ["new", "triaged", "all"]}}, []),
+        company_list_notes, "📝"),
+    "company_triage_note": (
+        _schema("company_triage_note",
+                "AI Co-founder: record how you handled a Founder's note: its category, a one-line summary, the real "
+                "records you created or changed (type + id), and your reply to the Founder (2-3 sentences).",
+                {"note_id": _str("Note id"),
+                 "category": {"type": "string", "enum": NOTE_CATEGORIES},
+                 "summary": _str("One line: what the note asks for"),
+                 "actions": {"type": "array", "items": {"type": "object"},
+                             "description": "[{type: goal|project|task|schedule|agent|hire|decision|memory|approval, "
+                                            "ref_id: id of a record you created/changed}]"},
+                 "reply": _str("Your answer to the Founder: what you did or why nothing is needed"),
+                 "confidence": {"type": "number", "description": "0 to 1"}},
+                ["note_id", "category", "summary"]),
+        company_triage_note, "🗂️"),
+    "company_reply_to_note": (
+        _schema("company_reply_to_note",
+                "AI Co-founder: add a reply to a Founder's note thread.",
+                {"note_id": _str("Note id"), "body": _str("Reply text")}, ["note_id", "body"]),
+        company_reply_to_note, "💬"),
+    "company_manage_goal": (
+        _schema("company_manage_goal",
+                "AI Co-founder: create or update a company goal (state a measurable outcome in the description).",
+                {"action": {"type": "string", "enum": ["create", "update"]},
+                 "goal_id": _str("Goal id (update)"), "title": _str("Goal title"),
+                 "description": _str("Measurable outcome / key results"),
+                 "status": {"type": "string", "enum": ["proposed", "active", "achieved", "abandoned"]},
+                 "priority": {"type": "string", "enum": PRIORITIES},
+                 "target_date": _str("YYYY-MM-DD")},
+                []),
+        company_manage_goal, "🎯"),
+    "company_manage_project": (
+        _schema("company_manage_project",
+                "Create or update a project: the AI Co-founder sets the goal link, the lead and the budget; a project "
+                "lead can update the description or mark its project completed.",
+                {"action": {"type": "string", "enum": ["create", "update"]},
+                 "project_id": _str("Project id (update)"), "name": _str("Project name"),
+                 "description": _str("Scope and expected deliverables"),
+                 "goal_id": _str("Goal this project serves"),
+                 "lead_agent_id": _str("Agent id of the project lead (assigning wakes the lead)"),
+                 "status": {"type": "string", "enum": ["planned", "active", "paused", "completed", "cancelled"]},
+                 "budget_usd": {"type": "number", "description": "Project spending cap in US dollars"}},
+                []),
+        company_manage_project, "📁"),
+    "company_manage_schedule": (
+        _schema("company_manage_schedule",
+                "Create, update, pause or resume a recurring routine (at least every 15 minutes) for yourself or a "
+                "report. Each firing creates a task for that agent.",
+                {"action": {"type": "string", "enum": ["create", "update", "pause", "resume"]},
+                 "schedule_id": _str("Schedule id (update/pause/resume)"), "name": _str("Routine name"),
+                 "agent_id": _str("Agent who gets the task each time"),
+                 "every_minutes": {"type": "number", "description": "Interval in minutes (>= 15)"},
+                 "cron": _str("5-field cron, instead of every_minutes"),
+                 "task_title": _str("Title of the task created each time"),
+                 "task_description": _str("What the task asks for")},
+                []),
+        company_manage_schedule, "⏰"),
+    "company_escalate": (
+        _schema("company_escalate",
+                "Tell the AI Co-founder you are stuck or something needs a decision above you. Say what, why and "
+                "what you need. Optionally block your task until it acts.",
+                {"reason": _str("What is wrong and what you need"),
+                 "task_id": _str("Task concerned (default: your task)"),
+                 "block_task": {"type": "boolean", "description": "Also block your task (ends your run)"}},
+                ["reason"]),
+        company_escalate, "🚨"),
+    "company_request_help": (
+        _schema("company_request_help",
+                "Ask your lead (manager) for help with your task: a task lands in their queue. You cannot assign "
+                "work to others yourself.",
+                {"message": _str("What you need and why"), "task_id": _str("Your task (default: current)")},
+                ["message"]),
+        company_request_help, "🆘"),
+    "company_propose_memory": (
+        _schema("company_propose_memory",
+                "Propose something the whole company should remember: a fact, requirement, decision, research "
+                "finding or lesson learned (after a failure or revision). Other agents see it once it is verified. "
+                "Never include secrets.",
+                {"kind": {"type": "string", "enum": MEMORY_KINDS},
+                 "title": _str("Short title"), "body": _str("The knowledge itself, concise and self-contained"),
+                 "tags": {"type": "array", "items": _S},
+                 "applies_to": {"type": "array", "items": _S,
+                                "description": "Lessons: role families / agent ids it applies to (empty = everyone)"}},
+                ["kind", "body"]),
+        company_propose_memory, "🧠"),
+    "company_verify_memory": (
+        _schema("company_verify_memory",
+                "AI Co-founder: verify (or reject) a memory proposal from another agent. Only verified memory "
+                "reaches the other agents.",
+                {"memory_id": _str("Memory entry id"),
+                 "decision": {"type": "string", "enum": ["verify", "reject"]},
+                 "reason": _str("Why (for reject)")},
+                ["memory_id"]),
+        company_verify_memory, "✔️"),
 }
 
 def _availability(tool_name: str) -> Callable[[], bool]:

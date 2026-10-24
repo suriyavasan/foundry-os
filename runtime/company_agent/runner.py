@@ -113,7 +113,8 @@ class Runner:
             "is_error": is_error,
             "result_preview": self.writer.preview(text, PREVIEW_CHARS),
         })
-        if not is_error and str(name) in ("company_complete_task", "company_update_task") and self.disposition():
+        if (not is_error and str(name) in ("company_complete_task", "company_update_task", "company_escalate")
+                and self.disposition()):
             self._finish_after_disposition(args)
 
     def _finish_after_disposition(self, args: Any) -> None:

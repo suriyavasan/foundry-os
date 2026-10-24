@@ -51,6 +51,9 @@ def test_overview_aggregates_reflect_real_work(client, company, scheduler, worke
     assert ov["founder"]["live"]["state"] in ("idle", "working")
 
 
+BUILTIN_SCHEDULES = 5  # Co-founder heartbeat + 3 routines, HR skills review
+
+
 def test_overview_approvals_artifacts_routines(app, client, company):
     cid = company["id"]
     agent = new_agent(client, cid)
@@ -75,9 +78,16 @@ def test_overview_approvals_artifacts_routines(app, client, company):
     assert ov["approvals"]["pending_by_approver"] == {"human": 1, "founder": 1}
     assert ov["artifacts"]["total"] == 7
     assert [a["title"] for a in ov["artifacts"]["latest"]] == [f"Doc {i}" for i in (6, 5, 4, 3, 2)]
-    assert ov["routines"]["total"] == 4 and ov["routines"]["enabled"] == 3
+    assert (
+        ov["routines"]["total"] == 4 + BUILTIN_SCHEDULES
+        and ov["routines"]["enabled"] == 3 + BUILTIN_SCHEDULES
+    )
     upcoming = ov["routines"]["upcoming"]
-    assert [u["name"] for u in upcoming] == ["S2", "S1", "S0"]  # soonest first, disabled excluded
+    # soonest first, disabled excluded (the built-in schedules fire later than a minute)
+    assert [u["name"] for u in upcoming][:1] == ["S2"] and "off" not in {
+        u["name"] for u in upcoming
+    }
+    assert [u["name"] for u in upcoming if u["name"].startswith("S")] == ["S2", "S1", "S0"]
     assert upcoming[0]["agent_name"] == agent["name"] and upcoming[0]["next_run_at"].endswith("Z")
 
 

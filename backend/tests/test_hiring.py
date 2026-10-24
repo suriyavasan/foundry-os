@@ -219,12 +219,11 @@ def test_requested_budget_must_fit_the_company_budget(client, world):
     assert too_much.json()["reasons_not_auto_activated"] == ["budget_does_not_fit"]
     exact = hr.post("/hires", json=hire_body(founder, hr, name="C", monthly_budget_micros=400_000))
     assert exact.json()["auto_activated"] is True  # exactly what is left fits
-    # without a budget request nothing is checked, and without a company budget anything fits
-    no_request = hr.post("/hires", json=hire_body(founder, hr, name="D"))
-    assert no_request.json()["auto_activated"] is True
+    # without a budget request the default ($5) applies and is checked like any other; without a
+    # company budget any request up to the per-agent cap fits (the cap itself: see test_budget_cap)
     set_policy(client, cid, monthly_budget_micros=None)
-    huge = hr.post("/hires", json=hire_body(founder, hr, name="E", monthly_budget_micros=10**12))
-    assert huge.json()["auto_activated"] is True
+    big = hr.post("/hires", json=hire_body(founder, hr, name="E", monthly_budget_micros=20_000_000))
+    assert big.json()["auto_activated"] is True
 
 
 def test_default_hire_budget_applies_and_counts(client, world):

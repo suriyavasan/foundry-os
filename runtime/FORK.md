@@ -134,3 +134,18 @@ providers (no keys), the HR/hiring tools against a real model (they are covered 
 3. `uv sync --frozen --no-install-project --extra anthropic --extra ddgs`, then
    `python scripts/check_imports.py` and `python -m pytest`.
 4. Update the commit hash here and in `company_agent/__init__.py` (`UPSTREAM_COMMIT`).
+
+
+## Milestone 5 additions (company layer only, no upstream file touched)
+
+* `tools/company_tools.py`: 11 new company tools (30 in total): `company_get_state`, `company_list_notes`, `company_triage_note`,
+  `company_reply_to_note`, `company_manage_goal`, `company_manage_project`, `company_manage_schedule`, `company_escalate`,
+  `company_request_help`, `company_propose_memory`, `company_verify_memory`; `company_create_task` gained `project_id`,
+  `company_update_task` gained `retry` / `cancel` and hands a manager's own running task to a colleague.
+  Small-model scaffolding applied to the new tools as to the old ones: lenient argument shapes (triage `actions` as objects, JSON,
+  `type:id` strings or a mapping), empty-string ids dropped, `next` hints after goal/project/hire/triage calls, recovery `hint`s on known
+  errors, state/notes output compacted.
+* `company_agent/prompts.py`: one short playbook per role (AI Co-founder, project lead, specialist, manager, HR) selected by
+  `spec.agent.role`; verified company memory in the identity prompt; review / failure-analysis tasks render the work under review;
+  role-aware kickoff and completion nudges. `company_agent/context.py`: `handed_off` disposition. `spec.py`: tool names.
+* Tests: `company_agent/tests/test_company_tools.py` (M5 tools, hints), `test_policy.py` (playbooks, memory, review prompts).

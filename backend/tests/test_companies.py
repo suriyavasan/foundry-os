@@ -37,6 +37,7 @@ def test_create_company_side_effects(client, app, company):
         "agent.created",
         "company.created",
         "department.created",
+        "schedule.builtins_created",
     ]
     created = next(e for e in events if e["action"] == "company.created")
     assert created["actor_type"] == "human"

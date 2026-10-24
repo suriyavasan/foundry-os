@@ -26,7 +26,7 @@ from app.models.enums import (
 )
 from app.models.run import TaskRun
 from app.models.work import Task
-from app.services import hiring, jobs, ledger, policy, runs, tasks
+from app.services import hiring, jobs, ledger, model_providers, policy, runs, tasks, wakes
 
 PRIORITY_RANK = case(
     (Task.priority == "urgent", 3),
@@ -43,6 +43,16 @@ class DispatchReport:
     budget_blocked_task_ids: list[str] = field(default_factory=list)
     policy_blocked_task_ids: list[str] = field(default_factory=list)
     waiting_for_runtime: int = 0
+
+
+def _runs_on_local_model(db, agent: Agent) -> bool:
+    """True when the agent runs on the company agent runtime with a local (zero-cost) provider."""
+    if agent.runtime != "company_agent":
+        return False
+    try:
+        return model_providers.resolve_for_agent(db, agent).is_local
+    except model_providers.ModelResolutionError:
+        return False
 
 
 def dispatch_tick(ctx: EngineContext, now: datetime | None = None) -> DispatchReport:
@@ -64,6 +74,8 @@ def _dispatch_company(
         # Skill-gap detection first: unassigned tasks needing skills get an employee (or a
         # hiring request), then readiness sees the new assignees.
         hiring.resolve_skill_gaps(db, company_id, now=now)
+        hiring.resolve_project_leads(db, company_id, now=now)
+        wakes.nudge_goals_without_projects(db, company_id, now=now)
         tasks.recompute_readiness(db, company_id, now=now)
         db.commit()
 
@@ -166,6 +178,8 @@ def _dispatch_one(
                 amount = remaining
             else:
                 amount = limits.default_run_reservation_micros
+                if _runs_on_local_model(db, agent):
+                    amount = 0  # a local model has no provider charge: nothing to hold
             reservation = ledger.reserve(db, company_id, agent, candidate, amount, now=now)
         except BudgetExceeded as exc:
             details = exc.details or {}

@@ -38,6 +38,10 @@ COMPANY_TOOL_NAMES = (
     "company_find_colleagues", "company_request_hire",
     "company_search_skills", "company_install_skill", "company_author_skill", "company_assign_skills",
     "company_list_role_templates", "company_create_role_template", "company_hire_agent",
+    # M5: autonomous operating model (live state, Founder's notes, goals/projects/schedules, escalation, memory).
+    "company_get_state", "company_list_notes", "company_triage_note", "company_reply_to_note",
+    "company_manage_goal", "company_manage_project", "company_manage_schedule",
+    "company_escalate", "company_request_help", "company_propose_memory", "company_verify_memory",
 )
 
 MIN_CONTEXT_LENGTH = 8192

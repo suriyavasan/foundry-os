@@ -52,7 +52,9 @@ ignore = ["B008"]
 
 [tool.ruff.lint.per-file-ignores]
 # Test fixtures and table-driven cases read better on long lines.
-"tests/*" = ["E501"]
+"tests/*" = ["E501", "F811"]  # F811: pytest fixtures imported then used as arguments
+# Migrations freeze long prose (task templates) verbatim.
+"alembic/versions/*" = ["E501"]
 
 [tool.ruff.format]
 quote-style = "double"

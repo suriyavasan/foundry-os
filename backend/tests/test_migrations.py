@@ -268,7 +268,9 @@ def test_0003_backfills_an_hr_agent_people_department_and_seed_job(tmp_path):
                 "SELECT auto_activate_hires, hire_default_monthly_budget_micros FROM company_policies"
             )
         ).all()
-        assert all(bool(p[0]) and p[1] is None for p in policy)
+        assert all(
+            bool(p[0]) and p[1] == 5_000_000 for p in policy
+        )  # 0005 backfills the $5 default
     engine.dispose()
 
     # a second pass (downgrade + upgrade) does not hire a second HR agent
@@ -280,5 +282,92 @@ def test_0003_backfills_an_hr_agent_people_department_and_seed_job(tmp_path):
             text("SELECT COUNT(*) FROM agents WHERE company_id = :c AND name = 'Harper'"),
             {"c": plain["company"]},
         ).scalar()
+    engine.dispose()
+    assert n == 1
+
+
+# ------------------------------------------------------------------ 0005: autonomy
+
+M5_TABLES = {"founder_notes", "note_replies", "memory_entries", "alerts", "wake_requests"}
+
+
+def test_0005_upgrade_downgrade_roundtrip(tmp_path):
+    url = f"sqlite:///{tmp_path / 'm5.db'}"
+    cfg = alembic_config(url)
+    command.upgrade(cfg, "head")
+    assert tables(url) >= M5_TABLES
+    engine = create_engine(url)
+    cols = {c["name"]: c for c in inspect(engine).get_columns("company_policies")}
+    assert {
+        "max_agent_monthly_budget_micros",
+        "max_planning_runs_per_hour",
+        "max_open_tasks",
+        "circuit_breaker_failures",
+    } <= set(cols)
+    engine.dispose()
+    command.downgrade(cfg, "0004")
+    assert not (M5_TABLES & tables(url))
+    command.upgrade(cfg, "head")
+    assert tables(url) >= M5_TABLES
+
+
+def test_0005_backfills_budget_defaults_and_builtin_schedules(tmp_path):
+    url = f"sqlite:///{tmp_path / 'legacy_m5.db'}"
+    cfg = alembic_config(url)
+    command.upgrade(cfg, "0001")
+    engine = create_engine(url)
+    with engine.begin() as conn:
+        ids = _legacy_company(conn, "Legacy")
+    engine.dispose()
+    command.upgrade(cfg, "0004")  # policy rows exist now, hire default still NULL
+    engine = create_engine(url)
+    with engine.begin() as conn:
+        now = datetime.now(UTC).replace(tzinfo=None).isoformat(sep=" ")
+        pid = str(uuid.uuid4())
+        conn.execute(
+            text(
+                "INSERT INTO projects (id, company_id, name, status, lead_agent_id, created_by_type, created_at, updated_at) "
+                "VALUES (:i, :c, 'Site', 'active', :l, 'human', :t, :t)"
+            ),
+            {"i": pid, "c": ids["company"], "l": ids["worker"], "t": now},
+        )
+        conn.execute(text("UPDATE company_policies SET hire_default_monthly_budget_micros = NULL"))
+    engine.dispose()
+    command.upgrade(cfg, "head")
+    engine = create_engine(url)
+    with engine.connect() as conn:
+        pol = conn.execute(
+            text(
+                "SELECT hire_default_monthly_budget_micros, max_agent_monthly_budget_micros, "
+                "max_planning_runs_per_hour, max_open_tasks, circuit_breaker_failures FROM company_policies"
+            )
+        ).all()
+        assert pol and all(tuple(p) == (5_000_000, 25_000_000, 6, 200, 8) for p in pol)
+        rows = conn.execute(
+            text(
+                "SELECT name, kind, agent_id, interval_seconds, cron, enabled, next_run_at FROM schedules WHERE company_id = :c"
+            ),
+            {"c": ids["company"]},
+        ).all()
+        by_name = {r[0]: r for r in rows}
+        assert set(by_name) == {
+            "heartbeat",
+            "daily-standup",
+            "weekly-strategy-review",
+            "daily-budget-review",
+            "skills-review",
+            "project-health-check: Site",
+        }
+        assert by_name["heartbeat"][1:4] == ("heartbeat", ids["founder"], 1800)
+        assert by_name["daily-standup"][4] == "0 9 * * *"
+        assert by_name["project-health-check: Site"][2] == ids["worker"]
+        assert all(r[5] and r[6] for r in rows)
+    engine.dispose()
+    # running the backfill again (downgrade removes the built-ins, upgrade re-creates) is idempotent
+    command.downgrade(cfg, "0004")
+    command.upgrade(cfg, "head")
+    engine = create_engine(url)
+    with engine.connect() as conn:
+        n = conn.execute(text("SELECT COUNT(*) FROM schedules WHERE name = 'heartbeat'")).scalar()
     engine.dispose()
     assert n == 1

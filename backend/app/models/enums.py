@@ -239,3 +239,55 @@ class RoleFamily(StrEnum):
     OPERATIONS = "operations"
     FINANCE = "finance"
     GENERIC = "generic"
+
+
+# ------------------------------------------------------ Milestone 5: autonomous operating model
+
+
+class NoteStatus(StrEnum):
+    NEW = "new"
+    TRIAGED = "triaged"
+    ARCHIVED = "archived"
+
+
+class NoteCategory(StrEnum):
+    DIRECTIVE = "directive"
+    GOAL = "goal"
+    REQUIREMENT = "requirement"
+    IDEA = "idea"
+    FEEDBACK = "feedback"
+    QUESTION = "question"
+    CONTEXT = "context"
+    NOISE = "noise"
+
+
+class MemoryKind(StrEnum):
+    FACT = "fact"
+    DECISION = "decision"
+    REQUIREMENT = "requirement"
+    LESSON = "lesson"
+    RESEARCH = "research"
+
+
+class MemoryStatus(StrEnum):
+    PROPOSED = "proposed"
+    VERIFIED = "verified"
+    REJECTED = "rejected"
+    SUPERSEDED = "superseded"
+
+
+class AlertSeverity(StrEnum):
+    INFO = "info"
+    WARNING = "warning"
+    CRITICAL = "critical"
+
+
+class AlertStatus(StrEnum):
+    OPEN = "open"
+    RESOLVED = "resolved"
+
+
+# Task ``blocked_reason`` values that park a backlog task without any human involvement.
+WAITING_FOR_HIRE = "waiting_for_hire"
+WAITING_ON_SUBTASKS = "waiting_on_subtasks"
+AWAITING_PLAN_APPROVAL = "awaiting_plan_approval"

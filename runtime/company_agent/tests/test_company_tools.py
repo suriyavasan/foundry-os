@@ -23,6 +23,9 @@ TOOLS = [
     "company_find_colleagues", "company_request_hire", "company_search_skills", "company_install_skill",
     "company_author_skill", "company_assign_skills", "company_list_role_templates",
     "company_create_role_template", "company_hire_agent",
+    "company_get_state", "company_list_notes", "company_triage_note", "company_reply_to_note",
+    "company_manage_goal", "company_manage_project", "company_manage_schedule",
+    "company_escalate", "company_request_help", "company_propose_memory", "company_verify_memory",
 ]
 
 
@@ -47,7 +50,7 @@ def test_all_tools_registered_in_company_toolset():
 
     for name in TOOLS:
         assert registry.get_toolset_for_tool(name) == "company"
-    assert len(TOOLS) == 19
+    assert len(TOOLS) == 30
     assert sorted(TOOLS) == sorted(COMPANY_TOOL_NAMES)  # spec validation and registry cannot drift
 
 
@@ -424,3 +427,145 @@ def test_new_tools_respect_the_company_tools_subset(api: StubApi, tmp_path: Path
         assert not ctx.tool_enabled("company_install_skill")
     finally:
         ctx.reset()
+
+
+# ------------------------------------------------------------------ M5: autonomous operating model
+
+UUID_A = "11111111-1111-4111-8111-111111111111"
+UUID_B = "22222222-2222-4222-8222-222222222222"
+
+
+def test_get_state_and_list_notes_are_compacted(configured, api: StubApi):
+    state = call("company_get_state")
+    assert state["role"] == "founder" and "goals" not in state and "alerts" not in state  # empty fields dropped
+    assert api.calls("GET", "/state")
+    notes = call("company_list_notes")
+    assert notes["items"][0]["id"] == "note-1" and "replies" not in notes["items"][0]
+    assert api.calls("GET", "/notes")[0].path.endswith("status=new&limit=20")
+    call("company_list_notes", status="all")
+    assert "status=&" in api.calls("GET", "/notes")[1].path or "status=" in api.calls("GET", "/notes")[1].path
+
+
+@pytest.mark.parametrize(
+    "actions",
+    [
+        [{"type": "goal", "ref_id": UUID_A}, {"type": "project", "ref_id": UUID_B}],
+        json.dumps([{"type": "goal", "id": UUID_A}, {"type": "project", "id": UUID_B}]),
+        {"goal": UUID_A, "project": UUID_B},
+        [f"goal: {UUID_A}", f"project {UUID_B}"],
+        f"goal:{UUID_A}, project:{UUID_B}",
+    ],
+)
+def test_triage_accepts_the_action_shapes_small_models_send(configured, api: StubApi, actions):
+    out = call("company_triage_note", note_id="note-1", category="Directive", summary="Launch", actions=actions,
+               reply="On it.", confidence="0.8")
+    assert out["status"] == "triaged"
+    body = api.calls("POST", "/notes/note-1/triage")[-1].body
+    assert body["actions"] == [{"type": "goal", "ref_id": UUID_A}, {"type": "project", "ref_id": UUID_B}]
+    assert body["category"] == "directive" and body["reply"] == "On it." and body["confidence"] == 0.8
+
+
+def test_triage_validates_locally_and_nudges_for_the_reply(configured, api: StubApi):
+    bad = call("company_triage_note", note_id="n", category="bogus", summary="s")
+    assert bad["error"] == "invalid_arguments" and not api.calls("POST", "/notes")
+    assert call("company_triage_note", note_id="n", category="idea")["error"] == "invalid_arguments"  # no summary
+    ok = call("company_triage_note", note_id="note-1", category="idea", summary="an idea")
+    assert "company_reply_to_note" in ok["next"]  # scaffolding: the reply must follow
+    junk = call("company_triage_note", note_id="note-1", category="idea", summary="s", actions="nonsense, goal:nope")
+    assert api.calls("POST", "/notes/note-1/triage")[-1].body["actions"] == []
+    assert junk["status"] == "triaged"
+    call("company_reply_to_note", note_id="note-1", body="Done")
+    assert api.calls("POST", "/notes/note-1/replies")[0].body == {"body": "Done"}
+    assert call("company_reply_to_note", note_id="note-1")["error"] == "invalid_arguments"
+
+
+def test_manage_goal_project_schedule_map_to_the_agent_api(configured, api: StubApi):
+    call("company_manage_goal", title="Reach 100 users", description="KR: 100", priority="high")
+    assert api.calls("POST", "/goals")[0].body == {
+        "title": "Reach 100 users", "description": "KR: 100", "priority": "high", "status": "active"}
+    call("company_manage_goal", goal_id="g1", status="achieved")
+    assert api.calls("PATCH", "/goals/g1")[0].body == {"status": "achieved"}
+    assert call("company_manage_goal", action="update")["error"] == "invalid_arguments"
+    call("company_manage_project", name="Landing", goal_id="g1", lead_agent_id="l1", budget_usd=2.5)
+    assert api.calls("POST", "/projects")[0].body == {
+        "name": "Landing", "goal_id": "g1", "lead_agent_id": "l1", "budget_micros": 2_500_000, "status": "active"}
+    call("company_manage_project", project_id="p1", status="completed")
+    assert api.calls("PATCH", "/projects/p1")[0].body == {"status": "completed"}
+    assert call("company_manage_project", name="x", budget_usd="abc")["error"] == "invalid_arguments"
+    call("company_manage_schedule", name="Digest", agent_id="a9", every_minutes=60, task_title="Digest")
+    assert api.calls("POST", "/schedules")[0].body == {
+        "name": "Digest", "agent_id": "a9", "kind": "routine", "interval_seconds": 3600,
+        "task_template": {"title": "Digest"}}
+    call("company_manage_schedule", action="pause", schedule_id="s1")
+    assert api.calls("PATCH", "/schedules/s1")[0].body == {"enabled": False}
+    assert call("company_manage_schedule", name="x", agent_id="a")["error"] == "invalid_arguments"  # no timing
+
+
+def test_update_task_retry_cancel_and_handoff_dispositions(configured, api: StubApi):
+    call("company_update_task", action="retry", task_id="t9", assignee_agent_id="a2", reason="again")
+    assert api.calls("POST", "/tasks/t9/retry")[0].body == {"reason": "again", "assignee_agent_id": "a2"}
+    call("company_update_task", action="cancel", task_id="t9", reason="moot")
+    assert api.calls("POST", "/tasks/t9/cancel")[0].body == {"reason": "moot"}
+    assert ctx.dispositions() == {}
+    call("company_update_task", action="reassign", assignee_agent_id="a2")  # own running task: handed off
+    assert ctx.dispositions() == {"task-1": "handed_off"}
+    assert call("company_update_task", action="explode")["error"] == "invalid_arguments"
+
+
+def test_create_task_passes_the_project(configured, api: StubApi):
+    call("company_create_task", title="Write copy", project_id="p1", required_skills=["copywriting"])
+    body = api.calls("POST", "/tasks")[0].body
+    assert body["project_id"] == "p1" and body["required_skills"] == ["copywriting"]
+
+
+def test_escalate_help_and_memory_tools(configured, api: StubApi):
+    out = call("company_escalate", reason="Need a pricing decision", block_task=True)
+    assert out["escalated_to_name"] == "Atlas" and ctx.dispositions() == {"task-1": "blocked"}
+    body = api.calls("POST", "/escalations")[0].body
+    assert body == {"reason": "Need a pricing decision", "task_id": "task-1", "block_task": True}
+    assert call("company_escalate")["error"] == "invalid_arguments"
+    call("company_request_help", message="Need the brand guide")
+    assert api.calls("POST", "/help-requests")[0].body == {"message": "Need the brand guide"}
+    call("company_propose_memory", kind="Lesson", body="Check links", tags="a, b", applies_to=["marketing"])
+    assert api.calls("POST", "/memory")[0].body == {
+        "kind": "lesson", "body": "Check links", "tags": ["a", "b"], "applies_to": ["marketing"]}
+    assert call("company_propose_memory", kind="gossip", body="x")["error"] == "invalid_arguments"
+    call("company_verify_memory", memory_id="m1")
+    call("company_verify_memory", memory_id="m2", decision="reject", reason="stale")
+    assert api.calls("POST", "/memory/m1/verify") and api.calls("POST", "/memory/m2/reject")[0].body == {"reason": "stale"}
+    assert call("company_verify_memory", memory_id="m1", decision="maybe")["error"] == "invalid_arguments"
+
+
+def test_scaffolding_hints_guide_small_models_to_the_next_step(configured, api: StubApi):
+    goal = call("company_manage_goal", title="Launch")
+    assert "company_manage_project" in goal["next"]
+    no_lead = call("company_manage_project", name="Page")
+    assert "company_request_hire" in no_lead["next"]
+    with_lead = call("company_manage_project", name="Page 2", lead_agent_id="lead-1")
+    assert "company_triage_note" in with_lead["next"]
+    api.forced["/projects"] = (404, {"error": {"code": "not_found", "message": "Goal not found", "details": None}})
+    err = call("company_manage_project", name="Page 3", goal_id="invented")
+    assert err["error"] == "not_found" and "company_manage_goal" in err["hint"]
+    api.forced.clear()
+    hire = call("company_request_hire", required_skills=["marketing"], reason="need a lead")
+    assert "Do not request the same hire again" in hire["next"]
+
+
+def test_project_creation_retries_without_a_lead_that_is_not_a_lead(configured, api: StubApi):
+    answers = [
+        (409, {"error": {"code": "conflict", "message": "That agent is not an active project lead.", "details": None}}),
+        (201, {"id": "p-9", "name": "Page"}),
+    ]
+    api.on_request = None
+    original = api._respond
+
+    def respond(rec):
+        if rec.method == "POST" and rec.path.endswith("/projects") and answers:
+            return answers.pop(0)
+        return original(rec)
+
+    api._respond = respond  # type: ignore[method-assign]
+    out = call("company_manage_project", name="Page", lead_agent_id="harper-id", goal_id="g1")
+    posts = api.calls("POST", "/projects")
+    assert len(posts) == 2 and "lead_agent_id" in posts[0].body and "lead_agent_id" not in posts[1].body
+    assert posts[1].body["goal_id"] == "g1" and out["id"] == "p-9" and "lead_agent_id was ignored" in out["next"]

@@ -5,7 +5,8 @@ from __future__ import annotations
 import threading
 from datetime import timedelta
 
-from sqlalchemy import func, select, update
+import pytest
+from sqlalchemy import delete, func, select, update
 
 from app.engine import recovery
 from app.engine.scheduler import Scheduler
@@ -15,6 +16,20 @@ from app.models.schedule import Schedule, ScheduleFire
 from app.models.work import Task
 from app.services import jobs, schedules
 from tests.helpers import api, get_task, new_agent, new_task, settle
+
+
+@pytest.fixture
+def company(app, client):
+    """These tests count schedules and fired tasks exactly: start without the built-in
+    schedules every new company gets (their own tests are in test_autonomy_schedules.py)."""
+    resp = client.post("/api/companies", json={"name": "Acme Labs", "mission": "Ship"})
+    assert resp.status_code == 201, resp.text
+    with app.state.session_factory() as db:
+        db.execute(delete(ScheduleFire))
+        db.execute(delete(Schedule))
+        db.commit()
+    return resp.json()
+
 
 # ------------------------------------------------------------------ recovery
 

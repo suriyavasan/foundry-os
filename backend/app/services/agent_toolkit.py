@@ -6,8 +6,9 @@
   ``code_execution`` unless the sandbox is docker. ``skills_manage`` (Hermes' skill_manage, which
   writes into the ephemeral HERMES_HOME) is never granted: HR authors skills through
   ``company_author_skill``, which scans, versions and audits them.
-* **Company tools** (the ``company`` toolset's members): chosen by role. Small models degrade with
-  many tools, so workers get a lean set; managers, the founder and HR get what their job needs.
+* **Company tools** (the ``company`` toolset's members): chosen by role (``agent_roles``). Small
+  models degrade with many tools, so specialists get a lean set; the AI Co-founder gets strategic
+  tools, project leads management tools, HR the hiring tools.
   The server enforces the same roles again (a non-HR token calling an HR endpoint is 403).
 """
 
@@ -19,8 +20,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.agent import Agent
-from app.models.enums import LIVE_AGENT_STATUSES, AgentKind, AgentStatus, RoleFamily
-from app.services import role_templates
+from app.models.enums import LIVE_AGENT_STATUSES, AgentStatus
+from app.services import agent_roles, role_templates
 
 DEFAULT_TOOLSETS = ("company", "file", "web", "skills", "todo")
 ALLOWED_TOOLSETS = frozenset(
@@ -35,6 +36,8 @@ WORKER_TOOLS = (
     "company_complete_task",
     "company_update_task",
     "company_create_task",
+    "company_request_help",
+    "company_propose_memory",
 )
 MANAGER_EXTRA = (
     "company_review_task",
@@ -43,7 +46,45 @@ MANAGER_EXTRA = (
     "company_find_colleagues",
     "company_request_hire",
 )
-FOUNDER_EXTRA = ("company_decide_approval",)
+# A project lead: manages the projects it leads (state, decomposition, reviews, hiring requests).
+LEAD_TOOLS = (
+    "company_get_state",
+    "company_get_context",
+    "company_report_progress",
+    "company_submit_artifact",
+    "company_complete_task",
+    "company_update_task",
+    "company_create_task",
+    "company_review_task",
+    "company_record_decision",
+    "company_find_colleagues",
+    "company_request_hire",
+    "company_manage_project",
+    "company_escalate",
+    "company_propose_memory",
+)
+# The AI Co-founder: strategy only. It reads the live state, triages the Founder's notes,
+# shapes goals/projects/schedules, requests hires and decides; it does not do the work itself.
+FOUNDER_TOOLS = (
+    "company_get_state",
+    "company_list_notes",
+    "company_triage_note",
+    "company_reply_to_note",
+    "company_manage_goal",
+    "company_manage_project",
+    "company_manage_schedule",
+    "company_create_task",
+    "company_update_task",
+    "company_complete_task",
+    "company_review_task",
+    "company_record_decision",
+    "company_request_hire",
+    "company_request_approval",
+    "company_decide_approval",
+    "company_verify_memory",
+    "company_propose_memory",
+    "company_submit_artifact",
+)
 HR_TOOLS = (
     "company_get_context",
     "company_report_progress",
@@ -58,6 +99,7 @@ HR_TOOLS = (
     "company_list_role_templates",
     "company_create_role_template",
     "company_hire_agent",
+    "company_propose_memory",
 )
 
 
@@ -75,19 +117,17 @@ def has_active_reports(db: Session, agent: Agent) -> bool:
 
 def company_tools_for(db: Session, agent: Agent, override: Any = None) -> list[str]:
     """Company tools for the agent's role, optionally narrowed by ``runtime_config``."""
-    if agent.role_family == RoleFamily.HR:
+    role = agent_roles.role_of(db, agent)
+    if role == agent_roles.HR:
         tools = list(HR_TOOLS)
+    elif role == agent_roles.FOUNDER:
+        tools = list(FOUNDER_TOOLS)
+    elif role == agent_roles.LEAD:
+        tools = list(LEAD_TOOLS)
+    elif role == agent_roles.MANAGER:
+        tools = [*WORKER_TOOLS, *MANAGER_EXTRA]
     else:
         tools = list(WORKER_TOOLS)
-        manager = agent.kind in (
-            AgentKind.FOUNDER,
-            AgentKind.LEAD,
-            AgentKind.REVIEWER,
-        ) or has_active_reports(db, agent)
-        if manager:
-            tools += MANAGER_EXTRA
-        if agent.kind == AgentKind.FOUNDER:
-            tools += FOUNDER_EXTRA
     tools = list(dict.fromkeys(tools))
     if isinstance(override, list) and override:
         keep = {str(t) for t in override}

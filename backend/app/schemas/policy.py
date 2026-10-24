@@ -39,6 +39,11 @@ class Policy(ApiModel):
     allowed_model_providers: list[str]
     auto_activate_hires: bool = True
     hire_default_monthly_budget_micros: int | None = None
+    # M5 autonomy limits (only humans can change them).
+    max_agent_monthly_budget_micros: int = 25_000_000
+    max_planning_runs_per_hour: int = 6
+    max_open_tasks: int = 200
+    circuit_breaker_failures: int = 8
     # M3b: the company default model (ModelProvider id + model name) and the sandbox for code tools.
     default_model_provider_id: str | None = None
     default_model_name: str | None = None
@@ -64,6 +69,10 @@ class PolicyUpdate(RequestModel):
     allowed_model_providers: list[str] | None = None
     auto_activate_hires: bool | None = None
     hire_default_monthly_budget_micros: int | None = Field(default=None, ge=0, le=MAX_BUDGET_MICROS)
+    max_agent_monthly_budget_micros: int | None = Field(default=None, ge=0, le=MAX_BUDGET_MICROS)
+    max_planning_runs_per_hour: int | None = Field(default=None, ge=1, le=1000)
+    max_open_tasks: int | None = Field(default=None, ge=1, le=100_000)
+    circuit_breaker_failures: int | None = Field(default=None, ge=0, le=1000)
     default_model_provider_id: str | None = Field(default=None, max_length=36)
     default_model_name: str | None = Field(default=None, min_length=1, max_length=160)
     sandbox_backend: SandboxBackendLiteral | None = None
@@ -83,6 +92,10 @@ class PolicyUpdate(RequestModel):
         "allowed_model_providers",
         "auto_activate_hires",
         "sandbox_backend",
+        "max_agent_monthly_budget_micros",
+        "max_planning_runs_per_hour",
+        "max_open_tasks",
+        "circuit_breaker_failures",
     )
     @classmethod
     def _not_null(cls, v):  # only the two budget caps are nullable (null = no limit)

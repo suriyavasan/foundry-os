@@ -29,7 +29,7 @@ reachable from anywhere — without approving each step.*
 | M3a | Agent runtime (Hermes fork) | `runtime/` fork, run protocol, company toolset, file jail, live on local Ollama | done |
 | M3b | Runtime integration | Adapter, model providers, encrypted credentials, HR tools in runtime, local-owner auth gate, real E2E task | done |
 | M4 | Skills & HR | Skill library (Hermes + GitHub), scan/quarantine, role templates, HR agent, hiring, gap detection; skills UI | done |
-| M5 | Autonomous operating model | Layered loops (strategic/management/execution/support), Founder's notes + AI Co-founder triage, event triggers, self-healing, lessons, company memory, schedules | planned |
+| M5 | Autonomous operating model | Layered loops (strategic/management/execution/support), Founder's notes + AI Co-founder triage, event triggers, self-healing, lessons, company memory, schedules | backend + runtime done (UI done earlier); live run on a local 7B only partly autonomous - see status notes |
 | M6 | Guardrails & governance | Action risk tiers + policy engine, rate limits, maker-checker for external actions, outbound DLP, injection defenses, stall/runaway detection, emergency stop, mid-run budgets, free-first routing, finance views, guardrail audit | planned |
 | M7 | Accounts, login & team | Username/password onboarding, sessions, roles, email/link invitations, humans in the org tree with assignable tasks, notifications | planned |
 | M8 | Reachability & identity | Landing "how to reach" (LAN + public), tunnel, free-domain flows, optional paid domain (approval), Vercel-hosted control UI, company email identity, connected-accounts vault | planned |
@@ -79,6 +79,14 @@ detection, circuit breaker and emergency stop. Agents can never change their own
   `OLLAMA_CONTEXT_LENGTH=32768` (its OpenAI endpoint ignores `num_ctx`).
 - Docker daemon not running → no sandboxed terminal for agents yet.
 - Disk nearly full; keep footprint lean.
+
+- **M5 live run (2026-10-24, local qwen2.5:7b, 32K, temporary Ollama on :11435; seven runs, the last reported here):** a
+  Founder's note led, without a human, to a goal, a project, a hired project lead (HR, `project-lead` template, $5 budget), a
+  hired market researcher, the lead's decomposition into tasks, executed tasks with artifacts, `waiting_on_subtasks`, review tasks
+  for the Co-founder and one accepted review. It did not finish the project in 30 minutes (a 7B run takes 1-6 min; the lead
+  over-decomposed). Each earlier run exposed a real defect that was fixed with tests (zero project budget blocking local runs,
+  triage-before-act, HR named as lead, duplicate hires, made-up skill names causing hiring churn, "new hire" wakes inviting
+  onboarding projects). Details in the M5 report; nothing here was verified with a cloud model.
 
 ## Known limitations (rolling)
 

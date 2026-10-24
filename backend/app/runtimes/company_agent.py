@@ -35,6 +35,7 @@ from app.core.keys import SecretKeyProvider
 from app.core.time import utcnow
 from app.models.agent import Agent
 from app.models.company import Company
+from app.models.work import Task
 from app.runtimes.base import (
     CancelToken,
     Capability,
@@ -53,9 +54,18 @@ from app.runtimes.base import (
     UsageReport,
 )
 from app.runtimes.sandbox import DockerProbe, resolve_backend
-from app.services import agent_toolkit, credentials, model_providers, policy
+from app.services import (
+    agent_roles,
+    agent_toolkit,
+    credentials,
+    model_providers,
+    policy,
+    reviews,
+)
+from app.services import memory as memory_service
 from app.services import skills as skills_service
 from app.skills.blobstore import BlobStore
+from app.storage.local import LocalFileStorage
 
 logger = logging.getLogger("company_os.runtime.company_agent")
 
@@ -326,6 +336,16 @@ class CompanyAgentAdapter(RuntimeAdapter):
             )
             manager = db.get(Agent, agent.manager_agent_id) if agent.manager_agent_id else None
             reports = agent_toolkit.direct_reports(db, agent)
+            role = agent_roles.role_of(db, agent)
+            memory_lines = memory_service.context_lines(
+                memory_service.relevant_for(db, company.id, agent)
+            )
+            task_row = db.get(Task, request.task.id)
+            review_target = (
+                reviews.review_target(db, LocalFileStorage(settings.artifacts_dir), task_row)
+                if task_row is not None and task_row.kind == "review"
+                else None
+            )
 
             hermes_home = settings.resolved_data_dir / "agents" / agent.id / "home"
             hermes_home.mkdir(parents=True, exist_ok=True)
@@ -357,12 +377,16 @@ class CompanyAgentAdapter(RuntimeAdapter):
                     "mission": company.mission,
                     "strategic_goal": company.strategic_goal,
                     "constraints": list(company.constraints or []),
+                    # Verified company memory that applies to this agent.
+                    "memory": memory_lines,
                 },
                 "agent": {
                     "id": agent.id,
                     "name": agent.name,
                     "role_title": agent.role_title,
                     "kind": agent.kind,
+                    "role": role,
+                    "role_family": agent.role_family,
                     "responsibilities": agent.responsibilities or "",
                     "instructions": agent.instructions or "",
                     "manager": (
@@ -382,6 +406,7 @@ class CompanyAgentAdapter(RuntimeAdapter):
                     "kind": task.kind,
                     "priority": task.priority,
                     "input_refs": list(task.input_refs),
+                    "review_target": review_target,
                 },
                 "model": {
                     "provider": model.runtime_provider,

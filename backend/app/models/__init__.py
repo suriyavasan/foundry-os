@@ -3,6 +3,7 @@
 from app.models.agent import Agent
 from app.models.artifact import Artifact, ArtifactVersion
 from app.models.audit import AuditEvent
+from app.models.autonomy import Alert, FounderNote, MemoryEntry, NoteReply, WakeRequest
 from app.models.company import Company, CompanyMember
 from app.models.department import Department
 from app.models.governance import Approval, Decision
@@ -17,6 +18,7 @@ from app.models.work import Goal, Project, Task, TaskDependency
 
 __all__ = [
     "Agent",
+    "Alert",
     "AgentSkill",
     "Approval",
     "Artifact",
@@ -30,9 +32,12 @@ __all__ = [
     "Credential",
     "Decision",
     "Department",
+    "FounderNote",
     "Goal",
     "Job",
+    "MemoryEntry",
     "ModelProvider",
+    "NoteReply",
     "Project",
     "RunEvent",
     "RoleTemplate",
@@ -45,4 +50,5 @@ __all__ = [
     "TaskRun",
     "UsageRecord",
     "User",
+    "WakeRequest",
 ]

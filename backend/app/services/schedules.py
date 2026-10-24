@@ -13,13 +13,14 @@ from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from croniter import croniter
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.core.errors import ValidationFailed
+from app.core.errors import Forbidden, LimitExceeded, ValidationFailed
 from app.core.principal import CompanyContext, require_human_admin
 from app.core.time import utcnow
+from app.models.agent import Agent
 from app.models.company import Company
 from app.models.enums import (
     TERMINAL_TASK_STATUSES,
@@ -31,7 +32,7 @@ from app.models.schedule import Schedule, ScheduleFire
 from app.models.work import Task
 from app.schemas.schedule import ScheduleCreate, ScheduleUpdate
 from app.schemas.work import TaskCreate
-from app.services import audit, events, tasks
+from app.services import agent_roles, audit, events, tasks, wakes
 from app.services.common import get_agent_or_404
 from app.services.pagination import paginate
 
@@ -92,11 +93,67 @@ def get_schedule(db: Session, ctx: CompanyContext, schedule_id: str) -> Schedule
     return schedule
 
 
+MIN_AGENT_INTERVAL_SECONDS = 900  # agents cannot create schedules that fire more often
+MAX_ENABLED_SCHEDULES = 40  # per company, when an agent adds one
+
+
+def _agent_schedule_actor(db: Session, ctx: CompanyContext) -> tuple[Agent, str]:
+    agent = db.get(Agent, ctx.principal.id)
+    assert agent is not None
+    role = agent_roles.role_of(db, agent)
+    if role not in (agent_roles.FOUNDER, agent_roles.LEAD):
+        raise Forbidden("Only the AI Co-founder and project leads manage schedules")
+    return agent, role
+
+
+def _check_target(db: Session, ctx: CompanyContext, agent: Agent, role: str, target_id: str):
+    target = get_agent_or_404(db, ctx.company_id, target_id)
+    if role == agent_roles.FOUNDER or target.id == agent.id:
+        return target
+    if target.manager_agent_id != agent.id:
+        raise Forbidden("A lead can schedule routines for itself and its direct reports only")
+    return target
+
+
+def _check_agent_timing(interval_seconds: int | None, cron: str | None, timezone: str) -> None:
+    """Policy limit for agent-created schedules: nothing more frequent than every 15 minutes."""
+    if interval_seconds is not None:
+        gap = interval_seconds
+    else:
+        assert cron is not None
+        base = croniter(cron, datetime.now(ZoneInfo(timezone)))
+        first, second = base.get_next(datetime), base.get_next(datetime)
+        gap = int((second - first).total_seconds())
+    if gap < MIN_AGENT_INTERVAL_SECONDS:
+        raise LimitExceeded(
+            f"Schedules created by agents must be at least {MIN_AGENT_INTERVAL_SECONDS} "
+            "seconds apart",
+            details={"limit": "min_schedule_interval_seconds", "min": MIN_AGENT_INTERVAL_SECONDS},
+        )
+
+
 def create_schedule(db: Session, ctx: CompanyContext, data: ScheduleCreate) -> Schedule:
-    require_human_admin(ctx, "create schedules")
-    get_agent_or_404(db, ctx.company_id, data.agent_id)
     company = db.get(Company, ctx.company_id)
     timezone = data.timezone or (company.timezone if company else "UTC")
+    if ctx.principal.is_agent:
+        agent, role = _agent_schedule_actor(db, ctx)
+        _check_target(db, ctx, agent, role, data.agent_id)
+        if data.kind != "routine":
+            raise Forbidden("Agents create routines; heartbeats are set up by the platform")
+        _check_agent_timing(data.interval_seconds, data.cron, timezone)
+        enabled_total = db.scalar(
+            select(func.count(Schedule.id)).where(
+                Schedule.company_id == ctx.company_id, Schedule.enabled.is_(True)
+            )
+        )
+        if (enabled_total or 0) >= MAX_ENABLED_SCHEDULES:
+            raise LimitExceeded(
+                f"The company already has {enabled_total} enabled schedules",
+                details={"limit": "max_schedules", "max": MAX_ENABLED_SCHEDULES},
+            )
+    else:
+        require_human_admin(ctx, "create schedules")
+        get_agent_or_404(db, ctx.company_id, data.agent_id)
     now = utcnow()
     schedule = Schedule(
         company_id=ctx.company_id,
@@ -134,11 +191,27 @@ def create_schedule(db: Session, ctx: CompanyContext, data: ScheduleCreate) -> S
 def update_schedule(
     db: Session, ctx: CompanyContext, schedule_id: str, data: ScheduleUpdate
 ) -> Schedule:
-    require_human_admin(ctx, "update schedules")
     schedule = get_schedule(db, ctx, schedule_id)
     fields = data.model_fields_set
-    if "agent_id" in fields:
-        get_agent_or_404(db, ctx.company_id, data.agent_id)  # type: ignore[arg-type]
+    if ctx.principal.is_agent:
+        agent, role = _agent_schedule_actor(db, ctx)
+        if schedule.kind == "heartbeat":
+            raise Forbidden("Only humans change heartbeats")
+        _check_target(db, ctx, agent, role, schedule.agent_id)
+        if "agent_id" in fields:
+            _check_target(db, ctx, agent, role, data.agent_id)  # type: ignore[arg-type]
+        if data.enabled or "interval_seconds" in fields or "cron" in fields:
+            _check_agent_timing(
+                data.interval_seconds
+                if "interval_seconds" in fields
+                else schedule.interval_seconds,
+                data.cron if "cron" in fields else schedule.cron,
+                data.timezone or schedule.timezone,
+            )
+    else:
+        require_human_admin(ctx, "update schedules")
+        if "agent_id" in fields:
+            get_agent_or_404(db, ctx.company_id, data.agent_id)  # type: ignore[arg-type]
     changed: list[str] = []
     timing_changed = False
     simple = {
@@ -203,6 +276,37 @@ def update_schedule(
 
 
 # ---------------------------------------------------------------- firing (scheduler)
+
+
+def _skip_reason(db: Session, schedule: Schedule, template: dict, now: datetime) -> str | None:
+    """Why a due schedule creates no task this time (it still counts as fired)."""
+    project_id = template.get("project_id")
+    if project_id:
+        from app.models.enums import ProjectStatus
+        from app.models.work import Project
+
+        project = db.get(Project, project_id)
+        if project is None or project.status in (ProjectStatus.COMPLETED, ProjectStatus.CANCELLED):
+            schedule.enabled = False
+            schedule.next_run_at = None
+            return "the project has ended"
+        open_work = db.scalar(
+            select(func.count(Task.id)).where(
+                Task.company_id == schedule.company_id,
+                Task.project_id == project_id,
+                Task.status.notin_([s.value for s in TERMINAL_TASK_STATUSES]),
+            )
+        )
+        if template.get("skip_when_idle") and not open_work:
+            return "the project has nothing in flight"
+    elif template.get("skip_when_idle") and not wakes.has_work(db, schedule.company_id):
+        return "nothing to review"
+    is_planning = template.get("kind") == "planning" or (
+        template.get("kind") is None and schedule.kind == ScheduleKind.HEARTBEAT
+    )
+    if is_planning and not wakes.planning_allowed(db, schedule.company_id, schedule.agent_id, now):
+        return "planning rate limit reached"
+    return None
 
 
 def _has_open_task(db: Session, schedule: Schedule) -> bool:
@@ -288,8 +392,11 @@ def _fire_one(factory: sessionmaker[Session], schedule_id: str, now: datetime) -
         )
         db.refresh(schedule)
         task_id: str | None = None
-        if not (schedule.kind == ScheduleKind.HEARTBEAT and _has_open_task(db, schedule)):
-            template = schedule.task_template or {}
+        template = schedule.task_template or {}
+        skip_reason = _skip_reason(db, schedule, template, now)
+        if skip_reason is None and not (
+            schedule.kind == ScheduleKind.HEARTBEAT and _has_open_task(db, schedule)
+        ):
             default_kind = (
                 TaskKind.PLANNING if schedule.kind == ScheduleKind.HEARTBEAT else TaskKind.ROUTINE
             )
@@ -314,7 +421,7 @@ def _fire_one(factory: sessionmaker[Session], schedule_id: str, now: datetime) -
             target_type="schedule",
             target_id=schedule.id,
             summary=f"Fired schedule '{schedule.name}'"
-            + ("" if task_id else " (skipped: previous heartbeat still open)"),
+            + ("" if task_id else f" (skipped: {skip_reason or 'previous heartbeat still open'})"),
             data={"slot": slot.isoformat().replace("+00:00", "Z"), "task_id": task_id},
         )
         events.emit(

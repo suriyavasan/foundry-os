@@ -24,7 +24,7 @@ from app.models.agent import Agent
 from app.models.department import Department
 from app.models.enums import LIVE_AGENT_STATUSES, AgentKind, AgentStatus, RoleFamily
 from app.schemas.agent import AgentCreate, AgentUpdate, LifecycleAction
-from app.services import audit, events, policy, role_templates, tasks
+from app.services import audit, autonomy_hooks, events, policy, role_templates, tasks
 from app.services import skills as skills_service
 from app.services.pagination import paginate
 
@@ -278,8 +278,12 @@ def create_agent(db: Session, ctx: CompanyContext, data: AgentCreate) -> Agent:
             runtime = "company_agent"
             model_provider = model_provider or limits.default_model_provider_id
             model_name = model_name or limits.default_model_name
+    monthly_budget = data.monthly_budget_micros
     if ctx.principal.is_agent:  # an autonomous hire may not exceed the company's headcount cap
         limits = policy.load_policy(db, ctx.company_id)
+        from app.services import hiring  # local: hiring -> approvals -> agents
+
+        monthly_budget = hiring.hire_monthly_budget(limits, None)  # never "no budget"
         headcount = db.scalar(
             select(func.count(Agent.id)).where(
                 Agent.company_id == ctx.company_id, Agent.status.in_(LIVE_AGENT_STATUSES)
@@ -336,7 +340,7 @@ def create_agent(db: Session, ctx: CompanyContext, data: AgentCreate) -> Agent:
         runtime=runtime,
         runtime_config=dict(data.runtime_config),
         tool_permissions=list(data.tool_permissions),
-        monthly_budget_micros=data.monthly_budget_micros,
+        monthly_budget_micros=monthly_budget,
         daily_budget_micros=data.daily_budget_micros,
         status_changed_at=utcnow(),
     )
@@ -492,5 +496,7 @@ def transition_agent(
     events.emit(db, ctx.company_id, "agent.updated", {"agent_id": agent.id, "status": target.value})
     # Readiness depends on the assignee being active: pausing/retiring/activating re-evaluates.
     tasks.recompute_readiness(db, ctx.company_id, agent_id=agent.id, principal=principal)
+    if target == AgentStatus.ACTIVE:
+        autonomy_hooks.on_agent_activated(db, agent, principal)
     _commit(db)
     return agent

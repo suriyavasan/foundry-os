@@ -14,13 +14,17 @@ from app.api.routes import (
     activity,
     agent_api,
     agents,
+    alerts,
     approvals,
     artifacts,
     auth,
+    cofounder,
     companies,
     control,
     departments,
     goals,
+    memory,
+    notes,
     policy,
     projects,
     providers,
@@ -51,6 +55,7 @@ REQUIRED_TABLES = {
     "company_events",
     "skills",
     "model_providers",
+    "founder_notes",
 }
 
 
@@ -151,6 +156,10 @@ def create_app(
         approvals.router,
         schedules.router,
         control.router,
+        notes.router,
+        memory.router,
+        alerts.router,
+        cofounder.router,
         agent_api.router,
     ):
         app.include_router(router, prefix="/api")

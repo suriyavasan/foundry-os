@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from app.engine import recovery
 from app.engine.context import EngineContext
 from app.engine.dispatcher import DispatchReport, dispatch_tick
-from app.services import events, jobs, schedules
+from app.services import events, jobs, schedules, wakes
 
 logger = logging.getLogger("company_os.scheduler")
 
@@ -19,6 +19,7 @@ PRUNE_INTERVAL_SECONDS = 3600
 @dataclass
 class TickReport:
     fired_task_ids: list[str] = field(default_factory=list)
+    woke_task_ids: list[str] = field(default_factory=list)
     dispatch: DispatchReport = field(default_factory=DispatchReport)
     recovery: recovery.RecoveryReport | None = None
 
@@ -37,12 +38,14 @@ class Scheduler:
         self._last_recovery = now
         report = recovery.recover(self.ctx, now)
         schedules.fire_due(self.ctx.session_factory, now)
+        wakes.materialize_due(self.ctx.session_factory, now)
         return report
 
     def tick(self, now: datetime | None = None) -> TickReport:
         now = now or self.ctx.clock()
         report = TickReport()
         report.fired_task_ids = schedules.fire_due(self.ctx.session_factory, now)
+        report.woke_task_ids = wakes.materialize_due(self.ctx.session_factory, now)
         report.dispatch = dispatch_tick(self.ctx, now)
         if self._last_recovery is None or now - self._last_recovery >= timedelta(
             seconds=recovery.RECOVERY_INTERVAL_SECONDS
