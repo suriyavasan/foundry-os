@@ -12,7 +12,6 @@ from fastapi.testclient import TestClient
 from alembic import command
 from app.api.deps import get_principal
 from app.core.config import BACKEND_DIR, Settings
-from app.core.owner_token import OWNER_COOKIE
 from app.core.principal import Principal, PrincipalType
 from app.main import create_app
 from app.models.company import CompanyMember
@@ -48,6 +47,14 @@ def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(name, raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _close_browsers() -> Iterator[None]:
+    from tests import accounts_helpers
+
+    yield
+    accounts_helpers.close_all()
+
+
 @pytest.fixture(scope="session")
 def migrated_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """A database built by running the real Alembic migrations once per test session."""
@@ -69,6 +76,10 @@ def make_settings(db_url: str, tmp_path: Path) -> Callable[..., Settings]:
         # No runtime checkout by default: no Hermes skills and no scanner, so nothing in the
         # general suite shells out. Skill tests pass their own runtime_dir / scanner.
         overrides.setdefault("runtime_dir", tmp_path / "no-runtime")
+        # Cheap Argon2 so the suite stays fast; test_accounts_* check the real defaults.
+        overrides.setdefault("argon2_time_cost", 1)
+        overrides.setdefault("argon2_memory_kib", 64)
+        overrides.setdefault("argon2_parallelism", 1)
         return Settings(_env_file=None, database_url=db_url, **overrides)
 
     return _make
@@ -100,9 +111,11 @@ def app(
 
 @pytest.fixture
 def client(app: FastAPI) -> Iterator[TestClient]:
-    """Acts as the local owner: carries the owner cookie, exactly like a logged-in browser."""
+    """Acts as the local owner through the CLI path: ``Authorization: Bearer <owner token>`` (the
+    bootstrap / CLI fallback that stays valid in every auth mode and needs no CSRF). The browser
+    paths -- sessions with CSRF, API tokens -- are exercised for real in test_accounts_*.py."""
     with TestClient(app) as c:
-        c.cookies.set(OWNER_COOKIE, app.state.owner_token.get())
+        c.headers["Authorization"] = f"Bearer {app.state.owner_token.get()}"
         yield c
 
 

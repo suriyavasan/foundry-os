@@ -7,6 +7,7 @@ from fastapi import APIRouter, Query, Response
 from app.api.deps import CompanyCtx, DbSession
 from app.schemas.common import Page
 from app.schemas.work import (
+    CompleteTaskRequest,
     DependencyCreate,
     ReviewBody,
     RunCancelBody,
@@ -37,6 +38,7 @@ def list_tasks(
     status: TaskStatusLiteral | None = None,
     project_id: str | None = None,
     assignee_agent_id: str | None = None,
+    assignee_ref: str | None = None,
     parent_task_id: str | None = None,
     kind: TaskKindLiteral | None = None,
     limit: Limit = DEFAULT_LIMIT,
@@ -50,6 +52,7 @@ def list_tasks(
         status=status,
         project_id=project_id,
         assignee_agent_id=assignee_agent_id,
+        assignee_ref=assignee_ref,
         parent_task_id=parent_task_id,
         kind=kind,
     )
@@ -72,6 +75,21 @@ def get_task(task_id: str, ctx: CompanyCtx, db: DbSession):
 @router.patch("/tasks/{task_id}", response_model=Task)
 def update_task(task_id: str, body: TaskUpdate, ctx: CompanyCtx, db: DbSession):
     return _one(db, tasks.update_task(db, ctx, task_id, body))
+
+
+@router.post("/tasks/{task_id}/complete", response_model=Task)
+def complete_task(
+    task_id: str, ctx: CompanyCtx, db: DbSession, body: CompleteTaskRequest | None = None
+):
+    """A person completes a task assigned to them (comment and artifacts optional). Agents
+    complete their own tasks through the agent API."""
+    body = body or CompleteTaskRequest()
+    return _one(
+        db,
+        tasks.complete_task_as_member(
+            db, ctx, task_id, comment=body.comment, artifact_ids=body.artifact_ids
+        ),
+    )
 
 
 @router.post("/tasks/{task_id}/cancel", response_model=Task)

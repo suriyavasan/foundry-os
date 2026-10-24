@@ -33,6 +33,12 @@ MIN_TOKEN_LENGTH = 32
 
 
 _TOKEN_QUERY = re.compile(r"([?&]token=)[^&\s\"']+")
+# M7: an invitation token travels in the path of POST /api/invitations/<token>/accept
+_INVITE_PATH = re.compile(r"(/invitations/)[A-Za-z0-9_\-]{16,}(/accept)")
+
+
+def _mask(text: str) -> str:
+    return _INVITE_PATH.sub(r"\1[redacted]\2", _TOKEN_QUERY.sub(r"\1[redacted]", text))
 
 
 class RedactLoginToken(logging.Filter):
@@ -41,12 +47,9 @@ class RedactLoginToken(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         if isinstance(record.msg, str):
-            record.msg = _TOKEN_QUERY.sub(r"\1[redacted]", record.msg)
+            record.msg = _mask(record.msg)
         if isinstance(record.args, tuple):
-            record.args = tuple(
-                _TOKEN_QUERY.sub(r"\1[redacted]", a) if isinstance(a, str) else a
-                for a in record.args
-            )
+            record.args = tuple(_mask(a) if isinstance(a, str) else a for a in record.args)
         return True
 
 
@@ -130,6 +133,28 @@ class OwnerTokenProvider:
         lines = ["", "  Company OS owner login (open this link in your browser; keep it secret):"]
         lines += [f"    {url}" for url in self.login_urls()]
         lines += [f"  The token is stored in {self.path} (mode 0600).", ""]
+        print("\n".join(lines), file=sys.stderr, flush=True)
+
+    def announce_setup(self) -> None:
+        """Password mode, first run: tell the person at the terminal how to claim the install."""
+        force = self._settings.print_login_url
+        if force is False or (force is None and not sys.stderr.isatty()):
+            logger.warning(
+                "Company OS needs its first-run setup. Open the app and create your account; "
+                "from another device you need the setup token in %s (mode 0600).",
+                self.path,
+            )
+            return
+        base = self._settings.public_url.rstrip("/")
+        lines = [
+            "",
+            "  Company OS first-run setup: open the app and create your account.",
+            f"    {base}",
+            "  From another device you also need this setup token (not needed on this machine):",
+            f"    {self.ensure()}",
+            f"  It is stored in {self.path} (mode 0600).",
+            "",
+        ]
         print("\n".join(lines), file=sys.stderr, flush=True)
 
     def __repr__(self) -> str:  # never expose the token

@@ -62,6 +62,7 @@ class Agent(ApiModel):
     status: AgentStatusLiteral
     department_id: str | None
     manager_agent_id: str | None
+    manager_ref: str | None = None  # M7: agent:<id> | member:<id> | null
     reports_to_human: bool
     responsibilities: str | None
     instructions: str | None
@@ -99,6 +100,7 @@ class AgentCreate(RequestModel):
     kind: AgentKindLiteral = "specialist"
     department_id: str | None = None
     manager_agent_id: str | None = None
+    manager_ref: str | None = Field(default=None, max_length=48)  # M7: may name a human member
     reports_to_human: bool = False
     responsibilities: str | None = Field(default=None, max_length=10_000)
     instructions: str | None = Field(default=None, max_length=50_000)
@@ -124,6 +126,7 @@ class AgentUpdate(RequestModel):
     role_title: str | None = Field(default=None, min_length=1, max_length=120)
     department_id: str | None = None
     manager_agent_id: str | None = None
+    manager_ref: str | None = Field(default=None, max_length=48)
     responsibilities: str | None = Field(default=None, max_length=10_000)
     instructions: str | None = Field(default=None, max_length=50_000)
     model_provider: str | None = Field(default=None, max_length=80)

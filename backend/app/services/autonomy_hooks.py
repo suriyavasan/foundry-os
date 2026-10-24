@@ -36,6 +36,8 @@ def on_transition(
 
     if previous == S.IN_REVIEW and target != S.IN_REVIEW:
         reviews.close_for_task(db, task, principal)
+    if target == S.IN_REVIEW and task.reviewer_member_id:
+        tasks._notify_review_requested(db, task, principal)  # a person is asked to review
     if target not in TERMINAL_TASK_STATUSES:
         return
     if task.parent_task_id:  # a waiting parent resumes once its last subtask is closed

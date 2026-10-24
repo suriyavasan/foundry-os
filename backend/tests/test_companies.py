@@ -16,7 +16,14 @@ def test_create_company_side_effects(client, app, company):
 
     me = client.get("/api/me").json()
     assert me["user"]["email"] == "owner@localhost"
-    assert me["memberships"] == [{"company_id": cid, "company_name": "Acme Labs", "role": "owner"}]
+    assert len(me["memberships"]) == 1
+    assert me["memberships"][0] == {
+        "company_id": cid,
+        "company_name": "Acme Labs",
+        "role": "owner",
+        "member_id": me["memberships"][0]["member_id"],
+    }
+    assert me["memberships"][0]["member_id"]
 
     agents = client.get(f"/api/companies/{cid}/agents").json()["items"]
     assert len(agents) == 2

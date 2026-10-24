@@ -13,6 +13,19 @@ class AgentTaskPatch(RequestModel):
     status: Literal["blocked", "unblocked"] | None = None
     reason: str | None = Field(default=None, max_length=1000)
     assignee_agent_id: str | None = None
+    assignee_ref: str | None = Field(default=None, max_length=48)  # M7: agent:<id> | member:<id>
+
+
+class AgentMember(BaseModel):
+    """A human colleague as the AI Co-founder sees them: name, title, capacity. Never an email,
+    username or credential."""
+
+    ref: str  # member:<id> -- what assignee_ref takes
+    name: str
+    title: str | None
+    role: str
+    manager_ref: str | None
+    open_tasks: int
 
 
 class AgentTaskComplete(RequestModel):

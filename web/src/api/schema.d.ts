@@ -108,11 +108,370 @@ export interface paths {
         /**
          * Local Login
          * @description Exchange the owner token (from the terminal login link) for an HttpOnly, SameSite=Strict
-         *     session cookie, then redirect to ``/``. A wrong token is 401 and sets nothing.
+         *     cookie, then redirect to ``/``. A wrong token is 401 and sets nothing. After the first-run
+         *     setup this cookie no longer authenticates in ``password`` mode (see ``owner_cookie_valid``).
          */
         get: operations["local_login_api_auth_local_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Session
+         * @description Public. Who is this, or what has to happen first? Also (re)issues the CSRF cookie for a
+         *     valid browser session, which is how the web app recovers from a stale token.
+         */
+        get: operations["get_session_api_auth_session_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Setup
+         * @description First run only: claim the install. Needs the setup token printed in the server terminal
+         *     (``data/owner.token``) unless the request comes from loopback or already carries the owner
+         *     credential. On an existing install this claims the placeholder owner, keeping its company.
+         */
+        post: operations["setup_api_auth_setup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Login */
+        post: operations["login_api_auth_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Logout
+         * @description End this browser session (idempotent). A valid session still needs the CSRF token.
+         */
+        post: operations["logout_api_auth_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Change Password */
+        post: operations["change_password_api_auth_password_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Sessions */
+        get: operations["list_sessions_api_auth_sessions_get"];
+        put?: never;
+        post?: never;
+        /**
+         * Revoke All Sessions
+         * @description Log out everywhere, this browser included.
+         */
+        delete: operations["revoke_all_sessions_api_auth_sessions_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke Session */
+        delete: operations["revoke_session_api_auth_sessions__session_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Tokens */
+        get: operations["list_tokens_api_auth_tokens_get"];
+        put?: never;
+        /**
+         * Create Token
+         * @description The secret is in this response and nowhere else: only its hash is stored.
+         */
+        post: operations["create_token_api_auth_tokens_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/tokens/{token_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke Token */
+        delete: operations["revoke_token_api_auth_tokens__token_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/2fa/enroll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Twofa Enroll */
+        post: operations["twofa_enroll_api_auth_2fa_enroll_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/2fa/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Twofa Verify */
+        post: operations["twofa_verify_api_auth_2fa_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/2fa/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Twofa Disable */
+        post: operations["twofa_disable_api_auth_2fa_disable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Notifications
+         * @description The signed-in person's notifications, newest first, with the total unread count.
+         */
+        get: operations["list_notifications_api_notifications_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notifications/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark Read */
+        post: operations["mark_read_api_notifications_read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Members */
+        get: operations["list_members_api_companies__company_id__members_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/members/{member_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Member */
+        get: operations["get_member_api_companies__company_id__members__member_id__get"];
+        put?: never;
+        post?: never;
+        /** Remove Member */
+        delete: operations["remove_member_api_companies__company_id__members__member_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Member */
+        patch: operations["update_member_api_companies__company_id__members__member_id__patch"];
+        trace?: never;
+    };
+    "/api/companies/{company_id}/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Invitations */
+        get: operations["list_invitations_api_companies__company_id__invitations_get"];
+        put?: never;
+        /**
+         * Create Invitation
+         * @description Delivery is ``link``: no email provider is connected until M8, so nothing is sent. The link
+         *     (and the token inside it) is in this response once; only its hash is stored.
+         */
+        post: operations["create_invitation_api_companies__company_id__invitations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/invitations/{invitation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke Invitation */
+        delete: operations["revoke_invitation_api_companies__company_id__invitations__invitation_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/invitations/{token}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept Invitation
+         * @description Join a company with an invitation link. Signed in: the invitation's email must be the
+         *     account's. Otherwise send ``{username, display_name, password}`` to create the account (you are
+         *     then signed in). Any invalid token (unknown, used, expired, revoked) is the same 404.
+         */
+        post: operations["accept_invitation_api_invitations__token__accept_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -769,6 +1128,27 @@ export interface paths {
         patch: operations["update_task_api_companies__company_id__tasks__task_id__patch"];
         trace?: never;
     };
+    "/api/companies/{company_id}/tasks/{task_id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete Task
+         * @description A person completes a task assigned to them (comment and artifacts optional). Agents
+         *     complete their own tasks through the agent API.
+         */
+        post: operations["complete_task_api_companies__company_id__tasks__task_id__complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/companies/{company_id}/tasks/{task_id}/cancel": {
         parameters: {
             query?: never;
@@ -1041,6 +1421,27 @@ export interface paths {
         get: operations["get_approval_api_companies__company_id__approvals__approval_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/approvals/{approval_id}/route": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Route Approval
+         * @description Send a pending human approval to one person (`approver_ref: member:<id>`) or back to any
+         *     owner/admin (null). Owners and admins can always decide it as well.
+         */
+        post: operations["route_approval_api_companies__company_id__approvals__approval_id__route_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1634,6 +2035,27 @@ export interface paths {
          *     HR: team and hiring; others: their own tasks).
          */
         get: operations["get_state_api_agent_v1_state_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/v1/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Members
+         * @description The human colleagues, with their load: assign work with ``assignee_ref`` (lead/founder
+         *     roles only). Names and titles only: never an email, username or credential.
+         */
+        get: operations["list_members_api_agent_v1_members_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2364,6 +2786,8 @@ export interface components {
             department_id: string | null;
             /** Manager Agent Id */
             manager_agent_id: string | null;
+            /** Manager Ref */
+            manager_ref?: string | null;
             /** Reports To Human */
             reports_to_human: boolean;
             /** Responsibilities */
@@ -2446,6 +2870,8 @@ export interface components {
             department_id?: string | null;
             /** Manager Agent Id */
             manager_agent_id?: string | null;
+            /** Manager Ref */
+            manager_ref?: string | null;
             /**
              * Reports To Human
              * @default false
@@ -2505,6 +2931,25 @@ export interface components {
             summary: string | null;
             /** Since */
             since: string | null;
+        };
+        /**
+         * AgentMember
+         * @description A human colleague as the AI Co-founder sees them: name, title, capacity. Never an email,
+         *     username or credential.
+         */
+        AgentMember: {
+            /** Ref */
+            ref: string;
+            /** Name */
+            name: string;
+            /** Title */
+            title: string | null;
+            /** Role */
+            role: string;
+            /** Manager Ref */
+            manager_ref: string | null;
+            /** Open Tasks */
+            open_tasks: number;
         };
         /**
          * AgentNote
@@ -2663,6 +3108,8 @@ export interface components {
             reason?: string | null;
             /** Assignee Agent Id */
             assignee_agent_id?: string | null;
+            /** Assignee Ref */
+            assignee_ref?: string | null;
         };
         /**
          * AgentUpdate
@@ -2677,6 +3124,8 @@ export interface components {
             department_id?: string | null;
             /** Manager Agent Id */
             manager_agent_id?: string | null;
+            /** Manager Ref */
+            manager_ref?: string | null;
             /** Responsibilities */
             responsibilities?: string | null;
             /** Instructions */
@@ -2732,6 +3181,65 @@ export interface components {
             resolved_by_type?: ("human" | "agent" | "system") | null;
             /** Resolved By Id */
             resolved_by_id?: string | null;
+        };
+        /** ApiToken */
+        ApiToken: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "read" | "write" | "admin";
+            /** Prefix */
+            prefix?: string | null;
+            /** Created At */
+            created_at: string;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Revoked At */
+            revoked_at?: string | null;
+        };
+        /** ApiTokenCreate */
+        ApiTokenCreate: {
+            /** Name */
+            name: string;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "read" | "write" | "admin";
+        };
+        /**
+         * ApiTokenCreated
+         * @description The only response that ever carries the secret.
+         */
+        ApiTokenCreated: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "read" | "write" | "admin";
+            /** Prefix */
+            prefix?: string | null;
+            /** Created At */
+            created_at: string;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Revoked At */
+            revoked_at?: string | null;
+            /** Token */
+            token: string;
         };
         /** Approval */
         Approval: {
@@ -2803,6 +3311,8 @@ export interface components {
             action?: string | null;
             /** Reviewer Agent Id */
             reviewer_agent_id?: string | null;
+            /** Approver Ref */
+            approver_ref?: string | null;
             outbound?: components["schemas"]["ApprovalOutbound"] | null;
             /** Dlp Findings */
             dlp_findings?: components["schemas"]["DlpFinding"][] | null;
@@ -2844,6 +3354,8 @@ export interface components {
             };
             /** Task Id */
             task_id?: string | null;
+            /** Approver Ref */
+            approver_ref?: string | null;
         };
         /** ApprovalCreated */
         ApprovalCreated: {
@@ -2885,6 +3397,14 @@ export interface components {
             pending_by_approver: {
                 [key: string]: number;
             };
+        };
+        /**
+         * ApproverAssign
+         * @description Route a pending human approval to one person (or back to any owner/admin with null).
+         */
+        ApproverAssign: {
+            /** Approver Ref */
+            approver_ref?: string | null;
         };
         /** Artifact */
         Artifact: {
@@ -3041,6 +3561,46 @@ export interface components {
             };
             /** Created At */
             created_at: string;
+        };
+        /**
+         * AuthSession
+         * @description ``GET /auth/session`` (public) and the answer of login / setup.
+         */
+        AuthSession: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "setup_required" | "unauthenticated" | "authenticated";
+            user: components["schemas"]["AuthUser"] | null;
+            /**
+             * Setup Token Required
+             * @default false
+             */
+            setup_token_required?: boolean;
+            /**
+             * Two Factor Required
+             * @default false
+             */
+            two_factor_required?: boolean;
+            /** Expires At */
+            expires_at?: string | null;
+        };
+        /** AuthUser */
+        AuthUser: {
+            /** Id */
+            id: string;
+            /** Username */
+            username: string;
+            /** Display Name */
+            display_name: string;
+            /** Email */
+            email: string | null;
+            /**
+             * Two Factor Enabled
+             * @default false
+             */
+            two_factor_enabled?: boolean;
         };
         /** BudgetStatus */
         BudgetStatus: {
@@ -3314,6 +3874,16 @@ export interface components {
             timezone?: string | null;
             /** Status */
             status?: ("active" | "paused") | null;
+        };
+        /**
+         * CompleteTaskRequest
+         * @description A person finishing a task assigned to them (M7).
+         */
+        CompleteTaskRequest: {
+            /** Comment */
+            comment?: string | null;
+            /** Artifact Ids */
+            artifact_ids?: string[];
         };
         /**
          * CostByKind
@@ -4464,6 +5034,113 @@ export interface components {
             /** Categories */
             categories?: string[];
         };
+        /** Invitation */
+        Invitation: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string;
+            /** Email */
+            email: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "owner" | "admin" | "member" | "viewer";
+            /** Title */
+            title: string | null;
+            /** Manager Ref */
+            manager_ref: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "accepted" | "expired" | "revoked";
+            /** Expires At */
+            expires_at: string;
+            /** Created At */
+            created_at: string;
+            /** Accepted At */
+            accepted_at?: string | null;
+        };
+        /**
+         * InvitationAccept
+         * @description Empty when the caller is signed in; otherwise the new account's credentials.
+         */
+        InvitationAccept: {
+            /** Username */
+            username?: string | null;
+            /** Display Name */
+            display_name?: string | null;
+            /** Password */
+            password?: string | null;
+        };
+        /** InvitationAccepted */
+        InvitationAccepted: {
+            /** Company Id */
+            company_id: string;
+            /** Company Name */
+            company_name?: string | null;
+            /** Role */
+            role?: ("owner" | "admin" | "member" | "viewer") | null;
+            /** Member Id */
+            member_id?: string | null;
+        };
+        /** InvitationCreate */
+        InvitationCreate: {
+            /** Email */
+            email: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "owner" | "admin" | "member" | "viewer";
+            /** Title */
+            title?: string | null;
+            /** Manager Ref */
+            manager_ref?: string | null;
+        };
+        /**
+         * InvitationCreated
+         * @description Returned once, at creation: the token is hashed at rest and cannot be shown again.
+         */
+        InvitationCreated: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string;
+            /** Email */
+            email: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "owner" | "admin" | "member" | "viewer";
+            /** Title */
+            title: string | null;
+            /** Manager Ref */
+            manager_ref: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "accepted" | "expired" | "revoked";
+            /** Expires At */
+            expires_at: string;
+            /** Created At */
+            created_at: string;
+            /** Accepted At */
+            accepted_at?: string | null;
+            /**
+             * Delivery
+             * @enum {string}
+             */
+            delivery: "email" | "link";
+            /** Invite Url */
+            invite_url?: string | null;
+            /** Token */
+            token?: string | null;
+        };
         /** LifecycleAction */
         LifecycleAction: {
             /** Reason */
@@ -4488,6 +5165,15 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** LoginRequest */
+        LoginRequest: {
+            /** Username */
+            username: string;
+            /** Password */
+            password: string;
+            /** Totp Code */
+            totp_code?: string | null;
+        };
         /** Me */
         Me: {
             user: components["schemas"]["MeUser"];
@@ -4504,7 +5190,9 @@ export interface components {
              * Role
              * @enum {string}
              */
-            role: "owner" | "admin" | "viewer";
+            role: "owner" | "admin" | "member" | "viewer";
+            /** Member Id */
+            member_id: string;
         };
         /** MeUser */
         MeUser: {
@@ -4514,6 +5202,51 @@ export interface components {
             email: string;
             /** Display Name */
             display_name: string;
+            /**
+             * Username
+             * @default
+             */
+            username?: string;
+        };
+        /** Member */
+        Member: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string;
+            /** User Id */
+            user_id: string;
+            /** Username */
+            username: string;
+            /** Display Name */
+            display_name: string;
+            /** Email */
+            email: string | null;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "owner" | "admin" | "member" | "viewer";
+            /** Title */
+            title: string | null;
+            /** Manager Ref */
+            manager_ref: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "disabled" | "removed";
+            /** Created At */
+            created_at: string;
+        };
+        /** MemberUpdate */
+        MemberUpdate: {
+            /** Role */
+            role?: ("owner" | "admin" | "member" | "viewer") | null;
+            /** Title */
+            title?: string | null;
+            /** Manager Ref */
+            manager_ref?: string | null;
         };
         /** MemoryCreate */
         MemoryCreate: {
@@ -4810,6 +5543,50 @@ export interface components {
             /** Status */
             status?: ("archived" | "new" | "triaged") | null;
         };
+        /** Notification */
+        Notification: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string | null;
+            /** Kind */
+            kind: string;
+            /** Title */
+            title: string;
+            /** Body */
+            body: string | null;
+            /** Related Type */
+            related_type: string | null;
+            /** Related Id */
+            related_id: string | null;
+            /** Created At */
+            created_at: string;
+            /** Read At */
+            read_at: string | null;
+        };
+        /** NotificationList */
+        NotificationList: {
+            /** Items */
+            items: components["schemas"]["Notification"][];
+            /** Unread Count */
+            unread_count: number;
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** NotificationsRead */
+        NotificationsRead: {
+            /** Ids */
+            ids?: string[] | null;
+            /** All */
+            all?: boolean | null;
+        };
+        /** NotificationsReadResult */
+        NotificationsReadResult: {
+            /** Marked */
+            marked: number;
+            /** Unread Count */
+            unread_count: number;
+        };
         /** Overview */
         Overview: {
             company: components["schemas"]["Company"];
@@ -4860,6 +5637,13 @@ export interface components {
         Page_Alert_: {
             /** Items */
             items: components["schemas"]["Alert"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** Page[ApiToken] */
+        Page_ApiToken_: {
+            /** Items */
+            items: components["schemas"]["ApiToken"][];
             /** Next Cursor */
             next_cursor?: string | null;
         };
@@ -4968,6 +5752,20 @@ export interface components {
             /** Next Cursor */
             next_cursor?: string | null;
         };
+        /** Page[Invitation] */
+        Page_Invitation_: {
+            /** Items */
+            items: components["schemas"]["Invitation"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** Page[Member] */
+        Page_Member_: {
+            /** Items */
+            items: components["schemas"]["Member"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
         /** Page[MemoryEntry] */
         Page_MemoryEntry_: {
             /** Items */
@@ -5003,6 +5801,13 @@ export interface components {
             /** Next Cursor */
             next_cursor?: string | null;
         };
+        /** Page[SessionInfo] */
+        Page_SessionInfo_: {
+            /** Items */
+            items: components["schemas"]["SessionInfo"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
         /** Page[Skill] */
         Page_Skill_: {
             /** Items */
@@ -5023,6 +5828,13 @@ export interface components {
             items: components["schemas"]["Task"][];
             /** Next Cursor */
             next_cursor?: string | null;
+        };
+        /** PasswordChange */
+        PasswordChange: {
+            /** Current Password */
+            current_password: string;
+            /** New Password */
+            new_password: string;
         };
         /** PeerReviewDecision */
         PeerReviewDecision: {
@@ -5639,6 +6451,36 @@ export interface components {
             /** Enabled */
             enabled?: boolean | null;
         };
+        /** SessionInfo */
+        SessionInfo: {
+            /** Id */
+            id: string;
+            /** Created At */
+            created_at: string;
+            /** Last Seen At */
+            last_seen_at: string | null;
+            /** Expires At */
+            expires_at: string;
+            /** Ip */
+            ip: string | null;
+            /** User Agent */
+            user_agent: string | null;
+            /** Current */
+            current: boolean;
+        };
+        /** SetupRequest */
+        SetupRequest: {
+            /** Username */
+            username: string;
+            /** Display Name */
+            display_name: string;
+            /** Password */
+            password: string;
+            /** Email */
+            email?: string | null;
+            /** Setup Token */
+            setup_token?: string | null;
+        };
         /** Skill */
         Skill: {
             /** Id */
@@ -6111,6 +6953,10 @@ export interface components {
             assignee_agent_id: string | null;
             /** Reviewer Agent Id */
             reviewer_agent_id: string | null;
+            /** Assignee Ref */
+            assignee_ref?: string | null;
+            /** Reviewer Ref */
+            reviewer_ref?: string | null;
             /** Required Skills */
             required_skills: string[];
             /** Budget Micros */
@@ -6184,6 +7030,10 @@ export interface components {
             assignee_agent_id?: string | null;
             /** Reviewer Agent Id */
             reviewer_agent_id?: string | null;
+            /** Assignee Ref */
+            assignee_ref?: string | null;
+            /** Reviewer Ref */
+            reviewer_ref?: string | null;
             /** Depends On */
             depends_on?: string[];
             /** Required Skills */
@@ -6309,6 +7159,10 @@ export interface components {
             assignee_agent_id?: string | null;
             /** Reviewer Agent Id */
             reviewer_agent_id?: string | null;
+            /** Assignee Ref */
+            assignee_ref?: string | null;
+            /** Reviewer Ref */
+            reviewer_ref?: string | null;
             /** Required Skills */
             required_skills?: string[] | null;
             /** Budget Micros */
@@ -6355,6 +7209,32 @@ export interface components {
              * @enum {string}
              */
             tier: "read" | "internal_write" | "org_change" | "external_read" | "external_communication" | "external_commitment" | "spend" | "identity" | "destructive";
+        };
+        /** TwoFactorDisable */
+        TwoFactorDisable: {
+            /** Code */
+            code: string;
+            /** Password */
+            password: string;
+        };
+        /** TwoFactorEnroll */
+        TwoFactorEnroll: {
+            /** Secret */
+            secret: string;
+            /** Otpauth Uri */
+            otpauth_uri: string;
+        };
+        /** TwoFactorVerify */
+        TwoFactorVerify: {
+            /** Code */
+            code: string;
+        };
+        /** TwoFactorVerifyResult */
+        TwoFactorVerifyResult: {
+            /** Enabled */
+            enabled: boolean;
+            /** Recovery Codes */
+            recovery_codes?: string[] | null;
         };
         /** UpcomingSchedule */
         UpcomingSchedule: {
@@ -6557,6 +7437,707 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_session_api_auth_session_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthSession"];
+                };
+            };
+        };
+    };
+    setup_api_auth_setup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetupRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthSession"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    login_api_auth_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthSession"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    logout_api_auth_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    change_password_api_auth_password_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_sessions_api_auth_sessions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_SessionInfo_"];
+                };
+            };
+        };
+    };
+    revoke_all_sessions_api_auth_sessions_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    revoke_session_api_auth_sessions__session_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tokens_api_auth_tokens_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_ApiToken_"];
+                };
+            };
+        };
+    };
+    create_token_api_auth_tokens_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApiTokenCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiTokenCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_token_api_auth_tokens__token_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    twofa_enroll_api_auth_2fa_enroll_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TwoFactorEnroll"];
+                };
+            };
+        };
+    };
+    twofa_verify_api_auth_2fa_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TwoFactorVerify"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TwoFactorVerifyResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    twofa_disable_api_auth_2fa_disable_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TwoFactorDisable"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_notifications_api_notifications_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+                unread?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_read_api_notifications_read_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationsRead"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationsReadResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_members_api_companies__company_id__members_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+                include_removed?: boolean;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_Member_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_member_api_companies__company_id__members__member_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                member_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Member"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_member_api_companies__company_id__members__member_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                member_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_member_api_companies__company_id__members__member_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                member_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemberUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Member"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_invitations_api_companies__company_id__invitations_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_Invitation_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_invitation_api_companies__company_id__invitations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvitationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_invitation_api_companies__company_id__invitations__invitation_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invitation_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_invitation_api_invitations__token__accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["InvitationAccept"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationAccepted"];
                 };
             };
             /** @description Validation Error */
@@ -8365,6 +9946,7 @@ export interface operations {
                 status?: ("backlog" | "ready" | "in_progress" | "in_review" | "revision_requested" | "blocked" | "done" | "failed" | "cancelled") | null;
                 project_id?: string | null;
                 assignee_agent_id?: string | null;
+                assignee_ref?: string | null;
                 parent_task_id?: string | null;
                 kind?: ("work" | "review" | "planning" | "hiring" | "routine") | null;
                 limit?: number;
@@ -8478,6 +10060,42 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["TaskUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    complete_task_api_companies__company_id__tasks__task_id__complete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CompleteTaskRequest"] | null;
             };
         };
         responses: {
@@ -9099,6 +10717,42 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Approval"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    route_approval_api_companies__company_id__approvals__approval_id__route_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                approval_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApproverAssign"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -10571,6 +12225,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentState"];
+                };
+            };
+        };
+    };
+    list_members_api_agent_v1_members_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentMember"][];
                 };
             };
         };

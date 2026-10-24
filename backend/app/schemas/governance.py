@@ -67,6 +67,7 @@ class Approval(ApiModel):
     tier: ActionTierLiteral | None = None
     action: str | None = None
     reviewer_agent_id: str | None = None
+    approver_ref: str | None = None  # M7: `member:<id>` when scoped to one human
     outbound: ApprovalOutbound | None = None
     dlp_findings: list[DlpFinding] | None = None
     created_at: Timestamp
@@ -84,9 +85,17 @@ class ApprovalCreate(RequestModel):
     evidence: dict[str, Any] = Field(default_factory=dict)
     scope: dict[str, Any] = Field(default_factory=dict)
     task_id: str | None = None
+    # M7: route the decision to one human (`member:<id>`); only owners/admins may set it.
+    approver_ref: str | None = Field(default=None, max_length=48)
 
     _evidence = field_validator("evidence")(_check_json)
     _scope = field_validator("scope")(_check_json)
+
+
+class ApproverAssign(RequestModel):
+    """Route a pending human approval to one person (or back to any owner/admin with null)."""
+
+    approver_ref: str | None = Field(default=None, max_length=48)  # member:<id> | null
 
 
 class ApprovalCreated(ApiModel):

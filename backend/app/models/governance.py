@@ -27,6 +27,8 @@ class Approval(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(24), default=ApprovalStatus.PENDING, nullable=False)
     approver: Mapped[str] = mapped_column(String(16), nullable=False)
     requested_by_agent_id: Mapped[str | None] = mapped_column(ForeignKey("agents.id"))
+    # M7: scoped to one human (CompanyMember id); NULL = any owner/admin may decide.
+    approver_member_id: Mapped[str | None] = mapped_column(ForeignKey("company_members.id"))
     task_id: Mapped[str | None] = mapped_column(ForeignKey("tasks.id"))
     title: Mapped[str] = mapped_column(String(300), nullable=False)
     reason: Mapped[str | None] = mapped_column(Text)
@@ -54,6 +56,10 @@ class Approval(TimestampMixin, Base):
     reviewer_agent_id: Mapped[str | None] = mapped_column(ForeignKey("agents.id"))
     outbound: Mapped[dict | None] = mapped_column(JSON)
     dlp_findings: Mapped[list | None] = mapped_column(JSON)
+
+    @property
+    def approver_ref(self) -> str | None:
+        return f"member:{self.approver_member_id}" if self.approver_member_id else None
 
 
 class Decision(TimestampMixin, Base):

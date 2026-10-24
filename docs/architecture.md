@@ -233,13 +233,19 @@ run stock Hermes.
   agent service identity). Company-scoped routes live under `/api/companies/{company_id}/…`;
   a dependency resolves membership and yields a `CompanyContext`. Services take the context
   and filter every query by `company_id`. Non-members get **404** (no existence leaks).
-- **Auth (current, M3b-sec):** `COMPANY_OS_AUTH_MODE=local` — a single local owner. Owner
-  requests must present `data/owner.token` (0600) as the `cos_owner` cookie (set via the
-  one-time login link `GET /api/auth/local?token=…`, printed to the terminal only) or as a
-  Bearer token. Run tokens resolve to that agent. Anything else → 401. Agent processes never
-  receive the owner token and the file jail blocks reading it. Full accounts (username +
-  password, sessions, CSRF, invitations) arrive in M7; the principal abstraction means
-  services do not change.
+- **Auth (M7, decision D15):** `COMPANY_OS_AUTH_MODE=password` (default). People sign in with username + password
+  (Argon2id; sessions are server-side rows with a hashed 256-bit secret in an `HttpOnly`, `SameSite=Lax` cookie `cos_session`,
+  sliding 14 days / absolute 30; CSRF is a signed double-submit `cos_csrf` / `X-CSRF-Token` required on every state-changing cookie
+  request and never for Bearer). Login is rate limited and backs off per username and per IP with generic errors; admins can add
+  TOTP 2FA with recovery codes. Scripts use personal API tokens (`cos_pat_…`, hashed, scoped read/write/admin, never able to manage
+  the account). Roles per company: `owner`, `admin`, `member` (a human colleague that can be assigned work, reviews and approvals;
+  never dispatched to a runtime), `viewer`; enforced in the services. A fresh install is claimed by the first-run setup, which needs
+  the setup token (`data/owner.token`) unless the request is from loopback; on an existing install it claims the placeholder owner so
+  the company and memberships survive. Run tokens still resolve to their agent, and agents can never create users, invitations,
+  tokens or sessions (human-only guardrail actions, `403 guardrail_denied`). The M3b-sec owner token stays as the bootstrap path
+  (`cos_owner` cookie while the install is unclaimed) and CLI fallback (`Authorization: Bearer <owner token>`). `local` mode is
+  development only: it refuses non-loopback binds and non-loopback clients. Agent processes never receive the owner token and the
+  file jail blocks reading it. Details: `docs/api.md` (Milestone 7).
 - **Secrets:** never returned by the API, never logged, never written into agent
   instructions or runtime config visible to agents. Stored encrypted (Fernet key from
   `COMPANY_OS_SECRET_KEY`) behind `CredentialReference` (M4).

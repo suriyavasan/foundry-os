@@ -27,6 +27,7 @@ from app.api.routes import (
     guardrails,
     memory,
     notes,
+    notifications,
     policy,
     projects,
     providers,
@@ -35,15 +36,18 @@ from app.api.routes import (
     skills,
     system,
     tasks,
+    team,
 )
 from app.core.config import APP_VERSION, Settings, get_settings
 from app.core.crypto import CredentialCipher
 from app.core.errors import register_exception_handlers
 from app.core.keys import SecretKeyProvider
+from app.core.netinfo import is_loopback_bind, is_loopback_request
 from app.core.owner_token import OwnerTokenProvider, install_log_redaction
 from app.db.session import build_engine, build_session_factory
 from app.guardrails.providers import ProviderRegistry
 from app.runtimes.registry import RuntimeRegistry, build_default_registry
+from app.services.auth import AuthService
 from app.services.users import ensure_local_owner
 from app.skills.env import SkillsEnv, build_skills_env
 from app.storage.local import LocalFileStorage
@@ -60,6 +64,7 @@ REQUIRED_TABLES = {
     "model_providers",
     "founder_notes",
     "guardrail_rules",
+    "auth_sessions",
 }
 
 
@@ -75,6 +80,12 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        if settings.auth_mode == "local" and not is_loopback_bind(settings.bind_host):
+            raise RuntimeError(
+                "COMPANY_OS_AUTH_MODE=local is a development mode that trusts whoever holds the "
+                f"owner token on this machine; it refuses to run bound to {settings.bind_host!r}. "
+                "Use the default password mode (or bind to 127.0.0.1)."
+            )
         settings.prepare_data_dir()
         present = set(inspect(engine).get_table_names())
         if not present >= REQUIRED_TABLES:
@@ -83,10 +94,15 @@ def create_app(
                 "Run `uv run alembic upgrade head` in backend/ first."
             )
         ensure_local_owner(session_factory)
+        # The owner credential (M3b-sec): the local-mode gate, the first-run setup token and the
+        # CLI fallback. It is created in every mode.
+        app.state.owner_token.ensure()
+        with session_factory() as db:
+            pending = app.state.auth.setup_pending(db)
         if settings.auth_mode == "local":
-            # Owner credential (M3b-sec): without it every API request is a 401.
-            app.state.owner_token.ensure()
             app.state.owner_token.announce()
+        elif pending:
+            app.state.owner_token.announce_setup()
         service = None
         if settings.embedded_worker:
             from app.engine.context import build_context
@@ -125,6 +141,7 @@ def create_app(
     app.state.keys = SecretKeyProvider(settings)
     app.state.owner_token = OwnerTokenProvider(settings)
     app.state.cipher = CredentialCipher(app.state.keys)
+    app.state.auth = AuthService(settings, app.state.keys, app.state.cipher, app.state.owner_token)
     app.state.runtimes = runtime_registry or build_default_registry(
         settings, session_factory=session_factory, keys=app.state.keys
     )
@@ -143,9 +160,31 @@ def create_app(
     )
     register_exception_handlers(app)
 
+    if settings.auth_mode == "local":
+        from fastapi.responses import JSONResponse
+
+        from app.core.errors import envelope
+
+        @app.middleware("http")
+        async def _loopback_only(request, call_next):
+            # Dev-only mode: the owner token is the only credential, so only this machine may talk.
+            if not is_loopback_request(request):
+                return JSONResponse(
+                    status_code=403,
+                    content=envelope(
+                        "forbidden",
+                        "auth_mode=local only answers requests from this machine; use the "
+                        "default password mode to reach Company OS from other devices",
+                        {"reason": "local_mode_loopback_only"},
+                    ),
+                )
+            return await call_next(request)
+
     for router in (
         system.router,
         auth.router,
+        notifications.router,
+        team.router,
         companies.router,
         departments.router,
         # before agents: /agents/{id}/skills must win over the /agents/{id}/{action} catch-all

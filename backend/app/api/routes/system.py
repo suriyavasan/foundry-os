@@ -36,9 +36,14 @@ def me(principal: CurrentPrincipal, db: DbSession):
         raise Forbidden("Only human users have an account profile")
     user = users.get_user(db, principal.id)
     return Me(
-        user=MeUser(id=user.id, email=user.email, display_name=user.display_name),
+        user=MeUser(
+            id=user.id,
+            email=user.email or "",
+            display_name=user.display_name,
+            username=user.username or "",
+        ),
         memberships=[
-            MeMembership(company_id=c.id, company_name=c.name, role=m.role)
+            MeMembership(company_id=c.id, company_name=c.name, role=m.role, member_id=m.id)
             for m, c in users.list_memberships(db, user.id)
         ],
     )

@@ -20,6 +20,7 @@ from app.core.time import utcnow
 from app.models.company import Company, CompanyMember
 from app.models.enums import MemberRole
 from app.models.guardrails import SystemState
+from app.models.user import User
 from app.services import audit, events
 
 KEY = "emergency_stop"
@@ -59,9 +60,15 @@ def is_active(db: Session) -> bool:
 
 
 def require_owner(db: Session, principal: Principal) -> None:
-    """Humans who own at least one company. Agents (run tokens included) and viewers: 403."""
+    """The installation's owner (the account that claimed the install) who owns a company.
+    The switch is instance-wide (every company), so with several accounts on one install (M7) the
+    owner of some other company does not get it. Agents (run tokens included), members, viewers
+    and other accounts: 403."""
     if not principal.is_human:
         raise Forbidden("Only a human owner can use the emergency stop")
+    user = db.get(User, principal.id)
+    if user is None or not user.is_local_owner:
+        raise Forbidden("Only the installation owner can use the instance-wide emergency stop")
     owns = db.scalar(
         select(CompanyMember.id).where(
             CompanyMember.user_id == principal.id, CompanyMember.role == MemberRole.OWNER

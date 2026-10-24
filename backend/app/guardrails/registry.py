@@ -38,6 +38,9 @@ class ActionSpec:
     rate_keys: tuple[str, ...] = ()
     # Identity actions that touch domain / DNS ownership default to a human, not the Co-founder.
     human_default: bool = False
+    # M7: account management. No agent may ever do these and no rule can allow it: the engine
+    # denies them before it looks at any rule.
+    human_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -56,6 +59,7 @@ _API_ACTIONS = [
     _a("context.read", T.READ, "Read the task, colleagues and policy limits"),
     _a("state.read", T.READ, "Read the live company state"),
     _a("colleagues.search", T.READ, "Search colleagues"),
+    _a("members.read", T.READ, "List the human colleagues (names, titles, capacity)"),
     _a("skills.read", T.READ, "List an agent's skills"),
     _a("role_templates.read", T.READ, "List role templates"),
     _a("approval.read", T.READ, "Read an approval"),
@@ -157,6 +161,26 @@ _PROVIDER_ACTIONS = [
     _a("resource.delete", T.DESTRUCTIVE, "Delete an external resource", kind="provider"),
 ]
 
+# M7 accounts & team. Tier `identity`, but unlike the provider actions above they cannot be
+# approved or allowed by any rule: users, invitations, memberships, tokens and sessions are created
+# and changed by humans signed in to the control plane, never by an agent (run tokens included).
+_HUMAN_ONLY_ACTIONS = [
+    _a("account.manage", T.IDENTITY, "Manage an account", kind="human_only", human_only=True),
+    _a("user.create", T.IDENTITY, "Create a user account", kind="human_only", human_only=True),
+    _a("session.create", T.IDENTITY, "Open a login session", kind="human_only", human_only=True),
+    _a("session.revoke", T.IDENTITY, "Revoke sessions", kind="human_only", human_only=True),
+    _a("token.create", T.IDENTITY, "Create an API token", kind="human_only", human_only=True),
+    _a("token.revoke", T.IDENTITY, "Revoke an API token", kind="human_only", human_only=True),
+    _a("password.change", T.IDENTITY, "Change a password", kind="human_only", human_only=True),
+    _a("twofa.manage", T.IDENTITY, "Manage two-factor login", kind="human_only", human_only=True),
+    _a("invitation.create", T.IDENTITY, "Invite a person", kind="human_only", human_only=True),
+    _a("invitation.revoke", T.IDENTITY, "Revoke an invitation", kind="human_only", human_only=True),
+    _a("invitation.accept", T.IDENTITY, "Accept an invitation", kind="human_only", human_only=True),
+    _a("member.update", T.IDENTITY, "Change a member", kind="human_only", human_only=True),
+    _a("member.remove", T.IDENTITY, "Remove a member", kind="human_only", human_only=True),
+]
+HUMAN_ONLY: dict[str, ActionSpec] = {s.name: s for s in _HUMAN_ONLY_ACTIONS}
+
 # Actions the platform itself takes on an agent's behalf (not reachable from the agent API).
 _INTERNAL_ACTIONS = [
     _a(
@@ -183,6 +207,7 @@ _ROUTES = [
     RouteSpec("GET", "/approvals/{approval_id}", "approval.read"),
     RouteSpec("POST", "/approvals/{approval_id}/decide", "approval.decide"),
     RouteSpec("GET", "/agents", "colleagues.search"),
+    RouteSpec("GET", "/members", "members.read"),
     RouteSpec("GET", "/agents/{agent_id}/skills", "skills.read"),
     RouteSpec("POST", "/agents/{agent_id}/skills", "skills.assign"),
     RouteSpec("DELETE", "/agents/{agent_id}/skills/{skill_ref}", "skills.unassign"),
@@ -236,7 +261,13 @@ def _tool_actions() -> list[ActionSpec]:
 
 ACTIONS: dict[str, ActionSpec] = {
     spec.name: spec
-    for spec in (*_API_ACTIONS, *_PROVIDER_ACTIONS, *_INTERNAL_ACTIONS, *_tool_actions())
+    for spec in (
+        *_API_ACTIONS,
+        *_PROVIDER_ACTIONS,
+        *_INTERNAL_ACTIONS,
+        *_HUMAN_ONLY_ACTIONS,
+        *_tool_actions(),
+    )
 }
 PROVIDER_ACTIONS: dict[str, ActionSpec] = {s.name: s for s in _PROVIDER_ACTIONS}
 ROUTES: dict[tuple[str, str], RouteSpec] = {(r.method, r.path): r for r in _ROUTES}

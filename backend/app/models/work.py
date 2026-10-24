@@ -61,6 +61,7 @@ class Task(TimestampMixin, Base):
         Index("ix_tasks_company_id", "company_id"),
         Index("ix_tasks_company_status", "company_id", "status"),
         Index("ix_tasks_assignee_agent_id", "assignee_agent_id"),
+        Index("ix_tasks_assignee_member_id", "assignee_member_id"),
         Index("ix_tasks_project_id", "project_id"),
         Index("ix_tasks_parent_task_id", "parent_task_id"),
     )
@@ -77,6 +78,10 @@ class Task(TimestampMixin, Base):
     priority: Mapped[str] = mapped_column(String(16), default=Priority.NORMAL, nullable=False)
     assignee_agent_id: Mapped[str | None] = mapped_column(ForeignKey("agents.id"))
     reviewer_agent_id: Mapped[str | None] = mapped_column(ForeignKey("agents.id"))
+    # M7: a human colleague as assignee / reviewer (CompanyMember id). Mutually exclusive with the
+    # agent columns. Human-assigned tasks are never dispatched to a runtime.
+    assignee_member_id: Mapped[str | None] = mapped_column(ForeignKey("company_members.id"))
+    reviewer_member_id: Mapped[str | None] = mapped_column(ForeignKey("company_members.id"))
     required_skills: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     budget_micros: Mapped[int | None] = mapped_column(BigInteger)
     attempt_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -98,6 +103,19 @@ class Task(TimestampMixin, Base):
     # M4: why a backlog task is parked, e.g. "waiting_for_hire" (no employee has its skills yet).
     blocked_reason: Mapped[str | None] = mapped_column(String(80))
     idempotency_key: Mapped[str | None] = mapped_column(String(200))
+
+    @property
+    def assignee_ref(self) -> str | None:
+        """``agent:<id>`` | ``member:<id>`` | None (M7)."""
+        if self.assignee_agent_id:
+            return f"agent:{self.assignee_agent_id}"
+        return f"member:{self.assignee_member_id}" if self.assignee_member_id else None
+
+    @property
+    def reviewer_ref(self) -> str | None:
+        if self.reviewer_agent_id:
+            return f"agent:{self.reviewer_agent_id}"
+        return f"member:{self.reviewer_member_id}" if self.reviewer_member_id else None
 
 
 class TaskDependency(Base):

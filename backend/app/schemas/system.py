@@ -20,14 +20,16 @@ class Health(BaseModel):
 
 class MeUser(BaseModel):
     id: str
-    email: str
+    email: str  # "" when the account has no email
     display_name: str
+    username: str = ""  # M7: the login name ("" until the account is set up)
 
 
 class MeMembership(BaseModel):
     company_id: str
     company_name: str
-    role: Literal["owner", "admin", "viewer"]
+    role: Literal["owner", "admin", "member", "viewer"]
+    member_id: str  # M7: `member:<member_id>` is this person's ref in the company
 
 
 class Me(BaseModel):

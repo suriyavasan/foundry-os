@@ -16,7 +16,7 @@ from app.core.principal import CompanyContext, Principal, require_human_admin
 from app.core.time import utcnow
 from app.models.autonomy import Alert
 from app.models.enums import AlertSeverity, AlertStatus
-from app.services import audit, events
+from app.services import audit, events, notifications
 from app.services.pagination import paginate
 
 
@@ -80,6 +80,16 @@ def raise_alert(
             "related_id": related_id,
         },
     )
+    if alert.severity != AlertSeverity.INFO:  # M7: owners and admins get it in their bell
+        notifications.notify_admins(
+            db,
+            company_id,
+            notifications.ALERT,
+            alert.title,
+            body=alert.body,
+            related_type="alert",
+            related_id=alert.id,
+        )
     if wake_founder and alert.severity != AlertSeverity.INFO:
         from app.services import wakes
 

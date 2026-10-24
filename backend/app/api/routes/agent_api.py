@@ -22,6 +22,7 @@ from app.models.company import Company
 from app.schemas.agent import Agent as AgentOut
 from app.schemas.agent_api import (
     AgentContext,
+    AgentMember,
     AgentTaskComplete,
     AgentTaskPatch,
     ProgressBody,
@@ -109,6 +110,7 @@ from app.services import (
     skills,
     state,
     tasks,
+    team,
 )
 from app.storage.base import ArtifactStorage
 
@@ -133,6 +135,13 @@ def get_state(rc: RunCtx, db: DbSession):
     return state.build_state(db, rc)
 
 
+@router.get("/members", response_model=list[AgentMember])
+def list_members(rc: RunCtx, db: DbSession):
+    """The human colleagues, with their load: assign work with ``assignee_ref`` (lead/founder
+    roles only). Names and titles only: never an email, username or credential."""
+    return team.colleagues_for_agent(db, rc.ctx)
+
+
 @router.post("/tasks", response_model=Task, status_code=201)
 def create_task(body: TaskCreate, response: Response, rc: RunCtx, db: DbSession):
     task, created = tasks.create_task_as_agent(db, rc.ctx, rc.run, body)
@@ -143,6 +152,18 @@ def create_task(body: TaskCreate, response: Response, rc: RunCtx, db: DbSession)
 
 @router.patch("/tasks/{task_id}", response_model=Task)
 def patch_task(task_id: str, body: AgentTaskPatch, rc: RunCtx, db: DbSession):
+    agent_id, member_id = body.assignee_agent_id, None
+    given = "assignee_agent_id" in body.model_fields_set
+    if body.assignee_ref:  # M7: agent:<id> | member:<id> (a person as colleague)
+        agent_id, member_id = tasks.resolve_people(
+            db,
+            rc.ctx.company_id,
+            agent_id=body.assignee_agent_id,
+            ref=body.assignee_ref,
+            label="Assignee",
+            field="assignee_ref",
+        )
+        given = True
     task = tasks.agent_update_task(
         db,
         rc.ctx,
@@ -150,8 +171,9 @@ def patch_task(task_id: str, body: AgentTaskPatch, rc: RunCtx, db: DbSession):
         task_id,
         status=body.status,
         reason=body.reason,
-        assignee_agent_id=body.assignee_agent_id,
-        assignee_given="assignee_agent_id" in body.model_fields_set,
+        assignee_agent_id=agent_id,
+        assignee_given=given,
+        assignee_member_id=member_id,
     )
     return _one(db, task)
 

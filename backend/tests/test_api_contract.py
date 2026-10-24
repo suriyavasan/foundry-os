@@ -12,9 +12,15 @@ from tests.helpers import login
 def test_health_and_me(client):
     h = client.get("/api/health")
     assert h.status_code == 200
-    assert h.json() == {"status": "ok", "database": "ok", "version": "0.1.0", "auth_mode": "local"}
+    assert h.json() == {
+        "status": "ok",
+        "database": "ok",
+        "version": "0.1.0",
+        "auth_mode": "password",
+    }
     me = client.get("/api/me").json()
     assert me["user"]["email"] == "owner@localhost" and me["memberships"] == []
+    assert me["user"]["username"] == ""  # the unclaimed placeholder owner: setup is still due
 
 
 def test_local_owner_is_created_once(app):

@@ -1170,3 +1170,165 @@ resuming it.
 with the scripted runtime and a fake `company_agent` adapter), a real stall of a hung model, a connected provider (no executor exists
 before M8: the provider-action framework is exercised with a recording test executor), a Docker sandbox, Postgres (SQL is portable and
 SQLite-tested), concurrent budget extensions under several worker processes.
+
+# Milestone 7: accounts, login and team
+
+Migration `0007_accounts` (run `uv run alembic upgrade head`; the API refuses to start without the `auth_sessions` table). New
+dependencies: `argon2-cffi`, `pyotp`. `COMPANY_OS_AUTH_MODE` is now `password` (default) or `local` (dev only, see below).
+
+## Who is calling (resolution order)
+
+A request that carries an `Authorization: Bearer` header is judged on it alone; otherwise the cookies decide.
+
+| Credential | Principal | CSRF | Notes |
+|---|---|---|---|
+| `Bearer cos_run.…` | that agent | no | unchanged; agents are refused by every account/team route (see "Agents never...") |
+| `Bearer cos_pat_…` | the token's user | no | personal API token, scoped `read` / `write` / `admin` |
+| `Bearer <data/owner.token>` | the installation owner (the claimed `is_local_owner` user) | no | bootstrap / CLI fallback; valid in every mode |
+| cookie `cos_session` (+ `cos_csrf`) | the session's user | **yes** on POST/PUT/PATCH/DELETE | HttpOnly, `SameSite=Lax`, `Secure` over https (or `COMPANY_OS_COOKIE_SECURE=1`), 30 d max-age |
+| cookie `cos_owner` | the installation owner | no (`SameSite=Strict`) | bootstrap only: always in `local` mode, in `password` mode only while the install is unclaimed |
+| none / wrong | | | `401 unauthenticated`, `details.reason = "authentication_required"` (`local` mode: `owner_credential_required`) |
+
+Sessions are server-side rows (`auth_sessions`): the cookie value is 256 random bits, only its SHA-256 is stored. Sliding 14 days
+idle (`COMPANY_OS_SESSION_IDLE_DAYS`), absolute 30 days (`COMPANY_OS_SESSION_ABSOLUTE_DAYS`), never extended past the absolute cap;
+`last_seen`/expiry are written at most once a minute. Revoked, expired and unknown sessions are all `401`.
+
+**CSRF** (signed double submit): `cos_csrf` is readable by the page and equals `HMAC(server key, session hash)`. A state-changing
+cookie request must send it back in `X-CSRF-Token`; the header must equal the cookie *and* the value derived from the session, so a
+cookie planted from a sibling origin or another session's token is useless. Failure: `403 csrf_failed` (`details.reason = "csrf"`).
+`GET /api/auth/session` re-issues the cookie for a valid session (how the web app recovers). Bearer requests, `setup`, `login` and the
+anonymous half of `accept` have no CSRF surface.
+
+## Auth endpoints (`/api/auth`)
+
+| Method & path | Body → response | Notes |
+|---|---|---|
+| `GET /session` (public) | → `AuthSession {state, user, setup_token_required, two_factor_required, expires_at}` | `state`: `setup_required` (the placeholder owner has no password; `setup_token_required` is true unless the request is from loopback or already holds the owner credential) · `unauthenticated` · `authenticated` |
+| `POST /setup` | `SetupRequest {username, display_name, password, email?, setup_token?}` → `AuthSession` (+ cookies) | once. **Claims** the existing placeholder owner (same user id, memberships and company); on a database without one it creates the first user. `409 setup_complete` afterwards. Needs the setup token (= `data/owner.token`) unless loopback or owner credential: `403 setup_token_required` / `invalid_setup_token` |
+| `POST /login` | `LoginRequest {username, password, totp_code?}` → `AuthSession` (+ cookies) | 2FA account without a code: `200 {state: "unauthenticated", two_factor_required: true}` and no cookie; send again with `totp_code` (6 digits or a recovery code) |
+| `POST /logout` | → `204`, cookies cleared | idempotent; a valid session still needs the CSRF header |
+| `POST /password` | `PasswordChange {current_password, new_password}` → `204` | revokes every other session; the current password is throttled |
+| `GET /sessions` | → `{items: SessionInfo[], next_cursor}` | `current` marks this browser |
+| `DELETE /sessions` · `DELETE /sessions/{id}` | → `204` | log out everywhere (cookies cleared) · revoke one (own sessions only, else `404`) |
+| `GET /tokens` · `POST /tokens` · `DELETE /tokens/{id}` | `ApiTokenCreate {name, scope}` → `ApiTokenCreated` (`token` once) | `cos_pat_…`; only the SHA-256 is stored; max 25 active per user |
+| `POST /2fa/enroll` | → `TwoFactorEnroll {secret, otpauth_uri}` | secret stored encrypted (Fernet); not active until verified |
+| `POST /2fa/verify` | `{code}` → `{enabled: true, recovery_codes?}` | the first success enables 2FA and returns 10 one-time recovery codes (only their hashes are stored) |
+| `POST /2fa/disable` | `{code, password}` → `204` | a TOTP or recovery code *and* the password |
+| `GET /local?token=` | → `303` + `cos_owner` | the M3b-sec owner-token link, unchanged |
+
+- **Passwords**: Argon2id (`argon2-cffi`; 64 MiB, 3 passes, 4 lanes by default, per-hash random salt; parameters are inside the stored
+  hash and a weaker hash is upgraded at the next login). Policy: at least 12 characters (at most 256), not a common password (also after
+  "leet" and digit padding), no keyboard/alphabet runs or repeated blocks, no username/name/email inside it, a character-diversity
+  estimate (≥ 50 bits). Violations are `422` with `details[].loc = ["body", "password"]`; the password is never echoed.
+- **Usernames**: 3-32 of `[a-z0-9._-]`, unique; login is case-insensitive. Email is optional (needed for invitations) and unique.
+- **Login throttling**: failures are counted per `user:<name>` (3 free) and per `ip:<address>` (9 free), unknown usernames included, then
+  back off `2^n` seconds up to `COMPANY_OS_LOGIN_MAX_LOCKOUT_SECONDS` (900). While locked, even the right password gets
+  `429 rate_limited` with `details.retry_after_seconds` and a `Retry-After` header. Wrong password, unknown user and wrong code all
+  answer `401 invalid_credentials` with the same body, and an Argon2 check always runs, so neither the response nor its timing reveals
+  whether an account exists. 2FA codes, the current-password check and the setup token are throttled the same way. TOTP time-steps are
+  single use (replays are refused).
+- **API token scopes**: `read` = GET only; `write` = every company route except team/policy/secrets/guardrails/system and
+  `PATCH /companies/{cid}` (`403 token_scope`); `admin` = all of that, as far as the owner's role allows. No token, whatever its scope,
+  can use `/api/auth/*` (tokens, sessions, password, 2FA): `403 token_cannot_manage_account`. A token never exceeds its user's role.
+- **`local` mode** (`COMPANY_OS_AUTH_MODE=local`) is dev-only: the app refuses to start when `COMPANY_OS_BIND_HOST` is not a loopback
+  address, and answers `403 forbidden` (`details.reason = "local_mode_loopback_only"`) to any request that is not loopback.
+  Loopback means: the TCP peer is loopback **and** there are no forwarding headers (`X-Forwarded-For`, `CF-*`, ...) **and** the Host
+  header is `localhost`/`127.0.0.1`/`::1`, so a tunnel is never mistaken for the local machine.
+
+## Roles, members and the org tree
+
+Roles per company: `owner`, `admin`, `member` (a "human agent"), `viewer`. Enforced in the services on every mutating route
+(`tests/test_accounts_team.py::test_role_matrix_on_every_mutating_route` walks ~35 of them for all four roles):
+
+| | read | tasks/agents/goals/projects/policy/credentials/... | team (invite, edit, remove) | own assigned work | emergency stop |
+|---|---|---|---|---|---|
+| owner | yes | yes | everything | yes | installation owner only |
+| admin | yes | yes | members and viewers only; cannot invite/edit/remove admins or owners | yes | no |
+| member | yes | no (403) | no (403) | complete / block / unblock, upload artifacts to it, review and decide what is routed to them | no |
+| viewer | yes | no | no | cannot be assigned | no |
+
+Nobody changes their own role or removes themselves; a company always keeps one owner (`409`). Non-members, removed members and
+unknown companies are all `404`.
+
+An org reference is `agent:<id>` or `member:<id>` (the `CompanyMember` id, different in every company). It is used by `manager_ref`
+(agents and members), `assignee_ref` / `reviewer_ref` (tasks) and `approver_ref` (approvals).
+
+| Endpoint | Notes |
+|---|---|
+| `GET /companies/{cid}/members` · `GET …/{id}` | `Member {id, company_id, user_id, username, display_name, email, role, title, manager_ref, status, created_at}`; `?include_removed=true`; `email` only for owners/admins (and yourself); agents `403` |
+| `PATCH …/members/{id}` | `MemberUpdate {role?, title?, manager_ref?}`; managers are validated (same company, can manage, no cycle across agents and people) |
+| `DELETE …/members/{id}` → `204` | status `removed` (row kept). Open tasks go to their manager (agent or person) if still active, else the AI Co-founder, else unassigned; review duty and routed approvals are dropped; agents and people who reported to them move up; when it was their last company, their sessions and API tokens are revoked. History (task assignee refs, audit) is kept |
+| `GET/POST …/invitations` · `DELETE …/invitations/{id}` | owner/admin. `InvitationCreate {email, role, title?, manager_ref?}` → `InvitationCreated` = `Invitation` + `delivery: "link"`, `invite_url: "/invite/<token>"`, `token` (once). **No email provider exists before M8, so `delivery` is always `link` and nothing is sent.** Token: 256 random bits, only its SHA-256 stored, single use, 7 days, bound to the email; a re-invite revokes the previous link; status `pending/accepted/expired/revoked` is derived |
+| `POST /invitations/{token}/accept` | body `{}` when signed in (the invited email must equal the account's email: `403 email_mismatch`), else `{username, display_name, password}` which creates the account (its email is the invited one; `409 account_exists` if one exists: sign in instead) and signs it in. Unknown, expired, used and revoked tokens are the same `404` |
+| `PATCH /agents/{id}` · `POST /agents` | accept `manager_ref` (`member:<id>` makes an agent report to a person; only humans may set that); `Agent.manager_ref` is returned, `manager_agent_id` stays for agent managers |
+
+## Humans on tasks, reviews and approvals
+
+- `POST/PATCH /tasks`: `assignee_ref` and `reviewer_ref` (`agent:` or `member:`); viewers/unknown/foreign members are refused
+  (`422`/`404`), one assignee only, nobody reviews their own work. `Task.assignee_ref` / `reviewer_ref` are returned
+  (`assignee_agent_id` is null for a person). `GET /tasks?assignee_ref=member:<id>`.
+- A person's task follows the normal readiness rules (dependencies, company active) and then waits `ready` for them: **the dispatcher
+  never dispatches it and no run is ever created**; the person gets a `task_assigned` notification instead.
+- `POST /tasks/{id}/complete` `CompleteTaskRequest {comment?, artifact_ids?}`: the assignee (or an owner/admin on their behalf) completes a
+  `ready`/`in_progress` person-task (`409` otherwise, `409` for agent tasks). Same path as an agent's completion: reviewable work goes to
+  `in_review`, the rest to `done`, dependents become ready. Blocking uses the existing `POST /tasks/{id}/block|unblock` (assignee allowed).
+  A member may upload an artifact to a task assigned to them (`POST /artifacts` with `task_id`).
+- Reviews: with `reviewer_ref=member:…` (or an agent manager of the assignee) a task with acceptance criteria goes `in_review` on
+  completion; the reviewer gets `review_requested` and uses `POST /tasks/{id}/review`; the assignee cannot review their own work.
+- Approvals: `Approval.approver_ref`; `POST /approvals/{id}/route {approver_ref}` (owner/admin) sends a pending *human* approval to one
+  member (or back to null = any owner/admin); that member may then approve/reject/request changes; owners/admins always can.
+- Agent API: `GET /agent/v1/members` (`members.read`, tier `read`) lists people as colleagues `{ref, name, title, role, manager_ref,
+  open_tasks}` (never email/username/credentials; viewers excluded). `POST /agent/v1/tasks` and `PATCH …/tasks/{id}` accept
+  `assignee_ref`/`reviewer_ref` for roles that may assign others (AI Co-founder, leads); specialists get `403`. The existing
+  `task.create` rate limit applies.
+
+## Notifications (`/api/notifications`, per person)
+
+`GET /notifications?limit&cursor&unread` → `{items: Notification[], unread_count, next_cursor}`; `POST /notifications/read` with `{ids}`
+or `{all: true}` → `{marked, unread_count}` (ids of other people are ignored). Kinds: `task_assigned`, `review_requested`,
+`approval_needed` (to the routed member, else to owners/admins), `note_replied` (the AI Co-founder answered *your* note), `alert`
+(owners/admins). Each creates a `notification.created` event on the company stream carrying only `{notification_id, user_id, kind}`.
+Email delivery of notifications arrives with M8.
+
+## Agents never manage accounts
+
+Users, sessions, invitations, tokens, passwords, 2FA, memberships are **human-only**: registry actions `user.create`, `session.create`,
+`session.revoke`, `token.create`, `token.revoke`, `password.change`, `twofa.manage`, `invitation.create|revoke|accept`,
+`member.update|remove`, `account.manage` (tier `identity`, `human_only`). `guardrails.rules.resolve` denies them before it reads any
+rule, no rule can be written for them (`422`), and every account/team route answers a run token with `403 guardrail_denied`
+(`details.reason = "human_only"`) and a `guardrail_events` row. The public routes (`setup`, `login`, `accept`) refuse a request that
+presents a run token. The route inventory test fails if a new account route lacks the gate.
+
+## Deviations from the spec and the web assumptions
+
+- `GET /auth/sessions` and `GET /auth/tokens` answer `{items, next_cursor}` (the web reads arrays and pages). `/api/me` returns
+  `user.email = ""` and `user.username = ""` for an account without them, and `memberships[].member_id`.
+- A failed second factor is `401 invalid_credentials` (`details.reason = "invalid_code"`); lockout is `429`, not `423`.
+- Invitations: every unusable token is `404` (the web page says it must not distinguish); `invite_url` is relative.
+- Added beyond the web contract: `POST /approvals/{id}/route`, `Task.reviewer_ref`, `?include_removed`, `?unread`.
+- `owner` cookie and Bearer requests skip CSRF (SameSite=Strict / no ambient credential); only `cos_session` requests need it.
+- The instance-wide emergency stop/resume (M6) is now limited to the installation owner (`is_local_owner`): with several accounts, the
+  owner of some other company must not be able to cancel everyone's runs.
+- Email-on-notification, email delivery of invitations and the daily digest are not built (M8): the UI gets `delivery: "link"`.
+
+## Existing installs (migration and claim)
+
+`0007` flags the placeholder owner (`owner@localhost`, no password) as `is_local_owner`, makes `users.email` optional and adds
+`username`, `password_hash`, TOTP columns, `company_members.{title,manager_ref,status,removed_at}`, `agents.manager_member_id`,
+`tasks.{assignee,reviewer}_member_id`, `approvals.approver_member_id` and the tables `auth_sessions`, `api_tokens`,
+`login_throttles`, `invitations`, `notifications`. Until the first-run setup, `GET /auth/session` reports `setup_required`
+and the owner token/cookie keep working. `POST /auth/setup` then sets username/display name/password (and email) **on that user**: its
+id, its company memberships and the company stay as they were. The `cos_owner` cookie stops working in `password` mode from then on;
+`Authorization: Bearer <owner token>` keeps acting as the claimed account.
+
+## Verified and not verified (Milestone 7)
+
+Verified: the full backend suite; every browser path (setup, login, sessions, CSRF, throttling, tokens, 2FA, invitations, role matrix)
+through real cookies and headers; the migration on a database built at revision `0006` (and on a copy of the live database) including
+the claim; the generated OpenAPI against `web/src/api/contract.check.ts` with every M7 check switched on; a live smoke on a temporary
+instance (own SQLite file, port 8706): setup from loopback → login with cookie + CSRF → invite → accept as a second user → task assigned to
+that person → completed through the human endpoint → notifications.
+
+**Not** verified: a real authenticator app (codes are generated with `pyotp` in the tests), a TLS-terminating proxy or tunnel in front
+(the `Secure` flag, `X-Forwarded-*` handling), Postgres, email delivery (none exists), concurrent first-run setups from several
+processes (the claim is an atomic conditional UPDATE, tested in one process).

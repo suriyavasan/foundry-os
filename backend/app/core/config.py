@@ -24,8 +24,13 @@ class Settings(BaseSettings):
     )
 
     database_url: str = DEFAULT_DATABASE_URL
-    # Only "local" exists in M1: a single owner account, acceptable ONLY on localhost.
-    auth_mode: Literal["local"] = "local"
+    # "password" (default, M7): username + password accounts, server sessions, CSRF, API tokens.
+    # "local": the M3b-sec single-owner token gate, DEV ONLY -- it refuses non-loopback binds and
+    # non-loopback clients.
+    auth_mode: Literal["password", "local"] = "password"
+    # The interface the server is bound to (the launcher / CLI sets it; uvicorn's own --host is not
+    # visible to the app). `local` mode refuses to start when this is not a loopback address.
+    bind_host: str = "127.0.0.1"
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
     # --- Milestone 2: work engine -------------------------------------------------------
@@ -69,6 +74,22 @@ class Settings(BaseSettings):
     # Per-run wall time the adapter waits after SIGTERM before SIGKILL.
     runtime_kill_grace_seconds: float = 10.0
     runtime_health_timeout_seconds: float = 15.0
+
+    # --- Milestone 7: accounts ---------------------------------------------------------------
+    # Argon2id cost (OWASP-aligned defaults: 64 MiB, 3 passes). Tests lower them. Stored hashes
+    # carry their own parameters, so raising these rehashes users at their next login.
+    argon2_time_cost: int = 3
+    argon2_memory_kib: int = 65536
+    argon2_parallelism: int = 4
+    session_idle_days: int = 14  # sliding window
+    session_absolute_days: int = 30  # hard cap, never extended
+    invitation_ttl_days: int = 7
+    # Failed logins before the backoff starts, and its ceiling (per username and per IP).
+    login_free_attempts: int = 3
+    login_max_lockout_seconds: int = 900
+    # Set the Secure flag on cookies even when the request looks like plain http (a TLS-terminating
+    # proxy / tunnel in front). Requests that arrive as https always get Secure.
+    cookie_secure: bool | None = None
 
     # Hermes runtime. These use the plain HERMES_* names (no COMPANY_OS_ prefix).
     hermes_api_url: str | None = Field(

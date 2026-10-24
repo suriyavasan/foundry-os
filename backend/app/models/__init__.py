@@ -1,5 +1,6 @@
 """Import every model so Base.metadata is complete (Alembic autogenerate relies on this)."""
 
+from app.models.accounts import ApiToken, AuthSession, Invitation, LoginThrottle, Notification
 from app.models.agent import Agent
 from app.models.artifact import Artifact, ArtifactVersion
 from app.models.audit import AuditEvent
@@ -28,6 +29,11 @@ __all__ = [
     "Agent",
     "Alert",
     "AgentSkill",
+    "ApiToken",
+    "AuthSession",
+    "Invitation",
+    "LoginThrottle",
+    "Notification",
     "Approval",
     "Artifact",
     "ArtifactVersion",

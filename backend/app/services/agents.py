@@ -19,12 +19,13 @@ from app.core.errors import (
     ValidationFailed,
 )
 from app.core.principal import CompanyContext, Role, require_human_admin
+from app.core.refs import Ref
 from app.core.time import utcnow
 from app.models.agent import Agent
 from app.models.department import Department
 from app.models.enums import LIVE_AGENT_STATUSES, AgentKind, AgentStatus, RoleFamily
 from app.schemas.agent import AgentCreate, AgentUpdate, LifecycleAction
-from app.services import audit, autonomy_hooks, events, policy, role_templates, tasks
+from app.services import audit, autonomy_hooks, events, org, policy, role_templates, tasks
 from app.services import skills as skills_service
 from app.services.pagination import paginate
 
@@ -190,6 +191,34 @@ def _check_manager(
         )
 
 
+def _manager_from_ref(
+    db: Session,
+    ctx: CompanyContext,
+    value: str,
+    subject_id: str | None,
+    *,
+    explicit_agent_id: str | None,
+) -> tuple[str | None, str | None]:
+    """``manager_ref`` -> (manager_agent_id, manager_member_id). An agent may report to a person
+    (M7); only humans decide that."""
+    ref = org.resolve_manager(
+        db,
+        ctx.company_id,
+        value,
+        subject=Ref("agent", subject_id) if subject_id else None,
+    )
+    if ref.is_agent:
+        if explicit_agent_id and explicit_agent_id != ref.id:
+            raise ValidationFailed("manager_ref and manager_agent_id name different managers")
+        _check_manager(db, ctx, ref.id, subject_id)
+        return ref.id, None
+    if ctx.principal.is_agent:
+        raise Forbidden("Only humans can make an agent report to a person")
+    if explicit_agent_id:
+        raise ValidationFailed("Give either manager_ref or manager_agent_id, not both")
+    return None, ref.id
+
+
 def _get_manager(db: Session, ctx: CompanyContext, manager_id: str) -> Agent:
     manager = db.scalar(
         select(Agent).where(Agent.id == manager_id, Agent.company_id == ctx.company_id)
@@ -305,7 +334,12 @@ def create_agent(db: Session, ctx: CompanyContext, data: AgentCreate) -> Agent:
         department_id = hiring._find_or_create_department(
             db, ctx.company_id, defaults.default_department, ctx.principal
         ).id
-    if data.manager_agent_id:
+    manager_agent_id, manager_member_id = data.manager_agent_id, None
+    if data.manager_ref:
+        manager_agent_id, manager_member_id = _manager_from_ref(
+            db, ctx, data.manager_ref, None, explicit_agent_id=data.manager_agent_id
+        )
+    elif data.manager_agent_id:
         _check_manager(db, ctx, data.manager_agent_id, None)
 
     agent = Agent(
@@ -315,7 +349,8 @@ def create_agent(db: Session, ctx: CompanyContext, data: AgentCreate) -> Agent:
         kind=kind,
         status=AgentStatus.PROPOSED,
         department_id=department_id,
-        manager_agent_id=data.manager_agent_id,
+        manager_agent_id=manager_agent_id,
+        manager_member_id=manager_member_id,
         reports_to_human=data.reports_to_human,
         responsibilities=(
             defaults.description or None
@@ -394,12 +429,26 @@ def update_agent(db: Session, ctx: CompanyContext, agent_id: str, data: AgentUpd
         validate_runtime_config(data.runtime_config or {})
     if "department_id" in fields and data.department_id:
         _check_department(db, ctx, data.department_id)
-    if "manager_agent_id" in fields and data.manager_agent_id:
-        _check_manager(db, ctx, data.manager_agent_id, agent.id)
+    new_manager: tuple[str | None, str | None] | None = None
+    if "manager_ref" in fields:
+        if data.manager_ref:
+            new_manager = _manager_from_ref(
+                db,
+                ctx,
+                data.manager_ref,
+                agent.id,
+                explicit_agent_id=data.manager_agent_id if "manager_agent_id" in fields else None,
+            )
+        else:
+            new_manager = (None, None)
+    elif "manager_agent_id" in fields:
+        if data.manager_agent_id:
+            _check_manager(db, ctx, data.manager_agent_id, agent.id)
+        new_manager = (data.manager_agent_id, None)
 
     changed: list[str] = []
     for field in PATCHABLE_FIELDS:
-        if field not in fields:
+        if field not in fields or field == "manager_agent_id":  # managers: see new_manager
             continue
         new = getattr(data, field)
         if isinstance(new, dict):
@@ -409,6 +458,12 @@ def update_agent(db: Session, ctx: CompanyContext, agent_id: str, data: AgentUpd
         if getattr(agent, field) != new:
             setattr(agent, field, new)
             changed.append(field)
+    if new_manager is not None and new_manager != (
+        agent.manager_agent_id,
+        agent.manager_member_id,
+    ):
+        agent.manager_agent_id, agent.manager_member_id = new_manager
+        changed.append("manager_agent_id" if "manager_ref" not in fields else "manager_ref")
     if changed:
         agent.updated_at = utcnow()
         audit.record(

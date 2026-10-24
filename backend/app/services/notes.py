@@ -44,7 +44,7 @@ from app.schemas.autonomy import (
 from app.schemas.autonomy import (
     NoteReply as NoteReplyOut,
 )
-from app.services import audit, events, memory, secrets_scan, wakes
+from app.services import audit, events, memory, notifications, secrets_scan, wakes
 from app.services.agent_auth import AgentRunContext
 from app.services.pagination import paginate
 
@@ -535,6 +535,17 @@ def _add_agent_reply(db: Session, rc: AgentRunContext, note: FounderNote, body: 
         data={"reply_id": reply.id},
     )
     _emit(db, note, "note.replied", reply_id=reply.id, author_type="agent", agent_id=rc.agent.id)
+    if note.author_user_id:  # M7: the person who wrote the note hears the AI Co-founder's answer
+        notifications.notify_user(
+            db,
+            note.author_user_id,
+            notifications.NOTE_REPLIED,
+            "The AI Co-founder replied to your note",
+            company_id=note.company_id,
+            body=_preview(body, 200),
+            related_type="note",
+            related_id=note.id,
+        )
     return reply
 
 

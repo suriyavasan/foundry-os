@@ -20,6 +20,7 @@ class Agent(TimestampMixin, Base):
         Index("ix_agents_company_status", "company_id", "status"),
         Index("ix_agents_department_id", "department_id"),
         Index("ix_agents_manager_agent_id", "manager_agent_id"),
+        Index("ix_agents_manager_member_id", "manager_member_id"),
         # At most one live (non-retired, non-rejected) founder per company.
         Index(
             "uq_agents_one_live_founder",
@@ -42,6 +43,9 @@ class Agent(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(16), default=AgentStatus.PROPOSED, nullable=False)
     department_id: Mapped[str | None] = mapped_column(ForeignKey("departments.id"))
     manager_agent_id: Mapped[str | None] = mapped_column(ForeignKey("agents.id"))
+    # M7: an agent may report to a human member (``manager_ref`` = ``member:<id>``). At most one of
+    # manager_agent_id / manager_member_id is set.
+    manager_member_id: Mapped[str | None] = mapped_column(ForeignKey("company_members.id"))
     reports_to_human: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     responsibilities: Mapped[str | None] = mapped_column(Text)
     instructions: Mapped[str | None] = mapped_column(Text)
@@ -59,3 +63,10 @@ class Agent(TimestampMixin, Base):
         String(24), default=RoleFamily.GENERIC, server_default=RoleFamily.GENERIC, nullable=False
     )
     status_changed_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)
+
+    @property
+    def manager_ref(self) -> str | None:
+        """``agent:<id>`` | ``member:<id>`` | None (M7: an agent may report to a human)."""
+        if self.manager_agent_id:
+            return f"agent:{self.manager_agent_id}"
+        return f"member:{self.manager_member_id}" if self.manager_member_id else None

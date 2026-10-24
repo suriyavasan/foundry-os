@@ -55,7 +55,7 @@ def test_default_database_url_resolves_relative_to_backend():
     assert url == f"sqlite:///{(BACKEND_DIR.parent / 'data' / 'company_os.db')}"
     assert resolve_database_url("sqlite:////abs/x.db") == "sqlite:////abs/x.db"
     assert resolve_database_url("postgresql://u@h/db") == "postgresql://u@h/db"
-    assert Settings(_env_file=None).auth_mode == "local"
+    assert Settings(_env_file=None).auth_mode == "password"  # M7: accounts are the default
 
 
 def test_env_prefix(monkeypatch):

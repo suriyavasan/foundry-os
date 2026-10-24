@@ -165,6 +165,9 @@ class Task(ApiModel):
     priority: PriorityLiteral
     assignee_agent_id: str | None
     reviewer_agent_id: str | None
+    # M7: a human colleague as assignee / reviewer, as `member:<id>` (agents: `agent:<id>`).
+    assignee_ref: str | None = None
+    reviewer_ref: str | None = None
     required_skills: list[str]
     budget_micros: int | None
     attempt_count: int
@@ -188,6 +191,13 @@ class Task(ApiModel):
     updated_at: Timestamp
 
 
+class CompleteTaskRequest(RequestModel):
+    """A person finishing a task assigned to them (M7)."""
+
+    comment: str | None = Field(default=None, max_length=20_000)
+    artifact_ids: list[str] = Field(default_factory=list, max_length=50)
+
+
 class TaskCreate(RequestModel):
     title: str = Field(min_length=1, max_length=300)
     description: str | None = Field(default=None, max_length=50_000)
@@ -198,6 +208,8 @@ class TaskCreate(RequestModel):
     parent_task_id: str | None = None
     assignee_agent_id: str | None = None
     reviewer_agent_id: str | None = None
+    assignee_ref: str | None = Field(default=None, max_length=48)  # M7: agent:<id> | member:<id>
+    reviewer_ref: str | None = Field(default=None, max_length=48)
     depends_on: list[str] = Field(default_factory=list)
     required_skills: list[str] = Field(default_factory=list)
     budget_micros: int | None = Field(default=None, ge=0, le=MAX_BUDGET_MICROS)
@@ -232,6 +244,8 @@ class TaskUpdate(RequestModel):
     project_id: str | None = None
     assignee_agent_id: str | None = None
     reviewer_agent_id: str | None = None
+    assignee_ref: str | None = Field(default=None, max_length=48)
+    reviewer_ref: str | None = Field(default=None, max_length=48)
     required_skills: list[str] | None = None
     budget_micros: int | None = Field(default=None, ge=0, le=MAX_BUDGET_MICROS)
     due_at: datetime | None = None

@@ -213,7 +213,11 @@ def build_state(db: Session, rc: AgentRunContext) -> AgentState:
             .limit(10)
         )
     )
-    unassigned = [t for t in open_rows if t.assignee_agent_id is None and t.kind == TaskKind.WORK]
+    unassigned = [
+        t
+        for t in open_rows
+        if t.assignee_agent_id is None and t.assignee_member_id is None and t.kind == TaskKind.WORK
+    ]
     blocked = [t for t in open_rows if t.status == TaskStatus.BLOCKED or t.blocked_reason]
     hiring_rows = list(
         db.scalars(

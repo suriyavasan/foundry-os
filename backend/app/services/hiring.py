@@ -704,6 +704,7 @@ def resolve_skill_gaps(
                 Task.company_id == company_id,
                 Task.status == TaskStatus.BACKLOG,
                 Task.assignee_agent_id.is_(None),
+                Task.assignee_member_id.is_(None),  # a person's task is not waiting for a hire
                 Task.kind != TaskKind.HIRING,
             )
         )

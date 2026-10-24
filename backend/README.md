@@ -18,31 +18,30 @@ you to run the migration.
 ## Run
 
 ```bash
-uv run uvicorn app.main:app --reload --port 8700   # bind to localhost only (local auth mode)
+uv run uvicorn app.main:app --reload --port 8700   # default password mode; --host 127.0.0.1 unless you want the LAN
 ```
 
 - API: `http://localhost:8700/api` - OpenAPI at `/api/openapi.json`, UI at `/api/docs`
 
-## Logging in (local mode)
+## Accounts and logging in (Milestone 7)
 
-`COMPANY_OS_AUTH_MODE=local` has one owner account (`owner@localhost`), but **requests are no longer
-trusted just because they come from this machine**: agent processes run here too. The owner proves
-who they are with `data/owner.token` (32 random bytes, urlsafe, mode 0600, created at first start
-and never logged):
+Default mode (`COMPANY_OS_AUTH_MODE=password`): people have a username and password.
 
-1. Start the backend in a terminal. It prints a one-time **login link** to that terminal (stderr)
-   when stderr is a TTY, for example
-   `http://localhost:8700/api/auth/local?token=...` and the Vite dev variant
-   `http://localhost:5173/api/auth/local?token=...` (dev server proxies `/api`, cookies included).
-   When output is redirected (service manager, `nohup`) nothing is printed: read the token with
-   `cat data/owner.token`, or force the link with `COMPANY_OS_PRINT_LOGIN_URL=1`.
-2. Open the link in your browser. `GET /api/auth/local?token=<token>` compares in constant time,
-   sets the `cos_owner` cookie (`HttpOnly`, `SameSite=Strict`, 30 days) and redirects to `/`.
-   A wrong token is 401 and sets nothing.
-3. Scripts and the CLI send `Authorization: Bearer <contents of data/owner.token>`.
-4. Agent runs authenticate with their run token (`Authorization: Bearer cos_run...`), which makes the
-   caller *that agent* (never the owner). Anything else is `401 unauthenticated`
-   (`details.reason = "owner_credential_required"`); `/api/health` and the OpenAPI docs stay open.
+1. **First run.** Start the backend, open the web app and *Create your account*. From the machine the server runs on that is all;
+   from another device the setup form also asks for the **setup token** (the server prints it in its terminal, and it is the
+   content of `data/owner.token`). On an existing install this *claims* the old owner account: your company and memberships stay.
+2. **Sign in** with the username and password (sessions: `HttpOnly` cookie, 14 days sliding / 30 days absolute, CSRF token on
+   every change). Settings has password change, sessions (log out everywhere), 2FA (TOTP + recovery codes) and personal API tokens.
+3. **Scripts / the CLI** use a personal API token (`Authorization: Bearer cos_pat_...`, scope read/write/admin) or, as a fallback on
+   the machine that runs the server, `Authorization: Bearer <contents of data/owner.token>`.
+4. **Team.** Owners/admins invite people (email + role); until an email provider is connected (M8) the UI shows a link to share.
+   Members appear in the org tree, can be given tasks, reviews and approvals, and get notifications.
+5. Agent runs authenticate with their run token (`Authorization: Bearer cos_run...`); an agent can never create users,
+   invitations, tokens or sessions.
+
+`COMPANY_OS_AUTH_MODE=local` is the old single-owner mode (the `cos_owner` cookie from the terminal's login link
+`/api/auth/local?token=...`). It is **development only**: it refuses to start unless `COMPANY_OS_BIND_HOST` is a loopback address and
+answers only loopback requests.
 
 The runtime process never receives the owner token: it is not in its environment or arguments, and
 the file lives outside the agent's workspace jail (tested). Delete `data/owner.token` and restart to
@@ -117,9 +116,15 @@ uv run alembic upgrade head
 | Variable | Default | Purpose |
 |---|---|---|
 | `COMPANY_OS_DATABASE_URL` | `sqlite:///../data/company_os.db` | SQLAlchemy URL; relative SQLite paths resolve against `backend/` |
-| `COMPANY_OS_AUTH_MODE` | `local` | Only `local` exists; requires the owner token (see "Logging in") |
+| `COMPANY_OS_AUTH_MODE` | `password` | `password` (accounts, default) or `local` (dev only, loopback only; see "Accounts and logging in") |
+| `COMPANY_OS_BIND_HOST` | `127.0.0.1` | the interface the server is bound to (set by the launcher); `local` mode refuses non-loopback values |
+| `COMPANY_OS_COOKIE_SECURE` | unset | force the `Secure` flag on cookies behind a TLS-terminating proxy (https requests always get it) |
+| `COMPANY_OS_ARGON2_TIME_COST` / `_MEMORY_KIB` / `_PARALLELISM` | `3` / `65536` / `4` | Argon2id cost; raising it rehashes users at their next login |
+| `COMPANY_OS_SESSION_IDLE_DAYS` / `_ABSOLUTE_DAYS` | `14` / `30` | session sliding window and hard cap |
+| `COMPANY_OS_LOGIN_FREE_ATTEMPTS` / `_MAX_LOCKOUT_SECONDS` | `3` / `900` | failed logins before back-off per username (per IP: 3x), and the longest lock |
+| `COMPANY_OS_INVITATION_TTL_DAYS` | `7` | invitation lifetime |
 | `COMPANY_OS_PUBLIC_URL` | `http://localhost:8700` | base of the printed login link |
-| `COMPANY_OS_PRINT_LOGIN_URL` | unset | `1`/`0` force/suppress printing the login link (default: only on a TTY) |
+| `COMPANY_OS_PRINT_LOGIN_URL` | unset | `1`/`0` force/suppress printing the login link / setup hint (default: only on a TTY) |
 | `COMPANY_OS_RUNTIME_PYTHON` | `<runtime>/.venv/bin/python` | interpreter of the company agent runtime |
 | `COMPANY_OS_SANDBOX_DOCKER_IMAGE` | `python:3.12-slim` | image for sandboxed terminal/code tools (docker only; unverified) |
 | `COMPANY_OS_RUNTIME_KILL_GRACE_SECONDS` | `10` | SIGTERM -> SIGKILL grace when cancelling a run |

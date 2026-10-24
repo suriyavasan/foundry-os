@@ -192,6 +192,10 @@ def resolve(
     now: datetime | None = None,
 ) -> Resolution:
     now = now or utcnow()
+    if spec.human_only:  # accounts and team: before any rule is read, nothing can allow it
+        return Resolution(
+            D.DENY, None, "default", f"{spec.name} is human-only: agents can never do it"
+        )
     rules = list(
         db.scalars(select(GuardrailRule).where(GuardrailRule.company_id == agent.company_id))
     )
@@ -245,6 +249,8 @@ def _validate_target(db: Session, company_id: str, tier: str, action: str | None
         spec = registry.get_action(action)
         if spec is None:
             raise ValidationFailed(f"Unknown action {action!r}: it is not in the action registry")
+        if spec.human_only:
+            raise ValidationFailed(f"Action {action!r} is human-only: no rule can allow it")
         if spec.tier != tier:
             raise ValidationFailed(f"Action {action!r} belongs to tier {spec.tier!r}, not {tier!r}")
 

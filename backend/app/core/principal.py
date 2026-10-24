@@ -16,6 +16,7 @@ class PrincipalType(StrEnum):
 class Role(StrEnum):
     OWNER = "owner"
     ADMIN = "admin"
+    MEMBER = "member"  # M7: a human colleague; reads, and works on what is assigned to them
     VIEWER = "viewer"
     AGENT = "agent"  # role of an agent principal inside its own company
 
@@ -44,6 +45,13 @@ class CompanyContext:
     company_id: str
     principal: Principal
     role: Role
+    # M7: the caller's CompanyMember id (humans only). ``member:<member_id>`` is the ref other
+    # records (assignee, manager, approver) use for this person.
+    member_id: str | None = None
+
+    @property
+    def member_ref(self) -> str | None:
+        return f"member:{self.member_id}" if self.member_id else None
 
     @property
     def is_human_admin(self) -> bool:

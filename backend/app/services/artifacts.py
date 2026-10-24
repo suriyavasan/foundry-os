@@ -190,7 +190,21 @@ def create_or_version(
         if run is None or run.agent_id != principal.id:
             raise Forbidden("Agents submit artifacts through their run")
     elif not ctx.is_human_admin:
-        raise Forbidden("Only company owners and admins can upload artifacts")
+        # M7: a member may attach files to a task assigned to them (their completion evidence)
+        mine = bool(
+            ctx.role == Role.MEMBER
+            and ctx.member_id
+            and data.task_id
+            and db.scalar(
+                select(Task.id).where(
+                    Task.id == data.task_id,
+                    Task.company_id == ctx.company_id,
+                    Task.assignee_member_id == ctx.member_id,
+                )
+            )
+        )
+        if not mine:
+            raise Forbidden("Only company owners and admins can upload artifacts")
 
     company_id = ctx.company_id
     task = get_task_or_404(db, company_id, data.task_id) if data.task_id else None

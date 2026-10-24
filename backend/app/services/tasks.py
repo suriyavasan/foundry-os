@@ -21,6 +21,7 @@ from app.core.errors import (
     InvalidTransition,
     LimitExceeded,
     NotFound,
+    ValidationFailed,
 )
 from app.core.principal import (
     CompanyContext,
@@ -29,10 +30,11 @@ from app.core.principal import (
     Role,
     require_human_admin,
 )
+from app.core.refs import parse_ref
 from app.core.time import utcnow
 from app.models.agent import Agent
 from app.models.artifact import Artifact
-from app.models.company import Company
+from app.models.company import Company, CompanyMember
 from app.models.enums import (
     AWAITING_PLAN_APPROVAL,
     TERMINAL_TASK_STATUSES,
@@ -40,6 +42,7 @@ from app.models.enums import (
     AgentStatus,
     AutonomyMode,
     CompanyStatus,
+    MemberStatus,
     TaskKind,
     TaskStatus,
 )
@@ -47,7 +50,16 @@ from app.models.run import TaskRun
 from app.models.work import Project, Task, TaskDependency
 from app.schemas.work import Task as TaskOut
 from app.schemas.work import TaskCreate, TaskUpdate
-from app.services import agent_roles, audit, autonomy_hooks, events, ledger, policy
+from app.services import (
+    agent_roles,
+    audit,
+    autonomy_hooks,
+    events,
+    ledger,
+    notifications,
+    org,
+    policy,
+)
 from app.services.common import (
     creator_of,
     get_agent_or_404,
@@ -97,13 +109,12 @@ UPDATABLE = (
     "kind",
     "priority",
     "project_id",
-    "assignee_agent_id",
-    "reviewer_agent_id",
     "required_skills",
     "budget_micros",
     "due_at",
     "input_refs",
 )
+# assignee / reviewer (agent or human) are updated together in ``update_task``
 
 
 # ---------------------------------------------------------------- state machine
@@ -115,6 +126,7 @@ def task_event_payload(task: Task, *, previous: str | None = None) -> dict[str, 
         "status": task.status,
         "title": task.title,
         "assignee_agent_id": task.assignee_agent_id,
+        "assignee_member_id": task.assignee_member_id,
         "project_id": task.project_id,
         "parent_task_id": task.parent_task_id,
     }
@@ -214,6 +226,20 @@ def recompute_readiness(
     if not candidates:
         return []
     assignee_ids = {t.assignee_agent_id for t in candidates if t.assignee_agent_id}
+    member_ids = {t.assignee_member_id for t in candidates if t.assignee_member_id}
+    active_members = (
+        set(
+            db.scalars(
+                select(CompanyMember.id).where(
+                    CompanyMember.company_id == company_id,
+                    CompanyMember.id.in_(member_ids),
+                    CompanyMember.status == MemberStatus.ACTIVE,
+                )
+            )
+        )
+        if member_ids
+        else set()
+    )
     active_agents = (
         set(
             db.scalars(
@@ -234,7 +260,13 @@ def recompute_readiness(
     for task in candidates:
         ok = (
             company_status == CompanyStatus.ACTIVE
-            and task.assignee_agent_id in active_agents
+            and (
+                task.assignee_agent_id in active_agents
+                or (
+                    task.assignee_member_id is not None
+                    and task.assignee_member_id in active_members
+                )
+            )
             and unfinished.get(task.id, 0) == 0
             and task.blocked_reason != AWAITING_PLAN_APPROVAL
             and not (task.blocked_reason == WAITING_ON_SUBTASKS and open_children.get(task.id, 0))
@@ -281,6 +313,8 @@ def resolve_reviewer(db: Session, task: Task) -> str | None:
     """Explicit reviewer, else a QA agent for code deliverables, else the assignee's manager
     agent. Never the assignee itself."""
     candidate = task.reviewer_agent_id
+    if candidate is None and task.reviewer_member_id:
+        return None  # a human reviews it (see ``needs_review``)
     if candidate is None:
         candidate = _qa_reviewer(db, task)
     if candidate is None and task.assignee_agent_id:
@@ -289,6 +323,16 @@ def resolve_reviewer(db: Session, task: Task) -> str | None:
                 Agent.id == task.assignee_agent_id, Agent.company_id == task.company_id
             )
         )
+    if candidate is None and task.assignee_member_id:
+        # work done by a person is reviewed by their manager when that manager is an agent
+        manager = db.scalar(
+            select(CompanyMember.manager_ref).where(
+                CompanyMember.id == task.assignee_member_id,
+                CompanyMember.company_id == task.company_id,
+            )
+        )
+        if manager and manager.startswith("agent:"):
+            candidate = manager[len("agent:") :]
     if candidate is None or candidate == task.assignee_agent_id:
         return None
     status = db.scalar(
@@ -326,7 +370,9 @@ def _qa_reviewer(db: Session, task: Task) -> str | None:
 
 
 def needs_review(db: Session, task: Task) -> bool:
-    return bool((task.acceptance_criteria or "").strip()) and resolve_reviewer(db, task) is not None
+    if not (task.acceptance_criteria or "").strip():
+        return False
+    return resolve_reviewer(db, task) is not None or task.reviewer_member_id is not None
 
 
 def finish_success(
@@ -595,7 +641,12 @@ def _route_unassigned(
 
 
 def _duplicate_open_task(
-    db: Session, company_id: str, data: TaskCreate, project_id: str | None, assignee: str | None
+    db: Session,
+    company_id: str,
+    data: TaskCreate,
+    project_id: str | None,
+    assignee: str | None,
+    assignee_member: str | None = None,
 ) -> Task | None:
     wanted = " ".join(data.title.lower().split())
     stmt = select(Task).where(
@@ -603,6 +654,9 @@ def _duplicate_open_task(
         Task.status.in_(OPEN_STATUSES),
         Task.project_id == project_id if project_id else Task.project_id.is_(None),
         Task.assignee_agent_id == assignee if assignee else Task.assignee_agent_id.is_(None),
+        Task.assignee_member_id == assignee_member
+        if assignee_member
+        else Task.assignee_member_id.is_(None),
     )
     for task in db.scalars(stmt.limit(500)):
         if " ".join(task.title.lower().split()) == wanted:
@@ -710,6 +764,60 @@ def apply_plan_decision(db: Session, ctx: CompanyContext, approval, decision: st
             transition(db, task, S.CANCELLED, principal=ctx.principal, reason="plan rejected")
 
 
+def resolve_people(
+    db: Session,
+    company_id: str,
+    *,
+    agent_id: str | None,
+    ref: str | None,
+    label: str,
+    field: str,
+) -> tuple[str | None, str | None]:
+    """An assignee / reviewer given as an agent id and/or a ref -> (agent_id, member_id), at most
+    one set. A member must be an active, non-viewer member of THIS company."""
+    if ref is None:
+        if agent_id:
+            get_agent_or_404(db, company_id, agent_id, label=label)
+        return agent_id, None
+    parsed = parse_ref(ref, field=field)
+    if parsed.is_agent:
+        if agent_id and agent_id != parsed.id:
+            raise ValidationFailed(
+                f"{field} and the agent id name different people",
+                details=[{"loc": ["body", field], "msg": "conflicting assignees"}],
+            )
+        get_agent_or_404(db, company_id, parsed.id, label=label)
+        return parsed.id, None
+    if agent_id:
+        raise ValidationFailed(
+            f"Give either an agent or a member as {label.lower()}, not both",
+            details=[{"loc": ["body", field], "msg": "conflicting assignees"}],
+        )
+    member = org.get_assignable_member(db, company_id, parsed.id)
+    return None, member.id
+
+
+def notify_assigned(
+    db: Session, task: Task, principal: Principal | None, *, member_id: str | None = None
+) -> None:
+    """Tell the person a task was given to them (not when they assigned it to themselves)."""
+    member_id = member_id or task.assignee_member_id
+    if not member_id:
+        return
+    member = db.get(CompanyMember, member_id)
+    if member is None or (principal is not None and principal.id == member.user_id):
+        return
+    notifications.notify_member(
+        db,
+        member_id,
+        notifications.TASK_ASSIGNED,
+        f"New task: {task.title}",
+        body=(task.description or "")[:500] or None,
+        related_type="task",
+        related_id=task.id,
+    )
+
+
 def _create_task_core(
     db: Session,
     company_id: str,
@@ -729,28 +837,56 @@ def _create_task_core(
     project_id = data.project_id or (parent.project_id if parent and run is not None else None)
     if project_id:
         get_project_or_404(db, company_id, project_id)
-    assignee_id = data.assignee_agent_id
-    if assignee_id:
-        get_agent_or_404(db, company_id, assignee_id, label="Assignee")
-    if data.reviewer_agent_id:
-        get_agent_or_404(db, company_id, data.reviewer_agent_id, label="Reviewer")
+    assignee_id, assignee_member_id = resolve_people(
+        db,
+        company_id,
+        agent_id=data.assignee_agent_id,
+        ref=data.assignee_ref,
+        label="Assignee",
+        field="assignee_ref",
+    )
+    reviewer_id, reviewer_member_id = resolve_people(
+        db,
+        company_id,
+        agent_id=data.reviewer_agent_id,
+        ref=data.reviewer_ref,
+        label="Reviewer",
+        field="reviewer_ref",
+    )
+    if assignee_member_id and assignee_member_id == reviewer_member_id:
+        raise ValidationFailed("Nobody reviews their own work: pick another reviewer")
     dep_ids = list(data.depends_on)
     for dep_id in dep_ids:
         get_task_or_404(db, company_id, dep_id)
 
     creator: Agent | None = None
     role: str | None = None
+    if run is not None and (assignee_member_id or reviewer_member_id):
+        # Colleagues who are people: only roles that may assign work to others may hand them work.
+        actor = db.get(Agent, run.agent_id)
+        if actor is None or not agent_roles.can_assign_others(agent_roles.role_of(db, actor)):
+            raise Forbidden("You cannot assign tasks or reviews to people. Ask your lead.")
     if run is not None and data.kind != TaskKind.WORK:
         # Agents create work. Planning runs, reviews and hiring requests are made by the platform
         # (wakes, review hooks, request_hire); a stray kind from a small model becomes plain work.
         data = data.model_copy(update={"kind": TaskKind.WORK.value})
     if run is not None:
         creator, role, project_id, assignee_id = _agent_creation_rules(
-            db, company_id, run, data, parent, project_id
+            db,
+            company_id,
+            run,
+            data.model_copy(update={"assignee_agent_id": assignee_id}),
+            parent,
+            project_id,
         )
     elif principal is not None and principal.is_agent:
         creator = db.get(Agent, principal.id)
-    if assignee_id is None and not data.required_skills and data.kind == TaskKind.WORK:
+    if (
+        assignee_id is None
+        and assignee_member_id is None
+        and not data.required_skills
+        and data.kind == TaskKind.WORK
+    ):
         assignee_id = _route_unassigned(db, company_id, project_id, creator)
 
     depth = parent.delegation_depth + 1 if parent is not None else 0
@@ -774,7 +910,9 @@ def _create_task_core(
                     "max": limits.max_tasks_per_planning_cycle,
                 },
             )
-        duplicate = _duplicate_open_task(db, company_id, data, project_id, assignee_id)
+        duplicate = _duplicate_open_task(
+            db, company_id, data, project_id, assignee_id, assignee_member_id
+        )
         if duplicate is not None:  # loop guard: the same open task is returned, not created twice
             assert creator is not None
             _note_duplicate(db, company_id, creator, duplicate)
@@ -827,7 +965,9 @@ def _create_task_core(
         status=S.BACKLOG,
         priority=data.priority,
         assignee_agent_id=assignee_id,
-        reviewer_agent_id=data.reviewer_agent_id,
+        reviewer_agent_id=reviewer_id,
+        assignee_member_id=assignee_member_id,
+        reviewer_member_id=reviewer_member_id,
         required_skills=list(data.required_skills),
         budget_micros=data.budget_micros,
         delegation_depth=depth,
@@ -862,6 +1002,7 @@ def _create_task_core(
         data={
             "kind": task.kind,
             "assignee_agent_id": task.assignee_agent_id,
+            "assignee_member_id": task.assignee_member_id,
             "parent_task_id": task.parent_task_id,
             "project_id": task.project_id,
             "run_id": run.id if run else None,
@@ -879,6 +1020,7 @@ def _create_task_core(
     if (
         creator is not None
         and task.assignee_agent_id is None
+        and task.assignee_member_id is None
         and not task.required_skills
         and task.kind == TaskKind.WORK
         and run is not None
@@ -896,6 +1038,7 @@ def _create_task_core(
             actor_agent_id=creator.id,
         )
     recompute_readiness(db, company_id, task_ids=[task.id], principal=principal, now=now)
+    notify_assigned(db, task, principal)
     return task, True
 
 
@@ -940,10 +1083,16 @@ def list_tasks(
     status: str | None = None,
     project_id: str | None = None,
     assignee_agent_id: str | None = None,
+    assignee_ref: str | None = None,
     parent_task_id: str | None = None,
     kind: str | None = None,
 ):
     stmt = select(Task).where(Task.company_id == ctx.company_id)
+    if assignee_ref:
+        ref = parse_ref(assignee_ref, field="assignee_ref")
+        stmt = stmt.where(
+            Task.assignee_agent_id == ref.id if ref.is_agent else Task.assignee_member_id == ref.id
+        )
     if status:
         stmt = stmt.where(Task.status == status)
     if project_id:
@@ -984,18 +1133,33 @@ def update_task(db: Session, ctx: CompanyContext, task_id: str, data: TaskUpdate
     fields = data.model_fields_set
     if TaskStatus(task.status) in TERMINAL_TASK_STATUSES:
         raise Conflict(f"A {task.status} task is read-only")
-    if (
-        task.status == S.IN_PROGRESS
-        and "assignee_agent_id" in fields
-        and data.assignee_agent_id != task.assignee_agent_id
-    ):
-        raise Conflict("Cannot reassign a task while it is running; block or cancel it first")
     if "project_id" in fields and data.project_id:
         get_project_or_404(db, ctx.company_id, data.project_id)
-    if "assignee_agent_id" in fields and data.assignee_agent_id:
-        get_agent_or_404(db, ctx.company_id, data.assignee_agent_id, label="Assignee")
-    if "reviewer_agent_id" in fields and data.reviewer_agent_id:
-        get_agent_or_404(db, ctx.company_id, data.reviewer_agent_id, label="Reviewer")
+    new_assignee = (task.assignee_agent_id, task.assignee_member_id)
+    if fields & {"assignee_agent_id", "assignee_ref"}:
+        new_assignee = resolve_people(
+            db,
+            ctx.company_id,
+            agent_id=data.assignee_agent_id if "assignee_agent_id" in fields else None,
+            ref=data.assignee_ref if "assignee_ref" in fields else None,
+            label="Assignee",
+            field="assignee_ref",
+        )
+    new_reviewer = (task.reviewer_agent_id, task.reviewer_member_id)
+    if fields & {"reviewer_agent_id", "reviewer_ref"}:
+        new_reviewer = resolve_people(
+            db,
+            ctx.company_id,
+            agent_id=data.reviewer_agent_id if "reviewer_agent_id" in fields else None,
+            ref=data.reviewer_ref if "reviewer_ref" in fields else None,
+            label="Reviewer",
+            field="reviewer_ref",
+        )
+    if new_assignee[1] and new_assignee[1] == new_reviewer[1]:
+        raise ValidationFailed("Nobody reviews their own work: pick another reviewer")
+    assignee_changed = new_assignee != (task.assignee_agent_id, task.assignee_member_id)
+    if task.status == S.IN_PROGRESS and assignee_changed:
+        raise Conflict("Cannot reassign a task while it is running; block or cancel it first")
 
     changed: list[str] = []
     for field in UPDATABLE:
@@ -1007,6 +1171,18 @@ def update_task(db: Session, ctx: CompanyContext, task_id: str, data: TaskUpdate
         if getattr(task, field) != new:
             setattr(task, field, new)
             changed.append(field)
+    if assignee_changed:
+        if new_assignee[0] != task.assignee_agent_id:
+            changed.append("assignee_agent_id")
+        if new_assignee[1] != task.assignee_member_id:
+            changed.append("assignee_member_id")
+        task.assignee_agent_id, task.assignee_member_id = new_assignee
+    if new_reviewer != (task.reviewer_agent_id, task.reviewer_member_id):
+        if new_reviewer[0] != task.reviewer_agent_id:
+            changed.append("reviewer_agent_id")
+        if new_reviewer[1] != task.reviewer_member_id:
+            changed.append("reviewer_member_id")
+        task.reviewer_agent_id, task.reviewer_member_id = new_reviewer
     if changed:
         task.updated_at = utcnow()
         audit.record(
@@ -1020,13 +1196,31 @@ def update_task(db: Session, ctx: CompanyContext, task_id: str, data: TaskUpdate
             data={"changed": changed},
         )
         events.emit(db, ctx.company_id, "task.updated", task_event_payload(task))
-        if "assignee_agent_id" in changed:
+        if assignee_changed:
             task.blocked_reason = None
             recompute_readiness(db, ctx.company_id, task_ids=[task.id], principal=ctx.principal)
+            notify_assigned(db, task, ctx.principal)
+        if "reviewer_member_id" in changed and task.status == S.IN_REVIEW:
+            _notify_review_requested(db, task, ctx.principal)
         if "budget_micros" in changed:
             release_budget_blocked(db, ctx.company_id, ctx.principal, task_ids=[task.id])
         db.commit()
     return task
+
+
+def _notify_review_requested(db: Session, task: Task, principal: Principal | None) -> None:
+    member = db.get(CompanyMember, task.reviewer_member_id) if task.reviewer_member_id else None
+    if member is None or (principal is not None and principal.id == member.user_id):
+        return
+    notifications.notify_member(
+        db,
+        member.id,
+        notifications.REVIEW_REQUESTED,
+        f"Review requested: {task.title}",
+        body=(task.result_summary or "")[:500] or None,
+        related_type="task",
+        related_id=task.id,
+    )
 
 
 def _agent_authority(db: Session, ctx: CompanyContext, task: Task) -> tuple[Agent, str, bool, bool]:
@@ -1062,6 +1256,7 @@ def agent_update_task(
     reason: str | None,
     assignee_agent_id: str | None,
     assignee_given: bool,
+    assignee_member_id: str | None = None,
 ) -> Task:
     """Limited agent edit: block/unblock and (re)assignment, only on tasks the agent created
     or manages (or its own current task, for blocking). Only managers (founder, leads, anyone
@@ -1082,7 +1277,9 @@ def agent_update_task(
             _unblock(db, task, principal)
         else:  # pragma: no cover - schema restricts values
             raise Conflict("Unsupported status change")
-    if assignee_given:
+    if assignee_given or assignee_member_id:
+        if assignee_member_id and not agent_roles.can_assign_others(role):
+            raise Forbidden("You cannot assign tasks to people. Ask your lead.")
         if not agent_roles.can_assign_others(role) and assignee_agent_id != principal.id:
             raise Forbidden(
                 "You cannot reassign tasks to other people. Ask your lead with "
@@ -1097,8 +1294,14 @@ def agent_update_task(
             raise Conflict("Cannot reassign a running or finished task")
         if assignee_agent_id:
             get_agent_or_404(db, ctx.company_id, assignee_agent_id, label="Assignee")
-        if task.assignee_agent_id != assignee_agent_id:
+        if assignee_member_id:
+            org.get_assignable_member(db, ctx.company_id, assignee_member_id)
+        if (task.assignee_agent_id, task.assignee_member_id) != (
+            assignee_agent_id,
+            assignee_member_id,
+        ):
             task.assignee_agent_id = assignee_agent_id
+            task.assignee_member_id = assignee_member_id
             task.updated_at = utcnow()
             audit.record(
                 db,
@@ -1108,7 +1311,13 @@ def agent_update_task(
                 target_type="task",
                 target_id=task.id,
                 summary=f"Reassigned task '{task.title}'",
-                data={"changed": ["assignee_agent_id"], "run_id": run.id, "handoff": handoff},
+                data={
+                    "changed": ["assignee_agent_id", "assignee_member_id"]
+                    if assignee_member_id
+                    else ["assignee_agent_id"],
+                    "run_id": run.id,
+                    "handoff": handoff,
+                },
             )
             events.emit(db, ctx.company_id, "task.updated", task_event_payload(task))
             if handoff:  # the running attempt ends here; the new assignee starts fresh
@@ -1117,6 +1326,7 @@ def agent_update_task(
                     db, task, S.READY, principal=principal, reason="handed off to a colleague"
                 )
             recompute_readiness(db, ctx.company_id, task_ids=[task.id], principal=principal)
+            notify_assigned(db, task, principal)
     db.commit()
     return task
 
@@ -1198,17 +1408,29 @@ def _unblock(db: Session, task: Task, principal: Principal | None) -> None:
     recompute_readiness(db, task.company_id, task_ids=[task.id], principal=principal)
 
 
+def _require_writer_or_assignee(ctx: CompanyContext, task: Task, action: str) -> None:
+    """Owners/admins, or the human the task is assigned to (a member works on their own tasks)."""
+    if (
+        ctx.principal.is_human
+        and ctx.role == Role.MEMBER
+        and ctx.member_id is not None
+        and ctx.member_id == task.assignee_member_id
+    ):
+        return
+    _require_writer(ctx, action)
+
+
 def block_task(db: Session, ctx: CompanyContext, task_id: str, reason: str | None) -> Task:
-    _require_writer(ctx, "block tasks")
     task = get_task_or_404(db, ctx.company_id, task_id)
+    _require_writer_or_assignee(ctx, task, "block tasks")
     _block(db, task, ctx.principal, reason, cancel_runs=True)
     db.commit()
     return task
 
 
 def unblock_task(db: Session, ctx: CompanyContext, task_id: str) -> Task:
-    _require_writer(ctx, "unblock tasks")
     task = get_task_or_404(db, ctx.company_id, task_id)
+    _require_writer_or_assignee(ctx, task, "unblock tasks")
     _unblock(db, task, ctx.principal)
     db.commit()
     return task
@@ -1366,8 +1588,14 @@ def review_task(
     if ctx.principal.is_agent:
         if resolve_reviewer(db, task) != ctx.principal.id:
             raise Forbidden("Only the task's reviewer can review it")
-    elif not ctx.is_human_admin:
-        raise Forbidden("Only company owners and admins can review tasks")
+    elif ctx.member_id is not None and ctx.member_id == task.assignee_member_id:
+        raise Forbidden("Nobody reviews their own work")
+    elif not ctx.is_human_admin and not (
+        ctx.role == Role.MEMBER
+        and ctx.member_id is not None
+        and ctx.member_id == task.reviewer_member_id
+    ):
+        raise Forbidden("Only company owners and admins, or the task's reviewer, can review tasks")
     if task.status != S.IN_REVIEW:
         raise InvalidTransition(
             f"Only tasks in review can be reviewed (task is {task.status})",
@@ -1461,3 +1689,120 @@ def complete_task_as_agent(
             notes.link_created_records(db, ctx.company_id, run, agent)
     db.commit()
     return task
+
+
+# ---------------------------------------------------------------- humans (M7)
+
+
+def complete_task_as_member(
+    db: Session,
+    ctx: CompanyContext,
+    task_id: str,
+    *,
+    comment: str | None,
+    artifact_ids: list[str],
+) -> Task:
+    """A person finishes a task assigned to them (or an owner/admin finishes it on their behalf).
+    Same path as an agent's completion: reviewable work goes to review, the rest is done, and
+    dependents become ready. Humans are never dispatched to a runtime."""
+    if ctx.principal.is_agent:
+        raise Forbidden("Agents complete their own tasks through the agent API")
+    task = get_task_or_404(db, ctx.company_id, task_id)
+    is_assignee = ctx.member_id is not None and ctx.member_id == task.assignee_member_id
+    if not (is_assignee or ctx.is_human_admin):
+        raise Forbidden("Only the person this task is assigned to can complete it")
+    if task.assignee_member_id is None:
+        raise Conflict("This task is not assigned to a person; agents complete their own tasks")
+    if task.status not in (S.READY, S.IN_PROGRESS):
+        raise InvalidTransition(
+            f"Only ready or in-progress tasks can be completed (task is {task.status})",
+            details={"from": task.status, "to": "done"},
+        )
+    refs: list[str] = []
+    for artifact_id in dict.fromkeys(artifact_ids):
+        found = db.scalar(
+            select(Artifact.id).where(
+                Artifact.id == artifact_id, Artifact.company_id == ctx.company_id
+            )
+        )
+        if found is None:
+            raise NotFound("Artifact not found")
+        refs.append(found)
+    if task.status == S.READY:
+        task.attempt_count += 1
+        transition(
+            db, task, S.IN_PROGRESS, principal=ctx.principal, reason="started by the assignee"
+        )
+    summary = (comment or "").strip() or task.result_summary
+    finish_success(
+        db,
+        task,
+        summary=summary,
+        output_refs=refs,
+        principal=ctx.principal,
+        run_id=None,
+    )
+    db.commit()
+    return task
+
+
+def reassign_member_tasks(
+    db: Session,
+    member: CompanyMember,
+    target: Any,
+    principal: Principal | None,
+    *,
+    reason: str,
+) -> list[Task]:
+    """A member leaves (or is demoted to viewer): open tasks assigned to them go to ``target``
+    (a Ref to their manager / the AI Co-founder; None = unassigned), review duties are dropped.
+    Task history, runs and artifacts stay as they are. No commit."""
+    moved: list[Task] = []
+    open_statuses = [s.value for s in OPEN_STATUSES]
+    for task in db.scalars(
+        select(Task).where(
+            Task.company_id == member.company_id,
+            Task.assignee_member_id == member.id,
+            Task.status.in_(open_statuses),
+        )
+    ):
+        if task.status == S.IN_PROGRESS:  # no run exists for a person's task: back to the queue
+            transition(db, task, S.READY, principal=principal, reason=reason)
+        task.assignee_member_id = None
+        task.assignee_agent_id = target.id if target is not None and target.is_agent else None
+        if target is not None and target.is_member:
+            task.assignee_member_id = target.id
+        task.updated_at = utcnow()
+        audit.record(
+            db,
+            company_id=task.company_id,
+            principal=principal,
+            action="task.updated",
+            target_type="task",
+            target_id=task.id,
+            summary=f"Reassigned task '{task.title}': {reason}",
+            data={
+                "changed": ["assignee_agent_id", "assignee_member_id"],
+                "reason": reason,
+                "to": str(target) if target is not None else None,
+            },
+        )
+        events.emit(db, task.company_id, "task.updated", task_event_payload(task))
+        moved.append(task)
+    for task in db.scalars(
+        select(Task).where(
+            Task.company_id == member.company_id,
+            Task.reviewer_member_id == member.id,
+            Task.status.in_(open_statuses),
+        )
+    ):
+        task.reviewer_member_id = None
+    db.flush()
+    if moved:
+        recompute_readiness(
+            db, member.company_id, task_ids=[t.id for t in moved], principal=principal
+        )
+        for task in moved:
+            if task.assignee_member_id:
+                notify_assigned(db, task, principal)
+    return moved

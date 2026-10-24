@@ -142,6 +142,8 @@ def _dispatch_one(
             .where(
                 Task.company_id == company_id,
                 Task.status == TaskStatus.READY,
+                # M7: a person's task is never dispatched to a runtime (they are notified instead)
+                Task.assignee_member_id.is_(None),
                 Task.id.notin_(skipped) if skipped else True,
             )
             .order_by(PRIORITY_RANK.desc(), Task.created_at, Task.id)

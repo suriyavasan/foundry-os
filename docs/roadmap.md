@@ -31,7 +31,7 @@ reachable from anywhere — without approving each step.*
 | M4 | Skills & HR | Skill library (Hermes + GitHub), scan/quarantine, role templates, HR agent, hiring, gap detection; skills UI | done |
 | M5 | Autonomous operating model | Layered loops (strategic/management/execution/support), Founder's notes + AI Co-founder triage, event triggers, self-healing, lessons, company memory, schedules | backend + runtime done (UI done earlier); live run on a local 7B only partly autonomous - see status notes |
 | M6 | Guardrails & governance | Action risk tiers + policy engine, rate limits, maker-checker for external actions, outbound DLP, injection defenses, stall/runaway detection, emergency stop, mid-run budgets, free-first routing, finance views, guardrail audit | done |
-| M7 | Accounts, login & team | Username/password onboarding, sessions, roles, email/link invitations, humans in the org tree with assignable tasks, notifications | UI done · backend planned |
+| M7 | Accounts, login & team | Username/password onboarding, sessions, roles, email/link invitations, humans in the org tree with assignable tasks, notifications | done |
 | M8 | Reachability & identity | Landing "how to reach" (LAN + public), tunnel, free-domain flows, optional paid domain (approval), Vercel-hosted control UI, company email identity, connected-accounts vault | UI done · backend planned |
 | M9 | OS packaging & hardening | `companyos` CLI, single-port serve, Docker Compose, backups, security review, final verification | planned |
 

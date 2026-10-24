@@ -29,6 +29,8 @@ SHINGLE_WORDS = 8
 _EXTRA_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("stripe key", re.compile(r"\b[rs]k_(?:live|test)_[A-Za-z0-9]{16,}")),
     ("google api key", re.compile(r"\bAIza[0-9A-Za-z_\-]{35}")),
+    # M7: a personal API token (the cleartext is never stored, so only its shape can be matched)
+    ("company os api token", re.compile(r"\bcos_pat_[A-Za-z0-9_\-]{20,}")),
     (
         "bearer credential",
         re.compile(r"(?i)\bauthorization\s*:\s*bearer\s+[A-Za-z0-9._~+/=\-]{12,}"),
@@ -119,7 +121,7 @@ def scan_text(
         n = len(pattern.findall(text))
         if n:
             counts[name] = n
-    own_tokens = counts.pop("company os run token", 0)
+    own_tokens = counts.pop("company os run token", 0) + counts.pop("company os api token", 0)
     if own_tokens:
         findings.append(
             Finding(

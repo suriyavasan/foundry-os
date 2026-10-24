@@ -9,6 +9,7 @@ from app.schemas.common import Page
 from app.schemas.governance import (
     Approval,
     ApprovalStatusLiteral,
+    ApproverAssign,
     ApproverLiteral,
     Decision,
     DecisionBody,
@@ -40,6 +41,13 @@ def list_approvals(
 @router.get("/approvals/{approval_id}", response_model=Approval)
 def get_approval(approval_id: str, ctx: CompanyCtx, db: DbSession):
     return approvals.get_approval(db, ctx, approval_id)
+
+
+@router.post("/approvals/{approval_id}/route", response_model=Approval)
+def route_approval(approval_id: str, body: ApproverAssign, ctx: CompanyCtx, db: DbSession):
+    """Send a pending human approval to one person (`approver_ref: member:<id>`) or back to any
+    owner/admin (null). Owners and admins can always decide it as well."""
+    return approvals.assign_approver(db, ctx, approval_id, body.approver_ref)
 
 
 @router.post("/approvals/{approval_id}/approve", response_model=Approval)

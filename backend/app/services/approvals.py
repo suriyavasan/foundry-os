@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import Conflict, Forbidden, InvalidTransition, NotFound, ValidationFailed
 from app.core.principal import CompanyContext, Principal, Role
+from app.core.refs import parse_ref
 from app.core.time import utcnow
 from app.models.agent import Agent
 from app.models.enums import (
@@ -32,7 +33,7 @@ from app.models.enums import (
 from app.models.governance import Approval
 from app.models.policy import CompanyPolicy
 from app.schemas.governance import ApprovalCreate
-from app.services import audit, events, policy
+from app.services import audit, events, notifications, org, policy
 from app.services.agents import _find_secret_paths
 from app.services.common import get_task_or_404
 from app.services.pagination import paginate
@@ -95,8 +96,19 @@ def list_approvals(
 def create_approval(
     db: Session, ctx: CompanyContext, data: ApprovalCreate, *, default_task_id: str | None = None
 ) -> Approval:
-    if ctx.role == Role.VIEWER:
-        raise Forbidden("Viewers have read-only access")
+    if ctx.role in (Role.VIEWER, Role.MEMBER):
+        raise Forbidden("Only owners, admins and agents can request approvals")
+    approver_member_id: str | None = None
+    if data.approver_ref:
+        if not ctx.is_human_admin:
+            raise Forbidden("Only company owners and admins can route an approval to a person")
+        ref = parse_ref(data.approver_ref, field="approver_ref")
+        if not ref.is_member:
+            raise ValidationFailed(
+                "approver_ref must be a member (member:<id>)",
+                details=[{"loc": ["body", "approver_ref"], "msg": "not a member reference"}],
+            )
+        approver_member_id = org.get_assignable_member(db, ctx.company_id, ref.id).id
     for blob, name in ((data.evidence, "evidence"), (data.scope, "scope")):
         if _find_secret_paths(blob):
             raise ValidationFailed(
@@ -120,6 +132,8 @@ def create_approval(
         evidence=data.evidence,
         scope=data.scope,
         task_id=task_id,
+        approver=Approver.HUMAN if approver_member_id else None,
+        approver_member_id=approver_member_id,
     )
     db.commit()
     return approval
@@ -148,6 +162,7 @@ def create_approval_record(
     outbound: dict[str, Any] | None = None,
     dlp_findings: list[dict[str, Any]] | None = None,
     requested_by_agent_id: Any = _UNSET,
+    approver_member_id: str | None = None,
 ) -> Approval:
     """Insert an approval (derived approver, audit, event). No commit. ``subject`` is set only
     by services (e.g. the hiring service): it is what a decision on the approval acts on. The
@@ -165,6 +180,7 @@ def create_approval_record(
             if requested_by_agent_id is not _UNSET
             else (principal.id if principal.is_agent else None)
         ),
+        approver_member_id=approver_member_id,
         task_id=task_id,
         title=title,
         reason=reason,
@@ -214,6 +230,71 @@ def create_approval_record(
             "tier": tier,
         },
     )
+    if approver == Approver.HUMAN:  # a person has to decide: tell them (M7 notifications)
+        _notify_needed(db, approval, principal)
+    return approval
+
+
+def _notify_needed(db: Session, approval: Approval, principal: Principal) -> None:
+    exclude = principal.id if principal.is_human else None
+    title = f"Approval needed: {approval.title}"
+    common = {"related_type": "approval", "related_id": approval.id, "body": approval.reason}
+    if approval.approver_member_id:
+        notifications.notify_member(
+            db, approval.approver_member_id, notifications.APPROVAL_NEEDED, title, **common
+        )
+    else:
+        notifications.notify_admins(
+            db,
+            approval.company_id,
+            notifications.APPROVAL_NEEDED,
+            title,
+            exclude_user_id=exclude,
+            **common,
+        )
+
+
+def assign_approver(
+    db: Session, ctx: CompanyContext, approval_id: str, approver_ref: str | None
+) -> Approval:
+    """Owners and admins route a pending human approval to one person (who is then notified and may
+    decide it), or back to "any owner/admin" with null. Owners/admins can always decide it too."""
+    if not ctx.is_human_admin:
+        raise Forbidden("Only company owners and admins can route an approval to a person")
+    approval = get_approval(db, ctx, approval_id)
+    if approval.status != ApprovalStatus.PENDING:
+        raise InvalidTransition(
+            f"Approval is already {approval.status}", details={"from": approval.status}
+        )
+    if approval.approver != Approver.HUMAN:
+        raise Conflict("Only approvals that need a human can be routed to a person")
+    member_id: str | None = None
+    if approver_ref:
+        ref = parse_ref(approver_ref, field="approver_ref")
+        if not ref.is_member:
+            raise ValidationFailed(
+                "approver_ref must be a member (member:<id>)",
+                details=[{"loc": ["body", "approver_ref"], "msg": "not a member reference"}],
+            )
+        member_id = org.get_assignable_member(db, ctx.company_id, ref.id).id
+    if member_id != approval.approver_member_id:
+        approval.approver_member_id = member_id
+        approval.updated_at = utcnow()
+        audit.record(
+            db,
+            company_id=ctx.company_id,
+            principal=ctx.principal,
+            action="approval.routed",
+            target_type="approval",
+            target_id=approval.id,
+            summary=f"Routed approval '{approval.title}' to "
+            + (org.member_name(db, member_id) or "any owner or admin"),
+            data={"approver_ref": approver_ref},
+        )
+        events.emit(db, ctx.company_id, "approval.updated", {"approval_id": approval.id})
+        if member_id:
+            _notify_needed(db, approval, ctx.principal)
+        db.commit()
     return approval
 
 
@@ -249,8 +330,15 @@ def decide(
                 raise Forbidden("Only the active founder agent can decide approvals")
             if approval.approver != Approver.FOUNDER:
                 raise Forbidden("This approval requires a human decision")
-    elif not ctx.is_human_admin:
-        raise Forbidden("Only company owners and admins can decide approvals")
+    elif not ctx.is_human_admin and not (
+        ctx.role == Role.MEMBER
+        and ctx.member_id is not None
+        and approval.approver_member_id == ctx.member_id
+        and approval.approver == Approver.HUMAN
+    ):
+        raise Forbidden(
+            "Only company owners and admins, or the person it is routed to, can decide approvals"
+        )
 
     if approval.status != ApprovalStatus.PENDING:
         raise InvalidTransition(

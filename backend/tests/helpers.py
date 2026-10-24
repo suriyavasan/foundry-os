@@ -34,10 +34,8 @@ class FakeClock:
 
 
 def login(client: TestClient) -> TestClient:
-    """Give a test client the owner cookie (what the browser gets from /api/auth/local)."""
-    from app.core.owner_token import OWNER_COOKIE
-
-    client.cookies.set(OWNER_COOKIE, client.app.state.owner_token.get())  # type: ignore[attr-defined]
+    """Give a test client the owner credential (the Bearer owner token: CLI / bootstrap path)."""
+    client.headers["Authorization"] = f"Bearer {client.app.state.owner_token.get()}"  # type: ignore[attr-defined]
     return client
 
 

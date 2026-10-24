@@ -33,8 +33,8 @@ def list_decisions(
 def create_decision(
     db: Session, ctx: CompanyContext, data: DecisionCreate, *, default_task_id: str | None = None
 ) -> Decision:
-    if ctx.role == Role.VIEWER:
-        raise Forbidden("Viewers have read-only access")
+    if ctx.role in (Role.VIEWER, Role.MEMBER):
+        raise Forbidden("Viewers and members have read-only access to the decision log")
     if _find_secret_paths(data.context):
         from app.core.errors import ValidationFailed
 

@@ -4,7 +4,27 @@ from enum import StrEnum
 class MemberRole(StrEnum):
     OWNER = "owner"
     ADMIN = "admin"
+    MEMBER = "member"  # M7: a "human agent": reads everything, works on what is assigned to them
     VIEWER = "viewer"
+
+
+class MemberStatus(StrEnum):
+    ACTIVE = "active"
+    DISABLED = "disabled"
+    REMOVED = "removed"  # history is kept; the row is never deleted
+
+
+class InvitationStatus(StrEnum):
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    EXPIRED = "expired"
+    REVOKED = "revoked"
+
+
+class TokenScope(StrEnum):
+    READ = "read"
+    WRITE = "write"
+    ADMIN = "admin"
 
 
 class CompanyStatus(StrEnum):

@@ -16,6 +16,8 @@ dependencies = [
     "python-multipart>=0.0.32",
     "pyyaml>=6.0.3",
     "cryptography>=50.0.2",
+    "argon2-cffi>=23.1",
+    "pyotp>=2.9",
 ]
 
 [dependency-groups]

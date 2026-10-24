@@ -29,7 +29,7 @@ def guard_env(request: Request) -> engine.GuardEnv:
     state = request.app.state
     token = bearer_token(request)
     return engine.GuardEnv(
-        owner_token=state.owner_token.ensure() if state.settings.auth_mode == "local" else None,
+        owner_token=state.owner_token.ensure(),  # a credential in every auth mode
         cipher=state.cipher,
         extra_secrets=(token,) if token else (),
     )

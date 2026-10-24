@@ -37,8 +37,12 @@ def test_no_credential_is_401_not_the_owner(anon_client, method, path):
     assert err["code"] == "unauthenticated"
 
 
-def test_401_tells_a_human_how_to_log_in(anon_client):
-    err = anon_client.get("/api/me").json()["error"]
+def test_401_tells_a_human_how_to_log_in(make_settings):
+    """The owner-token gate message belongs to the dev-only ``local`` mode; password mode asks the
+    person to sign in (see test_accounts_auth)."""
+    app = create_app(make_settings(auth_mode="local"), runtime_registry=RuntimeRegistry())
+    with TestClient(app, base_url="http://localhost", client=("127.0.0.1", 1)) as c:
+        err = c.get("/api/me").json()["error"]
     assert "login link" in err["message"].lower()
     assert err["details"]["reason"] == "owner_credential_required"
 
@@ -278,3 +282,24 @@ def test_the_filter_is_installed_on_uvicorns_access_logger(app):
 
     filters = logging.getLogger("uvicorn.access").filters
     assert sum(isinstance(f, RedactLoginToken) for f in filters) == 1  # not duplicated per app
+
+
+def test_access_log_masks_invitation_tokens():
+    import logging
+
+    from app.core.owner_token import RedactLoginToken
+
+    token = "InviteTok-0123456789abcdefghijklmnopqrstu"
+    record = logging.LogRecord(
+        "uvicorn.access",
+        logging.INFO,
+        "x",
+        1,
+        '%s - "%s %s HTTP/%s" %d',
+        ("127.0.0.1:5000", "POST", f"/api/invitations/{token}/accept", "1.1", 200),
+        None,
+    )
+    assert RedactLoginToken().filter(record)
+    assert (
+        token not in record.getMessage() and "/invitations/[redacted]/accept" in record.getMessage()
+    )

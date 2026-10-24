@@ -10,7 +10,7 @@ from app.core.ids import new_id
 from app.core.time import utcnow
 from app.db.base import Base, TimestampMixin
 from app.db.types import UTCDateTime
-from app.models.enums import CompanyStatus, MemberRole
+from app.models.enums import CompanyStatus, MemberRole, MemberStatus
 
 
 class Company(TimestampMixin, Base):
@@ -40,3 +40,11 @@ class CompanyMember(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
     role: Mapped[str] = mapped_column(String(16), default=MemberRole.VIEWER, nullable=False)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)
+    # M7: a member is an org node. ``manager_ref`` is ``agent:<id>`` | ``member:<id>`` | NULL (the
+    # Founder). A removed member keeps the row (history); it just stops being a member.
+    title: Mapped[str | None] = mapped_column(String(120))
+    manager_ref: Mapped[str | None] = mapped_column(String(48))
+    status: Mapped[str] = mapped_column(
+        String(12), default=MemberStatus.ACTIVE, server_default=MemberStatus.ACTIVE, nullable=False
+    )
+    removed_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
