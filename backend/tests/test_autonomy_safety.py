@@ -391,6 +391,13 @@ def test_builtin_schedules_exist_from_the_start(app, client, w):
 
 def test_idle_schedules_skip_and_busy_ones_fire(app, client, w, scheduler, worker, scripted, clock):
     cid = w.cid
+    # Only the interval heartbeat is under test: switch off the wall-clock cron routines
+    # (standup 09:00, reflection 20:00, ...) so the time of day the suite runs can't fire them.
+    with app.state.session_factory() as db:
+        for s in db.scalars(select(Schedule).where(Schedule.company_id == cid)):
+            if s.name != "heartbeat":
+                s.enabled = False
+        db.commit()
     scripted.handlers["Atlas"] = lambda call: call.api.ok(
         "POST", f"/tasks/{call.request.task.id}/complete", json={"result_summary": "ok"}
     )
