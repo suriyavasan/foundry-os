@@ -7,11 +7,16 @@ Read this first, then `docs/architecture.md` and `docs/roadmap.md`.
 - `backend/` — FastAPI control plane (Python ≥3.12, managed by `uv`).
 - `web/` — Vite + React + TypeScript SPA (managed by `pnpm`).
 - `docs/` — architecture (with decision log) and roadmap. Update both when you change architecture or finish a milestone.
-- `vendor/hermes-agent/` — gitignored reference checkout of Hermes Agent. Read it to verify runtime behaviour; never import from it or edit it.
+- `runtime/` — our fork of Hermes Agent (the AI-employee runtime, own venv). Every upstream change is logged in `runtime/FORK.md`.
+- `vendor/hermes-agent/` — gitignored pristine upstream checkout, for diffing future syncs; never import from it or edit it.
+- `docs/specs/` — one spec per milestone; `docs/security.md`, `docs/deploy.md`, `docs/deploy-reachability.md` for operators.
 
 ## Commands
 
 ```bash
+# everything (migrate + API serving the built UI + worker/scheduler), from backend/
+uv run companyos up            # then: companyos doctor | status | note "…" | runs tail -f
+
 # backend
 cd backend
 uv sync                                   # install

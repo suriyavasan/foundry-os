@@ -247,7 +247,7 @@ describe('Finance: trend, breakdown, runs', () => {
     expect(within(r3).getByText('Unpriced')).toBeInTheDocument()
     expect(within(r1).queryByText('Wasted')).not.toBeInTheDocument()
     await user.click(within(dialog).getByRole('button', { name: 'Write brief' }))
-    expect(loc()).toBe('?panel=task:t1&run=r1')
+    await waitFor(() => expect(loc()).toBe('?panel=task:t1&run=r1'))
   })
 })
 

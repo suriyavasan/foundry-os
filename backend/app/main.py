@@ -54,6 +54,7 @@ from app.integrations.base import IntegrationHttp
 from app.integrations.context import IntegrationContext
 from app.integrations.executors import register_all
 from app.integrations.tunnel import TunnelSupervisor
+from app.ops import pidfile
 from app.runtimes.registry import RuntimeRegistry, build_default_registry
 from app.services import reachability as reachability_service
 from app.services.auth import AuthService
@@ -61,6 +62,7 @@ from app.services.mail_dispatch import EmailDispatcher
 from app.services.users import ensure_local_owner
 from app.skills.env import SkillsEnv, build_skills_env
 from app.storage.local import LocalFileStorage
+from app.web import SecurityHeadersMiddleware, WebUiMiddleware
 
 logger = logging.getLogger("company_os")
 
@@ -112,6 +114,7 @@ def create_app(
                 "Use the default password mode (or bind to 127.0.0.1)."
             )
         settings.prepare_data_dir()
+        runfile = pidfile.register(settings.resolved_data_dir, "api", port=settings.port)
         present = set(inspect(engine).get_table_names())
         if not present >= REQUIRED_TABLES:
             raise RuntimeError(
@@ -155,6 +158,7 @@ def create_app(
         try:
             yield
         finally:
+            pidfile.unregister(runfile)
             app.state.integrations.supervisor.stop()
             app.state.email_dispatcher.shutdown()
             if service is not None:
@@ -229,6 +233,11 @@ def create_app(
                     ),
                 )
             return await call_next(request)
+
+    # Outermost last: headers wrap everything; the UI layer answers non-/api GETs before routing.
+    if settings.serve_web:
+        app.add_middleware(WebUiMiddleware, dist_dir_getter=lambda: settings.resolved_web_dist)
+    app.add_middleware(SecurityHeadersMiddleware)
 
     for router in (
         system.router,

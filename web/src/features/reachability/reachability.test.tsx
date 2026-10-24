@@ -98,7 +98,7 @@ describe('device card: LAN', () => {
     expect(sw).toHaveAttribute('aria-checked', 'false')
     expect(within(p).getAllByText('Password sign-in is not active yet.').length).toBeGreaterThan(0)
     await userEvent.setup().click(within(within(p).getByRole('region', { name: 'On your network' })).getByRole('button', { name: 'Open Account' }))
-    expect(loc()).toBe('?panel=account')
+    await waitFor(() => expect(loc()).toBe('?panel=account'))
   })
 
   it('turns on after a confirmation, then shows LAN URLs with QR codes', async () => {

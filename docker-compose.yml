@@ -1,0 +1,86 @@
+# Company OS with Docker Compose.
+# STATUS: `docker compose config` validates this file; the stack itself was NOT built or started
+# (no Docker daemon was available when it was written). See docs/deploy.md.
+#
+#   cp .env.example .env            # then edit it
+#   docker compose up -d --build
+#   docker compose exec api companyos auth setup-token      # first run: the setup token
+#   open http://localhost:8700
+#
+# SQLite (default) keeps everything in the `data` volume. For PostgreSQL:
+#   docker compose --profile postgres up -d --build   with COMPANY_OS_DATABASE_URL set in .env (see .env.example)
+
+x-company-os: &company-os
+  build:
+    context: .
+    args:
+      WITH_POSTGRES: ${WITH_POSTGRES:-0}
+      WITH_RUNTIME: ${WITH_RUNTIME:-1}
+  image: companyos:local
+  restart: unless-stopped
+  environment: &env
+    COMPANY_OS_DATABASE_URL: ${COMPANY_OS_DATABASE_URL:-sqlite:////data/company_os.db}
+    COMPANY_OS_SECRET_KEY: ${COMPANY_OS_SECRET_KEY:-}
+    COMPANY_OS_PUBLIC_URL: ${COMPANY_OS_PUBLIC_URL:-http://localhost:8700}
+    COMPANY_OS_COOKIE_SECURE: ${COMPANY_OS_COOKIE_SECURE:-}
+    COMPANY_OS_PORT: "8700"
+    # the worker's agent processes reach the API by its service name
+    COMPANY_OS_AGENT_API_URL: http://api:8700/api/agent/v1
+    COMPANY_OS_EMBEDDED_WORKER: "false"
+  volumes:
+    - data:/data
+
+services:
+  migrate:
+    <<: *company-os
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+
+  api:
+    <<: *company-os
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    # Loopback only by default. To publish on your network, set COMPANYOS_BIND=0.0.0.0 in .env AFTER the
+    # owner account has a strong password (docs/deploy.md, docs/deploy-reachability.md).
+    ports:
+      - "${COMPANYOS_BIND:-127.0.0.1}:${COMPANYOS_PORT:-8700}:8700"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8700/api/health', timeout=4).status == 200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  worker:
+    <<: *company-os
+    command: ["companyos-worker"]
+    depends_on:
+      api:
+        condition: service_healthy
+    # Ollama on the host: register http://host.docker.internal:11434 as the provider base URL.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # Agent sandbox through the HOST Docker daemon is opt-in and gives this container root-equivalent
+    # power over the host: use docker-compose.sandbox.yml (read its warning first).
+
+  postgres:
+    profiles: ["postgres"]
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: companyos
+      POSTGRES_DB: companyos
+      # empty -> the postgres image refuses to initialise (fail closed): set it in .env
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U companyos -d companyos"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  data:
+  pgdata:

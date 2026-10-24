@@ -110,6 +110,8 @@ class Settings(BaseSettings):
     tunnel_max_consecutive_failures: int = 8
     # The built web UI deployed to Vercel (the hosted control UI). Default <repo>/web/dist.
     web_dist_dir: Path | None = None
+    # Serve web_dist_dir from the API port (SPA fallback, cache headers, CSP).
+    serve_web: bool = True
     hosted_ui_max_bytes: int = 40 * 1024 * 1024
     # Largest webhook body accepted (inbound mail).
     webhook_max_bytes: int = 1024 * 1024

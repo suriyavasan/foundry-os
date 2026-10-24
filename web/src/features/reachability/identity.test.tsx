@@ -70,7 +70,7 @@ describe('domain wizard', () => {
     expect(await within(w).findByText('Waiting for your approval')).toBeInTheDocument()
     expect(api.calls.find((c) => c.method === 'POST' && c.path === '/companies/c1/domain/registrations')?.body).toEqual({ path: 'github_registry', registry_id: 'is-a-dev', name: 'acme' })
     await user.click(within(w).getByRole('button', { name: 'Open Approvals' }))
-    expect(loc()).toBe('?panel=approvals')
+    await waitFor(() => expect(loc()).toBe('?panel=approvals'))
   })
 
   it('does not let an ineligible request through', async () => {

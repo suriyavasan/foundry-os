@@ -144,7 +144,7 @@ describe('Guardrail events', () => {
     expect(within(row2).getByText('Default')).toBeInTheDocument()
     const user = userEvent.setup()
     await user.click(within(row2).getByRole('button', { name: 'Run' }))
-    expect(loc()).toBe('?panel=task:t1&run=run1')
+    await waitFor(() => expect(loc()).toBe('?panel=task:t1&run=run1'))
   })
 
   it('filters on the server by decision, tier and agent', async () => {

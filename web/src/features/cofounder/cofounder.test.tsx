@@ -59,7 +59,7 @@ describe('AI Co-founder panel', () => {
     expect(within(dialog).getByRole('button', { name: '2 notes waiting to be read' })).toBeInTheDocument()
 
     await user.click(within(dialog).getByRole('button', { name: 'Open run detail' }))
-    expect(loc()).toBe('?panel=task:tp1&run=r1')
+    await waitFor(() => expect(loc()).toBe('?panel=task:tp1&run=r1'))
   })
 
   it('wake now: posts once, is disabled while in flight and reports what the server did', async () => {

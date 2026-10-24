@@ -18,6 +18,9 @@ dependencies = [
     "cryptography>=50.0.2",
     "argon2-cffi>=23.1",
     "pyotp>=2.9",
+    "typer>=0.15",
+    "rich>=13.7",
+    "segno>=1.6",
 ]
 
 [dependency-groups]
@@ -27,7 +30,13 @@ dev = [
 ]
 
 [project.scripts]
+companyos = "app.cli.main:main"
 companyos-worker = "app.engine.cli:main"
+
+[project.optional-dependencies]
+postgres = [
+    "psycopg[binary]>=3.2",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -55,6 +64,10 @@ ignore = ["B008"]
 [tool.ruff.lint.per-file-ignores]
 # Test fixtures and table-driven cases read better on long lines.
 "tests/*" = ["E501", "F811"]  # F811: pytest fixtures imported then used as arguments
+# CLI help text and operator-facing messages read better as whole sentences.
+"app/cli/*" = ["E501"]
+"app/ops/*" = ["E501"]
+"app/web.py" = ["E501"]
 # Migrations freeze long prose (task templates) verbatim.
 "alembic/versions/*" = ["E501"]
 

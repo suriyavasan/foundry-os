@@ -548,6 +548,41 @@ class AuthService:
         db.commit()
         return revoked
 
+    def reset_password_local(
+        self,
+        db: Session,
+        user: User,
+        new_password: str,
+        *,
+        revoke_tokens: bool = False,
+        now: datetime | None = None,
+    ) -> int:
+        """Set a new password without the old one. NOT reachable over HTTP: only ``companyos auth
+        reset-password`` calls it, after proving filesystem access to the owner token. Signs every
+        session out (and optionally revokes API tokens), clears the login lockout, audits it."""
+        now = now or utcnow()
+        self.check_new_password(new_password, user)
+        user.password_hash = self.hash_password(new_password)
+        user.password_changed_at = now
+        user.updated_at = now
+        revoked = self.revoke_user_sessions(db, user.id, now)
+        if revoke_tokens:
+            db.execute(
+                update(ApiToken)
+                .where(ApiToken.user_id == user.id, ApiToken.revoked_at.is_(None))
+                .values(revoked_at=now)
+            )
+        self.clear_failures(db, [f"user:{user.username}", f"pw:{user.id}"])
+        self._audit_user(
+            db,
+            user,
+            "auth.password_reset_local",
+            "Password reset from the server console",
+            {"sessions_revoked": revoked, "tokens_revoked": revoke_tokens},
+        )
+        db.commit()
+        return revoked
+
     # ------------------------------------------------------------------ TOTP 2FA
 
     def _totp(self, user: User) -> pyotp.TOTP | None:

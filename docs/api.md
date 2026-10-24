@@ -1479,3 +1479,22 @@ on the machine's LAN IP), the real Tailscale CLI status, cloudflared "install re
 and fixtures only; Namecheap's XML and registrant fields least of all), a real cloudflared quick/named tunnel or Tailscale Funnel, the real cloudflared download,
 Svix signatures from the real services, the Cloudflare Email Worker, a LAN URL from *another* device, the is-a.dev registry accepting the generated file, TLS
 through a real domain, Postgres.
+
+---
+
+## Milestone 9 — Serving, headers and the CLI
+
+No endpoints were added or changed. What changed around them (operator view: `docs/deploy.md`, `docs/security.md`):
+
+- **Same-port UI.** `GET`/`HEAD` for any path outside `/api` is answered from `web/dist` (`COMPANY_OS_WEB_DIST`, `COMPANY_OS_SERVE_WEB`):
+  `/assets/*` -> `Cache-Control: public, max-age=31536000, immutable`; other files -> `no-cache` + `ETag`/`Last-Modified` (`If-None-Match` -> 304);
+  a path without a file extension that matches no file -> `index.html` (client-side routes); a missing file with an extension -> the usual
+  JSON 404. `/api/**` is never answered by this layer, so an unknown API path is still `404 {"error": {"code": "not_found"}}` and
+  `POST /c/anything` is not served by the UI. If `index.html` is missing the server behaves exactly as before (UI not built).
+- **Headers on every response:** `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, `Permissions-Policy`,
+  `Cross-Origin-Opener-Policy: same-origin`; `Strict-Transport-Security` only for https requests. `/api/**` (except `/api/docs`) also gets
+  `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'` (`default-src 'none'; sandbox` on artifact `.../content`), and JSON
+  answers without their own `Cache-Control` get `no-store`. The UI's HTML gets the SPA policy documented in `docs/security.md`.
+- **Process files.** The API and the worker create `<data dir>/run/<role>.<pid>.json` while they run (used by `backup restore` and `doctor`).
+- **Clients.** The `companyos` CLI is an ordinary API client (personal API token, or the owner token on the server machine); its exit codes
+  (3 unauthenticated, 4 forbidden, 5 not found, 6 conflict, 7 unreachable) map the HTTP statuses above.

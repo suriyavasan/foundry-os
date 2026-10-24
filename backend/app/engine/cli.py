@@ -28,6 +28,9 @@ def main(argv: list[str] | None = None) -> int:
 
     settings = get_settings()
     settings.prepare_data_dir()
+    from app.ops import pidfile
+
+    runfile = pidfile.register(settings.resolved_data_dir, "worker")
     engine = build_engine(settings.resolved_database_url)
     if "task_runs" not in inspect(engine).get_table_names():
         log.error("Database schema is missing. Run `uv run alembic upgrade head` first.")
@@ -45,6 +48,7 @@ def main(argv: list[str] | None = None) -> int:
     service.start()
     service.wait()
     service.stop()
+    pidfile.unregister(runfile)
     return 0
 
 

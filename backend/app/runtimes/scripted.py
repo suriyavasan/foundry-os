@@ -12,6 +12,7 @@ constructor's default script. Script keys (all optional):
     error_message:        str, used when result is "failed"
     fail_first_attempts:  int, fail while request.attempt_number <= N, then succeed
     raise_exception:      str, raise RuntimeError(str) (tests worker exception handling)
+    raise_config_error:   str, raise RuntimeAdapterError(CONFIG, str) first (the runtime never ran)
     usage:                {"input_tokens", "output_tokens", "cost_micros", "cost_kind"}
     artifacts:            [{"title", "content", "kind", "mime_type"}]
     agent_api:            [{"method", "path", "json", "save_as", "expect"}, ...] steps run with
@@ -48,6 +49,7 @@ from app.runtimes.base import (
     ExecutionResult,
     HealthStatus,
     RuntimeAdapter,
+    RuntimeAdapterError,
     RuntimeErrorKind,
     RuntimeHealth,
     UsageReport,
@@ -63,6 +65,7 @@ _KNOWN_KEYS = {
     "error_message",
     "fail_first_attempts",
     "raise_exception",
+    "raise_config_error",
     "usage",
     "artifacts",
     "agent_api",
@@ -207,6 +210,8 @@ class ScriptedRuntime(RuntimeAdapter):
                 return self._cancelled(emit)
             emit(str(item.get("type", "message")), dict(item.get("payload", {})))
 
+        if script.get("raise_config_error"):
+            raise RuntimeAdapterError(RuntimeErrorKind.CONFIG, str(script["raise_config_error"]))
         if script.get("raise_exception"):
             raise RuntimeError(str(script["raise_exception"]))
 

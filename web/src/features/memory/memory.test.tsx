@@ -29,7 +29,7 @@ describe('memory panel', () => {
     expect(within(verified).getByText('Requirement')).toBeInTheDocument()
     expect(within(verified).getByText('Verified')).toBeInTheDocument()
     await user.click(within(verified).getByRole('button', { name: 'Founder’s note' }))
-    expect(loc()).toBe('?panel=note:n1')
+    await waitFor(() => expect(loc()).toBe('?panel=note:n1'))
   })
 
   it('links a run source to the task’s run detail', async () => {
@@ -38,7 +38,7 @@ describe('memory panel', () => {
     const dialog = await panel()
     await waitFor(() => expect(rows(dialog)).toHaveLength(3))
     await userEvent.setup().click(within(rows(dialog)[0]!).getByRole('button', { name: 'Run' }))
-    expect(loc()).toBe('?panel=task:t1&run=r1')
+    await waitFor(() => expect(loc()).toBe('?panel=task:t1&run=r1'))
   })
 
   it('filters by kind, status and search', async () => {

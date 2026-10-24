@@ -31,6 +31,7 @@ from app.runtimes.base import (
     ExecutionResult,
     Limits,
     RuntimeAdapterError,
+    RuntimeErrorKind,
     TaskSpec,
     UsageReport,
 )
@@ -399,8 +400,19 @@ class RunExecutor:
                 code, message = exception.kind.value, exception.message
             else:
                 code, message = "runtime_exception", f"Runtime raised {type(exception).__name__}"
+            # A configuration error (no credential, bad runtime_config) is raised before the runtime
+            # does anything: nothing was spent, so the reservation is released, not charged.
+            never_ran = (
+                isinstance(exception, RuntimeAdapterError)
+                and exception.kind == RuntimeErrorKind.CONFIG
+                and usage is None
+            )
             return runs.RunOutcome(
-                RunStatus.FAILED, code, error={"code": code, "message": message}, usage=usage
+                RunStatus.FAILED,
+                code,
+                error={"code": code, "message": message},
+                usage=usage,
+                executed=not never_ran,
             )
         assert result is not None
         if result.status == "succeeded":

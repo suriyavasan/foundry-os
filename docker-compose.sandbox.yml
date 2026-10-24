@@ -1,0 +1,17 @@
+# OPT-IN: let agents run terminal/code tools in sibling containers via the HOST Docker daemon.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.sandbox.yml up -d --build
+#
+# RISK: whoever can talk to /var/run/docker.sock can start a privileged container and own the host. Mounting
+# it into the worker means a compromised worker or a prompt-injected agent is one step from host root.
+# Prefer running Company OS directly on a machine with Docker (`companyos up`), or a rootless/remote
+# daemon. Not verified (no Docker daemon was available when this was written).
+services:
+  worker:
+    build:
+      args:
+        INSTALL_DOCKER_CLI: "1"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    group_add:
+      - "${DOCKER_GID:-998}"   # the host's docker group id: `stat -c %g /var/run/docker.sock`

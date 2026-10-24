@@ -70,6 +70,9 @@ backend/
     services/             business logic; ALL authorization + tenancy checks live here
     api/routes/           thin HTTP handlers → services
     runtimes/             RuntimeAdapter interface, registry, adapters (hermes/…)
+    cli/                  the `companyos` command (Typer): config, HTTP client, one module per command group
+    ops/                  machine-level operations: up (supervisor), doctor, backup/restore, pid files
+    web.py                serving web/dist from the API port + security headers/CSP middlewares
   tests/
 web/
   src/
@@ -246,6 +249,9 @@ run stock Hermes.
   (`cos_owner` cookie while the install is unclaimed) and CLI fallback (`Authorization: Bearer <owner token>`). `local` mode is
   development only: it refuses non-loopback binds and non-loopback clients. Agent processes never receive the owner token and the
   file jail blocks reading it. Details: `docs/api.md` (Milestone 7).
+- **HTTP hardening (M9, D24):** every response carries nosniff / no-referrer / frame-deny / permissions-policy headers (HSTS over
+  https); the UI is served with `script-src 'self'` CSP and `/api` answers with `default-src 'none'`. Details and the review
+  checklist: `docs/security.md`.
 - **Secrets:** never returned by the API, never logged, never written into agent
   instructions or runtime config visible to agents. Stored encrypted (Fernet key from
   `COMPANY_OS_SECRET_KEY`) behind `CredentialReference` (M4).
@@ -302,3 +308,7 @@ run stock Hermes.
 | D20 | 2026-10-24 | Default guardrail rules live in code (versioned with the repo); companies only store overrides. Precedence: specific action > tier, then agent > family > all, newest wins ties. |
 | D21 | 2026-10-24 | Model routing defaults to `free_first`: local/free providers are preferred; paid fallback only when allowed by policy and budget, gated by the guardrail engine. |
 | D22 | 2026-10-24 | Reachability & identity run through control-plane provider adapters (Cloudflare, Vercel, GitHub, AgentMail, Resend, Tailscale, Porkbun, Namecheap). Actions have tier floors that rules cannot lower (domain registration/purchase always need the Founder); public exposure (LAN bind or tunnel) requires password auth with a strong password or 2FA; the server never rebinds itself — the saved LAN preference applies on restart. |
+| D23 | 2026-10-24 | M9 packaging: one CLI (`companyos`, Typer) that talks to the API over HTTP and keeps only three things local — `up`/`doctor`/`backup` (they manage this machine) and `auth reset-password|setup-token` (they prove server access by reading `owner.token`; deliberately **not** HTTP endpoints). Secrets never go through argv: stdin or a hidden prompt. |
+| D24 | 2026-10-24 | The API port serves the built UI (pure-ASGI middleware, never shadowing `/api`; hashed assets immutable, everything else revalidated) and adds security headers + a strict CSP (`script-src 'self'`; the theme bootstrap is a file, not an inline script). `companyos up` supervises the worker as a child (backoff restart) and treats the API as critical; the worker is no longer embedded in the API process outside dev. |
+| D25 | 2026-10-24 | Every long-running process registers `<data dir>/run/<role>.<pid>.json`; `restore` refuses a data dir with a live process. Backups are SQLite-online-backup snapshots + files with a per-file SHA-256 manifest, verified before restore touches anything; replaced data is moved aside, never deleted. |
+| D26 | 2026-10-24 | A run that fails on configuration before the runtime executed anything releases its reservation (cost kind `unknown`) instead of settling it as an estimate (found in the M9 live verification). |
