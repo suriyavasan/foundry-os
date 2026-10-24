@@ -17,6 +17,9 @@ dependencies = [
     "pyyaml>=6.0.3",
     "cryptography>=50.0.2",
     "argon2-cffi>=23.1",
+    # 26.x ships no Intel macOS wheels; 25.1 has an abi3 macosx_10_9_x86_64 wheel (release bundles
+    # install wheels only). Lift when upstream publishes Intel wheels again.
+    "argon2-cffi-bindings>=25.1,<26",
     "pyotp>=2.9",
     "typer>=0.15",
     "rich>=13.7",
