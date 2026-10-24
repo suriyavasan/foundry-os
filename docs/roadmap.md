@@ -35,7 +35,7 @@ reachable from anywhere — without approving each step.*
 | M8 | Reachability & identity | Landing "how to reach" (LAN + public), tunnel, free-domain flows, optional paid domain (approval), Vercel-hosted control UI, company email identity, connected-accounts vault | done |
 | M9 | OS packaging & hardening | `companyos` CLI, single-port serve, Docker Compose, backups, security review, final verification | done for the local install (CLI, `companyos up`, single-port serve + CSP, backup/restore, security review, `scripts/verify.sh`: 10/10 items passed on 2026-10-24 on macOS + SQLite + local qwen2.5:7b); **Docker image/Compose and PostgreSQL written but not verified** - see "Final verification" |
 | M10 | AI setup, coding-CLI workforce, Reflections, Command Center | Mandatory working-API onboarding gate (OpenRouter / Anthropic / OpenAI / OpenAI-compatible); optional Claude Code / Codex / OpenCode work runtimes (API manages the company, CLIs do the work) with isolation + MCP company tools; animated single-screen onboarding; Reflections + human-set company standards; Command Center where every input gets an output | done (live: OpenCode + local model; Claude Code/Codex not run live) |
-| M11 | Foundry AI OS: easy install | Rename to Foundry AI OS (`foundryos`); self-contained release bundles (own Python, prebuilt UI); Homebrew tap `suriyavasan/tap/foundry-os`; one-line `install.sh`; Docker image on GHCR; background service; `foundryos update`/rollback with automatic pre-migration backups; release CI | done locally; first release pending |
+| M11 | Foundry AI OS: easy install | Rename to Foundry AI OS (`foundryos`); self-contained release bundles (own Python, prebuilt UI); Homebrew tap `suriyavasan/tap/foundry-os`; one-line `install.sh`; Docker image on GHCR; background service; `foundryos update`/rollback with automatic pre-migration backups; release CI | released v0.1.0 (2026-10-24) |
 
 Order: M3b ∥ M4-UI → M5 → M6 → M7 → M8 → M9. UI for each milestone ships with it.
 
@@ -66,6 +66,13 @@ detection, circuit breaker and emergency stop. Agents can never change their own
   require the Founder's approval by default (configurable).
 
 ## Status notes
+
+- **v0.1.0 released (2026-10-24):** https://github.com/suriyavasan/foundry-os/releases/tag/v0.1.0 — bundles for
+  Apple Silicon macOS, Linux x86_64 and Linux arm64 (each built and install-tested in CI), multi-arch Docker image
+  on GHCR, Homebrew formula in `suriyavasan/homebrew-tap`. Verified on this Mac with the real public commands:
+  `brew install suriyavasan/tap/foundry-os` (version, `brew test`, serve, UI, `doctor` all OK) and the one-line
+  `curl … | sh` installer (download, SHA-256 verification, versioned install). No Intel macOS bundle: key
+  dependencies no longer publish Intel macOS wheels — Intel Macs use Docker.
 
 - **M5 live run (2026-10-24, local qwen2.5:7b):** one Founder's note → triaged as a
   directive + reply, a goal and a project, HR hired a project lead and a researcher ($5/mo
@@ -145,6 +152,6 @@ can run an autonomous company - see the M5 status notes; stronger models are the
   credential") settled its reservation as an *estimate* ($0.05 each, three times), counting phantom spend toward budgets.
   It now releases the reservation (`docs/security.md` finding 2; decision D26).
 - **Dependency audit:** `pip-audit` (backend, runtime) and `pnpm audit` found nothing; Hermes' exact pins were not touched.
-- **Gaps, in short:** Docker/Compose and Postgres unverified; owner-supplied provider URLs are not SSRF-filtered; no generic
-  per-IP rate limit; `style-src 'unsafe-inline'`; backups are not encrypted by the app; the 7B model is a weak agent.
-  Full list: `docs/security.md` section 4.
+- **Gaps, in short:** Docker/Compose and Postgres unverified; `style-src 'unsafe-inline'`; the 7B model is a weak agent.
+  Three M9 gaps were closed afterwards (SSRF guard for owner-supplied URLs, generic per-IP rate limit, encrypted
+  backups: `docs/security.md` section 5). Full list: `docs/security.md` section 4.
