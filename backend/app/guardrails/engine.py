@@ -36,6 +36,7 @@ from app.core.principal import CompanyContext
 from app.core.time import utcnow
 from app.guardrails import dlp, log, peer, ratelimit, registry, rules
 from app.guardrails.registry import ActionSpec
+from app.integrations.scopes import display_scope
 from app.models.agent import Agent
 from app.models.enums import (
     ActionTier,
@@ -370,6 +371,8 @@ def _approval_path(
     action = spec.name
     rule_id = res.rule.id if res.rule else None
     scope = {
+        # M8: what the approver reads (file, price ceiling, DNS changes), derived from the payload
+        **display_scope(action, payload),
         "v": 1,
         "action": action,
         "agent_id": agent.id,

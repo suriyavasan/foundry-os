@@ -262,3 +262,34 @@ def fake_skills_env(make_settings: Callable[..., Settings], fake_runtime: Path, 
     from app.skills.env import build_skills_env
 
     return build_skills_env(make_settings(runtime_dir=fake_runtime), scanner=fake_scanner)
+
+
+# ------------------------------------------------------------------ Milestone 8 fixtures
+
+
+@pytest.fixture
+def m8(app: FastAPI, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """The M8 world: a scripted network (nothing reaches the real one), fake ifconfig / tailscale
+    output, no cloudflared/tailscale found on PATH, a resolver that knows nothing."""
+    from types import SimpleNamespace
+
+    from tests.m8_helpers import (
+        IFCONFIG,
+        TAILSCALE_RUNNING,
+        FakeNetwork,
+        FakeResolver,
+        fake_run_factory,
+        install_network,
+    )
+
+    net = install_network(app, FakeNetwork())
+    ic = app.state.integrations
+    ic.run = fake_run_factory(ifconfig=IFCONFIG, tailscale=TAILSCALE_RUNNING)
+    resolver = FakeResolver()
+    ic.resolver = lambda: resolver
+    ic.tls_check = lambda domain: ("pending", "not reachable yet")
+    monkeypatch.setattr("app.integrations.cloudflared.shutil.which", lambda name: None)
+    monkeypatch.setattr("app.integrations.tailscale.shutil.which", lambda name: None)
+    monkeypatch.setattr("app.integrations.tailscale.MAC_APP", str(tmp_path / "no-tailscale-app"))
+    monkeypatch.setattr("app.services.reachability.shutil.which", lambda name: None)
+    return SimpleNamespace(net=net, ic=ic, resolver=resolver, settings=app.state.settings)

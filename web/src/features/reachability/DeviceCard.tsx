@@ -27,7 +27,7 @@ export function DeviceCard({ status, canManage }: { status: ReachabilityStatus; 
     setLan.mutate(next, {
       onSuccess: () => {
         setConfirming(false)
-        toast.success(next ? 'LAN access is on' : 'LAN access is off. Only this computer can reach it.')
+        toast.success(next ? 'LAN access saved. Restart Company OS to start listening on your network.' : 'LAN access turned off. Restart Company OS to stop listening on your network.')
       },
       onError: (e) => {
         setConfirming(false)
@@ -59,7 +59,8 @@ export function DeviceCard({ status, canManage }: { status: ReachabilityStatus; 
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-[13px] font-medium text-fg">
                 Enable LAN access
-                <Badge tone={toggle.checked ? 'info' : 'neutral'}>{toggle.checked ? 'On' : 'Off'}</Badge>
+                <Badge tone={toggle.live ? 'info' : 'neutral'}>{toggle.live ? 'On' : 'Off'}</Badge>
+                {toggle.restartRequired && <Badge tone="warning">Restart required</Badge>}
               </div>
               <p id={reasonId} className="mt-0.5 text-[12px] text-fg-3">
                 {blocked && toggle.reason ? (
@@ -73,6 +74,13 @@ export function DeviceCard({ status, canManage }: { status: ReachabilityStatus; 
                   'Lets phones and other computers on your network open this app. The server then listens on all network interfaces, and sign-in is required.'
                 )}
               </p>
+              {toggle.restartRequired && (
+                <p role="status" className="mt-1 text-[12px] text-fg-2">
+                  {toggle.checked
+                    ? 'Saved. The server is still listening on this computer only; restart Company OS to apply it.'
+                    : 'Saved. The server is still listening on your network; restart Company OS to stop it.'}
+                </p>
+              )}
               {!canManage && <p className="mt-1 text-[12px] text-fg-3">Only the owner can change this.</p>}
               {blocked && (
                 <Button size="sm" className="mt-2" onClick={() => openPanel({ kind: 'account' })}>
@@ -83,7 +91,7 @@ export function DeviceCard({ status, canManage }: { status: ReachabilityStatus; 
             <Switch label="Enable LAN access" checked={toggle.checked} disabled={disabled} loading={setLan.isPending} describedBy={reasonId} onCheckedChange={change} />
           </div>
 
-          {toggle.checked &&
+          {toggle.live &&
             (urls.length === 0 ? (
               <p role="status" className="text-[13px] text-fg-3">
                 LAN access is on, but no network address was found. Check that this computer is connected to a network.

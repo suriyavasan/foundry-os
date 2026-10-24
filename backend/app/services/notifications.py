@@ -17,7 +17,7 @@ from app.core.time import utcnow
 from app.models.accounts import Notification
 from app.models.company import CompanyMember
 from app.models.enums import MemberRole, MemberStatus
-from app.services import events
+from app.services import events, mail_dispatch
 from app.services.pagination import paginate
 
 TASK_ASSIGNED = "task_assigned"
@@ -56,6 +56,8 @@ def notify_user(
             "notification.created",
             {"notification_id": note.id, "user_id": user_id, "kind": kind},
         )
+        # M8: sent after the commit, only to people who opted in, only with a working e-mail
+        mail_dispatch.queue(db, user_id, company_id, kind, title, body)
     return note
 
 

@@ -381,6 +381,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/notifications/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Preferences */
+        get: operations["get_preferences_api_notifications_preferences_get"];
+        /** Set Preferences */
+        put: operations["set_preferences_api_notifications_preferences_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/companies/{company_id}/members": {
         parameters: {
             query?: never;
@@ -429,8 +447,9 @@ export interface paths {
         put?: never;
         /**
          * Create Invitation
-         * @description Delivery is ``link``: no email provider is connected until M8, so nothing is sent. The link
-         *     (and the token inside it) is in this response once; only its hash is stored.
+         * @description Delivery is ``email`` when the company has a working e-mail identity (the link exists only in
+         *     that message), else ``link``: the link (and its token) is in this response once; only its hash
+         *     is stored.
          */
         post: operations["create_invitation_api_companies__company_id__invitations_post"];
         delete?: never;
@@ -1999,6 +2018,521 @@ export interface paths {
         put?: never;
         /** Create Expense */
         post: operations["create_expense_api_companies__company_id__finance_expenses_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reachability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Status
+         * @description LAN, tunnel and the public-exposure gate in one poll (the UI refreshes it every 15 s).
+         */
+        get: operations["get_status_api_reachability_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reachability/lan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set Lan
+         * @description Persist the bind preference. The listener is rebound by the launcher: the response reports
+         *     ``lan.restart_required`` while the running process still differs.
+         */
+        patch: operations["set_lan_api_reachability_lan_patch"];
+        trace?: never;
+    };
+    "/api/reachability/tunnel/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Tunnel */
+        post: operations["start_tunnel_api_reachability_tunnel_start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reachability/tunnel/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop Tunnel */
+        post: operations["stop_tunnel_api_reachability_tunnel_stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reachability/tunnel/install-plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Install Plan
+         * @description What a confirmed install would download and the checksum it must match. Metadata only.
+         */
+        get: operations["install_plan_api_reachability_tunnel_install_plan_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reachability/tunnel/install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Install Tunnel Binary
+         * @description Download cloudflared from the official release, verify its SHA-256 against the published
+         *     checksum and install it into data/bin. Needs ``confirm: true``.
+         */
+        post: operations["install_tunnel_binary_api_reachability_tunnel_install_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reachability/tunnel/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tunnel Logs */
+        get: operations["tunnel_logs_api_reachability_tunnel_logs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/connected-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Accounts */
+        get: operations["list_accounts_api_companies__company_id__connected_accounts_get"];
+        put?: never;
+        /** Create Account */
+        post: operations["create_account_api_companies__company_id__connected_accounts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/connected-accounts/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Provider Catalog
+         * @description What can be connected, which secret fields each needs and which agent actions it enables.
+         */
+        get: operations["provider_catalog_api_companies__company_id__connected_accounts_providers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/connected-accounts/oauth/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Oauth Start */
+        post: operations["oauth_start_api_companies__company_id__connected_accounts_oauth_start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/connected-accounts/{account_id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test Account */
+        post: operations["test_account_api_companies__company_id__connected_accounts__account_id__test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/connected-accounts/{account_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke Account */
+        delete: operations["revoke_account_api_companies__company_id__connected_accounts__account_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/domain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Domain */
+        get: operations["get_domain_api_companies__company_id__domain_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/domain/registries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Registries */
+        get: operations["list_registries_api_companies__company_id__domain_registries_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/domain/free-providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Free Providers */
+        get: operations["list_free_providers_api_companies__company_id__domain_free_providers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/domain/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search Domains */
+        get: operations["search_domains_api_companies__company_id__domain_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/domain/registrations/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Registration */
+        post: operations["preview_registration_api_companies__company_id__domain_registrations_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/domain/registrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Registration
+         * @description Creates the registration and the human approval it waits for (registry PR / purchase), or
+         *     starts the assisted flow (free dashboard provider). Nothing is published or bought until the
+         *     approval is decided.
+         */
+        post: operations["create_registration_api_companies__company_id__domain_registrations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/domain/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify Domain */
+        post: operations["verify_domain_api_companies__company_id__domain_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/domain/dns/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Plan Dns
+         * @description Added: what changing these records at Cloudflare would do (nothing is changed).
+         */
+        post: operations["plan_dns_api_companies__company_id__domain_dns_plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/domain/dns/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Dns
+         * @description Added: the Founder applies DNS changes through the connected Cloudflare account.
+         */
+        post: operations["apply_dns_api_companies__company_id__domain_dns_apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/hosted-ui": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Hosted Ui */
+        get: operations["get_hosted_ui_api_companies__company_id__hosted_ui_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/hosted-ui/deploy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Deploy Hosted Ui */
+        post: operations["deploy_hosted_ui_api_companies__company_id__hosted_ui_deploy_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Email */
+        get: operations["get_email_api_companies__company_id__email_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Email */
+        patch: operations["update_email_api_companies__company_id__email_patch"];
+        trace?: never;
+    };
+    "/api/companies/{company_id}/email/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Email
+         * @description Added: re-check the sending domain and activate mailboxes waiting for it.
+         */
+        post: operations["refresh_email_api_companies__company_id__email_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/mailboxes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Mailboxes */
+        get: operations["list_mailboxes_api_companies__company_id__mailboxes_get"];
+        put?: never;
+        /** Create Mailbox */
+        post: operations["create_mailbox_api_companies__company_id__mailboxes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/reachability/checklist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Checklist */
+        get: operations["get_checklist_api_companies__company_id__reachability_checklist_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/webhooks/email/{company_id}/{source}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Inbound Email
+         * @description Inbound mail from AgentMail / Resend (Svix-signed) or the Cloudflare Email Worker
+         *     (``X-Company-OS-Signature``). Unknown company, no configured secret and a bad signature all
+         *     answer the same 401. The mail is stored as untrusted data and routed to the mailbox owner.
+         */
+        post: operations["inbound_email_api_webhooks_email__company_id___source__post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3659,6 +4193,38 @@ export interface components {
             /** Stars */
             stars?: number | null;
         };
+        /**
+         * Checklist
+         * @description Added: the Founder's one-time steps, computed by the server.
+         */
+        Checklist: {
+            /** Steps */
+            steps: components["schemas"]["ChecklistStep"][];
+            /** Done */
+            done: number;
+            /** Total */
+            total: number;
+        };
+        /** ChecklistStep */
+        ChecklistStep: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+            /** Description */
+            description: string;
+            /** After */
+            after: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "done" | "todo" | "attention";
+            /** Optional */
+            optional: boolean;
+            /** Providers */
+            providers: string[];
+        };
         /** CofounderBlocker */
         CofounderBlocker: {
             /** Task Id */
@@ -3884,6 +4450,53 @@ export interface components {
             comment?: string | null;
             /** Artifact Ids */
             artifact_ids?: string[];
+        };
+        /** ConnectedAccount */
+        ConnectedAccount: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string;
+            /** Provider */
+            provider: string;
+            /** Label */
+            label: string;
+            /** Credential Id */
+            credential_id: string | null;
+            /** Scopes */
+            scopes: string[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "connected" | "invalid" | "revoked";
+            /** Last Checked At */
+            last_checked_at: string | null;
+            /** Metadata */
+            metadata: {
+                [key: string]: string;
+            };
+            /** Created At */
+            created_at: string;
+            /** Last Error */
+            last_error?: string | null;
+        };
+        /** ConnectedAccountCreate */
+        ConnectedAccountCreate: {
+            /** Provider */
+            provider: string;
+            /** Label */
+            label: string;
+            /** Credential Id */
+            credential_id?: string | null;
+            /** Extra Credential Ids */
+            extra_credential_ids?: {
+                [key: string]: string;
+            };
+            /** Metadata */
+            metadata?: {
+                [key: string]: string;
+            };
         };
         /**
          * CostByKind
@@ -4396,6 +5009,277 @@ export interface components {
             /** Count */
             count?: number | null;
         };
+        /**
+         * DnsApplyRequest
+         * @description Added: owner-triggered DNS through the connected Cloudflare account.
+         */
+        DnsApplyRequest: {
+            /** Changes */
+            changes: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** DnsPlanResult */
+        DnsPlanResult: {
+            /** Zone */
+            zone: string;
+            /** Provider */
+            provider: string;
+            /** Steps */
+            steps: components["schemas"]["DnsPlanStep"][];
+            /**
+             * Applied
+             * @default false
+             */
+            applied?: boolean;
+        };
+        /** DnsPlanStep */
+        DnsPlanStep: {
+            /**
+             * Op
+             * @enum {string}
+             */
+            op: "create" | "update" | "noop";
+            /** Type */
+            type: string;
+            /** Name */
+            name: string;
+            /** Value */
+            value: string;
+            /** Ttl */
+            ttl?: number | null;
+            /** Previous */
+            previous?: string | null;
+        };
+        /** DnsRecord */
+        DnsRecord: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "A" | "AAAA" | "CNAME" | "TXT" | "NS" | "MX";
+            /** Name */
+            name: string;
+            /** Value */
+            value: string;
+            /** Ttl */
+            ttl?: number | null;
+            /** Status */
+            status?: ("ok" | "missing" | "mismatch" | "pending") | null;
+        };
+        /** DomainAvailability */
+        DomainAvailability: {
+            /** Domain */
+            domain: string;
+            /** Available */
+            available: boolean;
+            /** Registrar */
+            registrar: string;
+            /** Price Micros */
+            price_micros: number | null;
+            /** Renewal Price Micros */
+            renewal_price_micros: number | null;
+            /** Cost Kind */
+            cost_kind?: ("verified" | "estimated" | "unknown") | null;
+        };
+        /** DomainPlan */
+        DomainPlan: {
+            /** Domain */
+            domain: string | null;
+            /** Path */
+            path: ("github_registry" | "free_provider" | "paid_registrar") | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "none" | "awaiting_approval" | "pr_open" | "awaiting_founder" | "pending_dns" | "active" | "error";
+            /**
+             * Dns Status
+             * @enum {string}
+             */
+            dns_status: "unknown" | "pending" | "ok" | "error";
+            /**
+             * Tls Status
+             * @enum {string}
+             */
+            tls_status: "unknown" | "pending" | "ok" | "error";
+            /** Dns Records */
+            dns_records: components["schemas"]["DnsRecord"][];
+            /** Steps */
+            steps: string[];
+            registration: components["schemas"]["DomainRegistration"] | null;
+            /** Last Checked At */
+            last_checked_at: string | null;
+            /** Error */
+            error: string | null;
+        };
+        /** DomainRegistration */
+        DomainRegistration: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string;
+            /**
+             * Path
+             * @enum {string}
+             */
+            path: "github_registry" | "free_provider" | "paid_registrar";
+            /** Domain */
+            domain: string;
+            /** Registry Id */
+            registry_id: string | null;
+            /** Provider Id */
+            provider_id: string | null;
+            /** Registrar */
+            registrar: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "awaiting_approval" | "submitted" | "pr_open" | "merged" | "awaiting_founder" | "purchased" | "rejected" | "failed" | "cancelled";
+            /** Approval Id */
+            approval_id: string | null;
+            /** Pr Url */
+            pr_url: string | null;
+            /** Price Micros */
+            price_micros: number | null;
+            /** Error */
+            error: string | null;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+            /** Cost Kind */
+            cost_kind?: ("verified" | "estimated" | "unknown") | null;
+            /** Max Price Micros */
+            max_price_micros?: number | null;
+        };
+        /** DomainRegistrationCreate */
+        DomainRegistrationCreate: components["schemas"]["DomainRegistrationCreateRegistry"] | components["schemas"]["DomainRegistrationCreateFree"] | components["schemas"]["DomainRegistrationCreatePaid"];
+        /** DomainRegistrationCreateFree */
+        DomainRegistrationCreateFree: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            path: "free_provider";
+            /** Provider Id */
+            provider_id: string;
+            /** Domain */
+            domain: string;
+        };
+        /** DomainRegistrationCreatePaid */
+        DomainRegistrationCreatePaid: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            path: "paid_registrar";
+            /** Registrar */
+            registrar: string;
+            /** Domain */
+            domain: string;
+            /** Years */
+            years: number;
+            /** Max Price Micros */
+            max_price_micros?: number | null;
+        };
+        /** DomainRegistrationCreateRegistry */
+        DomainRegistrationCreateRegistry: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            path: "github_registry";
+            /** Registry Id */
+            registry_id: string;
+            /** Name */
+            name: string;
+            /** Target */
+            target?: string | null;
+        };
+        /** DomainRegistrationPreview */
+        DomainRegistrationPreview: {
+            /** Fqdn */
+            fqdn: string;
+            /** Repo */
+            repo: string;
+            /** Branch */
+            branch: string | null;
+            /** File Path */
+            file_path: string;
+            /** File Content */
+            file_content: string;
+            /** Pr Title */
+            pr_title: string;
+            /** Pr Body */
+            pr_body: string;
+            /** Publishes As */
+            publishes_as: string | null;
+            /** Eligible */
+            eligible: boolean;
+            /** Ineligible Reason */
+            ineligible_reason: string | null;
+            /** Warnings */
+            warnings: string[];
+            /** Target */
+            target?: string | null;
+        };
+        /** DomainRegistrationPreviewRequest */
+        DomainRegistrationPreviewRequest: {
+            /** Registry Id */
+            registry_id: string;
+            /** Name */
+            name: string;
+            /** Target */
+            target?: string | null;
+        };
+        /** DomainRegistry */
+        DomainRegistry: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Suffix */
+            suffix: string;
+            /** Repo */
+            repo: string;
+            /** Rules Url */
+            rules_url: string | null;
+            /** Eligibility */
+            eligibility: string[];
+            /**
+             * Review
+             * @enum {string}
+             */
+            review: "human" | "automatic";
+            /** Name Min Length */
+            name_min_length: number;
+            /** Name Max Length */
+            name_max_length: number;
+            /** Name Pattern */
+            name_pattern: string;
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings?: string[];
+        };
+        /** DomainSummary */
+        DomainSummary: {
+            /** Domain */
+            domain: string | null;
+            /**
+             * Dns Status
+             * @enum {string}
+             */
+            dns_status: "unknown" | "pending" | "ok" | "error";
+            /**
+             * Tls Status
+             * @enum {string}
+             */
+            tls_status: "unknown" | "pending" | "ok" | "error";
+        };
         /** EffectivePermissions */
         EffectivePermissions: {
             /** Agent Id */
@@ -4443,6 +5327,29 @@ export interface components {
             decision: "allow" | "peer_review" | "cofounder_approval" | "human_approval" | "deny";
             /** Rule Id */
             rule_id: string | null;
+        };
+        /** EmailIdentity */
+        EmailIdentity: {
+            /** Provider */
+            provider: ("agentmail" | "cloudflare_resend" | "gmail" | "outlook") | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "not_connected" | "connected" | "error";
+            /** Domain */
+            domain: string | null;
+            /** Error */
+            error: string | null;
+            /** Ai Disclosure Footer */
+            ai_disclosure_footer: boolean;
+        };
+        /** EmailIdentityUpdate */
+        EmailIdentityUpdate: {
+            /** Provider */
+            provider?: ("agentmail" | "cloudflare_resend" | "gmail" | "outlook") | null;
+            /** Ai Disclosure Footer */
+            ai_disclosure_footer?: boolean | null;
         };
         /** EmergencyStopRequest */
         EmergencyStopRequest: {
@@ -4733,6 +5640,21 @@ export interface components {
              * @default 0
              */
             reply_count?: number;
+        };
+        /** FreeDomainProvider */
+        FreeDomainProvider: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Dashboard Url */
+            dashboard_url: string;
+            /** Suffixes */
+            suffixes: string[];
+            /** Eligibility */
+            eligibility: string[];
+            /** Steps */
+            steps: string[];
         };
         /** Goal */
         Goal: {
@@ -5025,6 +5947,31 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** HostedUiDeployment */
+        HostedUiDeployment: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "none" | "deploying" | "ready" | "error";
+            /**
+             * Provider
+             * @constant
+             */
+            provider: "vercel";
+            /** Project Name */
+            project_name: string | null;
+            /** Url */
+            url: string | null;
+            /** Proxy Target */
+            proxy_target: string | null;
+            /** Last Deployed At */
+            last_deployed_at: string | null;
+            /** Error */
+            error: string | null;
+            /** Approval Id */
+            approval_id?: string | null;
+        };
         /** InjectionFlag */
         InjectionFlag: {
             /** Tool */
@@ -5140,6 +6087,53 @@ export interface components {
             invite_url?: string | null;
             /** Token */
             token?: string | null;
+            /** Delivery Note */
+            delivery_note?: string | null;
+        };
+        /** LanAddress */
+        LanAddress: {
+            /** Address */
+            address: string;
+            /**
+             * Family
+             * @enum {string}
+             */
+            family: "ipv4" | "ipv6";
+            /** Interface */
+            interface: string | null;
+            /** Url */
+            url: string;
+        };
+        /** LanRequest */
+        LanRequest: {
+            /** Enabled */
+            enabled: boolean;
+        };
+        /** LanStatus */
+        LanStatus: {
+            /** Enabled */
+            enabled: boolean;
+            /** Mdns Name */
+            mdns_name: string | null;
+            /** Mdns Url */
+            mdns_url: string | null;
+            /** Addresses */
+            addresses: components["schemas"]["LanAddress"][];
+            /**
+             * Requested
+             * @default false
+             */
+            requested?: boolean;
+            /**
+             * Bind Host
+             * @default 127.0.0.1
+             */
+            bind_host?: string;
+            /**
+             * Restart Required
+             * @default false
+             */
+            restart_required?: boolean;
         };
         /** LifecycleAction */
         LifecycleAction: {
@@ -5173,6 +6167,47 @@ export interface components {
             password: string;
             /** Totp Code */
             totp_code?: string | null;
+        };
+        /** Mailbox */
+        Mailbox: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string;
+            /** Address */
+            address: string;
+            /** Display Name */
+            display_name: string | null;
+            /** Owner Agent Id */
+            owner_agent_id: string | null;
+            /** Provider */
+            provider: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "pending" | "error" | "disabled";
+            /** Inbound Count */
+            inbound_count: number;
+            /** Outbound Count */
+            outbound_count: number;
+            /** Last Inbound At */
+            last_inbound_at: string | null;
+            /** Last Outbound At */
+            last_outbound_at: string | null;
+            /** Created At */
+            created_at: string;
+            /** Error */
+            error?: string | null;
+        };
+        /** MailboxCreate */
+        MailboxCreate: {
+            /** Local Part */
+            local_part: string;
+            /** Owner Agent Id */
+            owner_agent_id: string;
+            /** Display Name */
+            display_name?: string | null;
         };
         /** Me */
         Me: {
@@ -5573,6 +6608,21 @@ export interface components {
             /** Next Cursor */
             next_cursor?: string | null;
         };
+        /**
+         * NotificationPreferences
+         * @description Added (M8): which kinds are also sent by e-mail (opt-in; needs a company e-mail identity).
+         */
+        NotificationPreferences: {
+            /** Email Kinds */
+            email_kinds: string[];
+            /** Email Available */
+            email_available: boolean;
+        };
+        /** NotificationPreferencesUpdate */
+        NotificationPreferencesUpdate: {
+            /** Email Kinds */
+            email_kinds: string[];
+        };
         /** NotificationsRead */
         NotificationsRead: {
             /** Ids */
@@ -5586,6 +6636,16 @@ export interface components {
             marked: number;
             /** Unread Count */
             unread_count: number;
+        };
+        /** OAuthStart */
+        OAuthStart: {
+            /** Authorize Url */
+            authorize_url: string;
+        };
+        /** OAuthStartRequest */
+        OAuthStartRequest: {
+            /** Provider */
+            provider: string;
         };
         /** Overview */
         Overview: {
@@ -5689,6 +6749,13 @@ export interface components {
             /** Next Cursor */
             next_cursor?: string | null;
         };
+        /** Page[ConnectedAccount] */
+        Page_ConnectedAccount_: {
+            /** Items */
+            items: components["schemas"]["ConnectedAccount"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
         /** Page[Credential] */
         Page_Credential_: {
             /** Items */
@@ -5710,6 +6777,20 @@ export interface components {
             /** Next Cursor */
             next_cursor?: string | null;
         };
+        /** Page[DomainAvailability] */
+        Page_DomainAvailability_: {
+            /** Items */
+            items: components["schemas"]["DomainAvailability"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** Page[DomainRegistry] */
+        Page_DomainRegistry_: {
+            /** Items */
+            items: components["schemas"]["DomainRegistry"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
         /** Page[ExternalExpense] */
         Page_ExternalExpense_: {
             /** Items */
@@ -5728,6 +6809,13 @@ export interface components {
         Page_FounderNote_: {
             /** Items */
             items: components["schemas"]["FounderNote"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** Page[FreeDomainProvider] */
+        Page_FreeDomainProvider_: {
+            /** Items */
+            items: components["schemas"]["FreeDomainProvider"][];
             /** Next Cursor */
             next_cursor?: string | null;
         };
@@ -5756,6 +6844,13 @@ export interface components {
         Page_Invitation_: {
             /** Items */
             items: components["schemas"]["Invitation"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** Page[Mailbox] */
+        Page_Mailbox_: {
+            /** Items */
+            items: components["schemas"]["Mailbox"][];
             /** Next Cursor */
             next_cursor?: string | null;
         };
@@ -6151,6 +7246,47 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** ProviderCheck */
+        ProviderCheck: {
+            /** Ok */
+            ok: boolean;
+            /** Message */
+            message: string | null;
+            /** Checked At */
+            checked_at: string | null;
+            /** Account Label */
+            account_label: string | null;
+            /** Scopes */
+            scopes: string[];
+        };
+        /**
+         * ProviderInfo
+         * @description Added: what can be connected, which fields it needs and what it enables.
+         */
+        ProviderInfo: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Category */
+            category: string;
+            /** Needs Secret */
+            needs_secret: boolean;
+            /** Secret Fields */
+            secret_fields: string[];
+            /** Optional Secret Fields */
+            optional_secret_fields: string[];
+            /** Metadata Fields */
+            metadata_fields: string[];
+            /** Required Metadata */
+            required_metadata: string[];
+            /** Agent Actions */
+            agent_actions: string[];
+            /** Oauth */
+            oauth: boolean;
+            /** Help */
+            help: string;
+        };
         /** ProviderTest */
         ProviderTest: {
             /**
@@ -6199,6 +7335,38 @@ export interface components {
             window_seconds: number;
             /** Resets At */
             resets_at: string | null;
+        };
+        /** ReachabilityStatus */
+        ReachabilityStatus: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "local" | "lan" | "public";
+            /** Device Name */
+            device_name: string;
+            /** Hostname */
+            hostname: string;
+            /** Auth Mode */
+            auth_mode: string;
+            /** Local Urls */
+            local_urls: string[];
+            lan: components["schemas"]["LanStatus"];
+            tunnel: components["schemas"]["TunnelStatus"];
+            /** Active Url */
+            active_url: string | null;
+            /** Public Exposure Blocked Reason */
+            public_exposure_blocked_reason: string | null;
+            /** Public Exposure Blocked Code */
+            public_exposure_blocked_code?: string | null;
+            domain?: components["schemas"]["DomainSummary"] | null;
+            /** Public Exposure Advice */
+            public_exposure_advice?: string | null;
+            /**
+             * Two Factor Enabled
+             * @default false
+             */
+            two_factor_enabled?: boolean;
         };
         /** ReviewBody */
         ReviewBody: {
@@ -7210,6 +8378,117 @@ export interface components {
              */
             tier: "read" | "internal_write" | "org_change" | "external_read" | "external_communication" | "external_commitment" | "spend" | "identity" | "destructive";
         };
+        /** TunnelBinary */
+        TunnelBinary: {
+            /** Name */
+            name: string;
+            /** Found */
+            found: boolean;
+            /** Version */
+            version: string | null;
+            /** Path */
+            path: string | null;
+            /** Install Instructions */
+            install_instructions: string[];
+            /** Download Offered */
+            download_offered: boolean;
+            /** Download Url */
+            download_url: string | null;
+            /** Download Sha256 */
+            download_sha256: string | null;
+            /** Download Size Bytes */
+            download_size_bytes: number | null;
+        };
+        /** TunnelConfig */
+        TunnelConfig: {
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "cloudflare_quick" | "cloudflare_named" | "tailscale_funnel";
+            /** Hostname */
+            hostname?: string | null;
+        };
+        /**
+         * TunnelInstallPlan
+         * @description Added: what a confirmed install would download (metadata lookup only; nothing downloaded).
+         */
+        TunnelInstallPlan: {
+            /** Version */
+            version: string;
+            /** Asset */
+            asset: string;
+            /** Url */
+            url: string;
+            /** Sha256 */
+            sha256: string;
+            /** Size Bytes */
+            size_bytes?: number | null;
+            /**
+             * Checksum Sources
+             * @default []
+             */
+            checksum_sources?: string[];
+        };
+        /** TunnelInstallRequest */
+        TunnelInstallRequest: {
+            /**
+             * Confirm
+             * @default false
+             */
+            confirm?: boolean;
+            /** Sha256 */
+            sha256?: string | null;
+        };
+        /**
+         * TunnelLogs
+         * @description Added: the last output lines of the tunnel process (secrets masked).
+         */
+        TunnelLogs: {
+            /** Lines */
+            lines: string[];
+        };
+        /** TunnelProviderOption */
+        TunnelProviderOption: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "cloudflare_quick" | "cloudflare_named" | "tailscale_funnel";
+            /** Requires Account */
+            requires_account: string | null;
+            /** Available */
+            available: boolean;
+            /** Unavailable Reason */
+            unavailable_reason: string | null;
+        };
+        /** TunnelStatus */
+        TunnelStatus: {
+            /** Provider */
+            provider: ("cloudflare_quick" | "cloudflare_named" | "tailscale_funnel") | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "stopped" | "starting" | "running" | "error";
+            /** Url */
+            url: string | null;
+            /** Hostname */
+            hostname: string | null;
+            /** Last Health Check At */
+            last_health_check_at: string | null;
+            /** Healthy */
+            healthy: boolean | null;
+            /** Restarts */
+            restarts: number;
+            /** Started At */
+            started_at: string | null;
+            /** Error */
+            error: string | null;
+            binary: components["schemas"]["TunnelBinary"] | null;
+            /** Providers */
+            providers: components["schemas"]["TunnelProviderOption"][];
+        };
         /** TwoFactorDisable */
         TwoFactorDisable: {
             /** Code */
@@ -7871,6 +9150,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotificationsReadResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_preferences_api_notifications_preferences_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationPreferences"];
+                };
+            };
+        };
+    };
+    set_preferences_api_notifications_preferences_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationPreferencesUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationPreferences"];
                 };
             };
             /** @description Validation Error */
@@ -12176,6 +13508,972 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExternalExpense"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_status_api_reachability_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReachabilityStatus"];
+                };
+            };
+        };
+    };
+    set_lan_api_reachability_lan_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LanRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReachabilityStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_tunnel_api_reachability_tunnel_start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TunnelConfig"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TunnelStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stop_tunnel_api_reachability_tunnel_stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TunnelStatus"];
+                };
+            };
+        };
+    };
+    install_plan_api_reachability_tunnel_install_plan_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TunnelInstallPlan"];
+                };
+            };
+        };
+    };
+    install_tunnel_binary_api_reachability_tunnel_install_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TunnelInstallRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TunnelStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    tunnel_logs_api_reachability_tunnel_logs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TunnelLogs"];
+                };
+            };
+        };
+    };
+    list_accounts_api_companies__company_id__connected_accounts_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_ConnectedAccount_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_account_api_companies__company_id__connected_accounts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectedAccountCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectedAccount"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    provider_catalog_api_companies__company_id__connected_accounts_providers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderInfo"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    oauth_start_api_companies__company_id__connected_accounts_oauth_start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OAuthStartRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthStart"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_account_api_companies__company_id__connected_accounts__account_id__test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderCheck"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_account_api_companies__company_id__connected_accounts__account_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectedAccount"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_domain_api_companies__company_id__domain_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainPlan"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_registries_api_companies__company_id__domain_registries_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_DomainRegistry_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_free_providers_api_companies__company_id__domain_free_providers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_FreeDomainProvider_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_domains_api_companies__company_id__domain_search_get: {
+        parameters: {
+            query: {
+                q: string;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_DomainAvailability_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_registration_api_companies__company_id__domain_registrations_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DomainRegistrationPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainRegistrationPreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_registration_api_companies__company_id__domain_registrations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DomainRegistrationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainRegistration"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_domain_api_companies__company_id__domain_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainPlan"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plan_dns_api_companies__company_id__domain_dns_plan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DnsApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DnsPlanResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_dns_api_companies__company_id__domain_dns_apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DnsApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DnsPlanResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_hosted_ui_api_companies__company_id__hosted_ui_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostedUiDeployment"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    deploy_hosted_ui_api_companies__company_id__hosted_ui_deploy_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostedUiDeployment"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_email_api_companies__company_id__email_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailIdentity"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_email_api_companies__company_id__email_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailIdentityUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailIdentity"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_email_api_companies__company_id__email_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailIdentity"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_mailboxes_api_companies__company_id__mailboxes_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_Mailbox_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_mailbox_api_companies__company_id__mailboxes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MailboxCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Mailbox"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_checklist_api_companies__company_id__reachability_checklist_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Checklist"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    inbound_email_api_webhooks_email__company_id___source__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+                source: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

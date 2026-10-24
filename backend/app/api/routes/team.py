@@ -99,9 +99,12 @@ def create_invitation(
     db: DbSession,
     _: Annotated[object, Depends(human_only("invitation.create"))],
 ):
-    """Delivery is ``link``: no email provider is connected until M8, so nothing is sent. The link
-    (and the token inside it) is in this response once; only its hash is stored."""
-    created = team.create_invitation(db, ctx, body, request.app.state.settings)
+    """Delivery is ``email`` when the company has a working e-mail identity (the link exists only in
+    that message), else ``link``: the link (and its token) is in this response once; only its hash
+    is stored."""
+    created = team.create_invitation(
+        db, ctx, body, request.app.state.settings, ic=request.app.state.integrations
+    )
     response.headers["Cache-Control"] = "no-store"
     return created
 

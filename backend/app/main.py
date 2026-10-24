@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import inspect
+from sqlalchemy import inspect, select
 
 from app.api.routes import (
     activity,
@@ -25,18 +26,21 @@ from app.api.routes import (
     finance,
     goals,
     guardrails,
+    identity,
     memory,
     notes,
     notifications,
     policy,
     projects,
     providers,
+    reachability,
     runtimes,
     schedules,
     skills,
     system,
     tasks,
     team,
+    webhooks,
 )
 from app.core.config import APP_VERSION, Settings, get_settings
 from app.core.crypto import CredentialCipher
@@ -46,8 +50,14 @@ from app.core.netinfo import is_loopback_bind, is_loopback_request
 from app.core.owner_token import OwnerTokenProvider, install_log_redaction
 from app.db.session import build_engine, build_session_factory
 from app.guardrails.providers import ProviderRegistry
+from app.integrations.base import IntegrationHttp
+from app.integrations.context import IntegrationContext
+from app.integrations.executors import register_all
+from app.integrations.tunnel import TunnelSupervisor
 from app.runtimes.registry import RuntimeRegistry, build_default_registry
+from app.services import reachability as reachability_service
 from app.services.auth import AuthService
+from app.services.mail_dispatch import EmailDispatcher
 from app.services.users import ensure_local_owner
 from app.skills.env import SkillsEnv, build_skills_env
 from app.storage.local import LocalFileStorage
@@ -65,7 +75,22 @@ REQUIRED_TABLES = {
     "founder_notes",
     "guardrail_rules",
     "auth_sessions",
+    "connected_accounts",
 }
+
+
+def _broadcast(session_factory, type_: str) -> None:
+    """Device-level changes (the tunnel) are news for every company's live stream."""
+    from app.models.company import Company
+    from app.services import events
+
+    try:
+        with session_factory() as db:
+            for company_id in list(db.scalars(select(Company.id))):
+                events.emit(db, company_id, type_, {})
+            db.commit()
+    except Exception:  # never let a listener break the supervisor
+        logger.warning("could not broadcast %s", type_, exc_info=False)
 
 
 def create_app(
@@ -120,9 +145,18 @@ def create_app(
             )
             service.start()
             logger.warning("Embedded worker + scheduler running inside the API process")
+        if settings.tunnel_autoresume:
+            threading.Thread(
+                target=reachability_service.resume_tunnel,
+                args=(session_factory, app.state.integrations),
+                name="tunnel-resume",
+                daemon=True,
+            ).start()
         try:
             yield
         finally:
+            app.state.integrations.supervisor.stop()
+            app.state.email_dispatcher.shutdown()
             if service is not None:
                 service.stop()
             engine.dispose()
@@ -147,8 +181,24 @@ def create_app(
     )
     app.state.storage = LocalFileStorage(settings.artifacts_dir)
     app.state.skills = skills_env or build_skills_env(settings)
-    # Control-plane provider executors (M8 registers the real ones; empty means "not connected").
+    # Control-plane provider executors (M8): connected accounts, DNS, tunnels, domains, e-mail.
     app.state.provider_executors = ProviderRegistry()
+    app.state.integrations = IntegrationContext(
+        settings=settings,
+        http=IntegrationHttp(),
+        cipher=app.state.cipher,
+        supervisor=TunnelSupervisor(
+            health_interval=settings.tunnel_health_interval_seconds,
+            start_timeout=settings.tunnel_start_timeout_seconds,
+            max_backoff=settings.tunnel_max_backoff_seconds,
+            max_failures=settings.tunnel_max_consecutive_failures,
+            on_change=lambda _status: _broadcast(session_factory, "tunnel.updated"),
+        ),
+    )
+    session_factory.configure(info={"integrations": app.state.integrations})
+    register_all(app.state.provider_executors, app.state.integrations)
+    app.state.email_dispatcher = EmailDispatcher(session_factory, lambda: app.state.integrations)
+    app.state.integrations.emails = app.state.email_dispatcher
 
     app.add_middleware(
         CORSMiddleware,
@@ -207,6 +257,9 @@ def create_app(
         cofounder.router,
         guardrails.router,
         finance.router,
+        reachability.router,
+        identity.router,
+        webhooks.router,
         agent_api.router,
     ):
         app.include_router(router, prefix="/api")

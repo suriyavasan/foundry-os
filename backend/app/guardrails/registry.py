@@ -27,6 +27,7 @@ EXTERNAL_COMMS = "external_communications_per_day"
 HIRES = "hires_per_day"
 SKILL_INSTALLS = "skill_installs_per_day"
 WEB_FETCHES = "web_fetches_per_hour"
+SYSTEM_EMAILS = "system_emails_per_day"  # M8: invitations / notification e-mails
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,9 @@ class ActionSpec:
     rate_keys: tuple[str, ...] = ()
     # Identity actions that touch domain / DNS ownership default to a human, not the Co-founder.
     human_default: bool = False
+    # M8: a floor no rule can lower. The decision is at least ``human_approval`` (a human may still
+    # write a ``deny`` rule). Used for real-money and domain-ownership actions.
+    human_required: bool = False
     # M7: account management. No agent may ever do these and no rule can allow it: the engine
     # denies them before it looks at any rule.
     human_only: bool = False
@@ -151,14 +155,50 @@ _PROVIDER_ACTIONS = [
         "Register a domain",
         kind="provider",
         human_default=True,
+        human_required=True,
     ),
     _a("purchase.make", T.SPEND, "Make a purchase", kind="provider"),
     _a("subscription.start", T.SPEND, "Start a subscription", kind="provider"),
     _a("mailbox.create", T.IDENTITY, "Create a mailbox", kind="provider"),
     _a("dns.change", T.IDENTITY, "Change DNS records", kind="provider", human_default=True),
-    _a("ui.deploy", T.IDENTITY, "Deploy the control UI", kind="provider"),
     _a("credential.rotate", T.IDENTITY, "Rotate a credential", kind="provider"),
     _a("resource.delete", T.DESTRUCTIVE, "Delete an external resource", kind="provider"),
+    # --- Milestone 8: reachability & identity (executors in app/integrations) ---
+    _a("dns.read", T.EXTERNAL_READ, "List the DNS records of a zone", kind="provider"),
+    _a("domain.search", T.EXTERNAL_READ, "Search domain availability and price", kind="provider"),
+    _a(
+        "domain.preview",
+        T.EXTERNAL_READ,
+        "Prepare the exact registration file and pull request of a free-subdomain registry",
+        kind="provider",
+    ),
+    _a(
+        "domain.register_pr",
+        T.EXTERNAL_COMMITMENT,
+        "Open the pull request that registers a free subdomain (published under the Founder's "
+        "GitHub identity)",
+        kind="provider",
+        human_default=True,
+        human_required=True,
+    ),
+    _a(
+        "domain.purchase",
+        T.SPEND,
+        "Buy a domain from a registrar (real money, bound to a price ceiling)",
+        kind="provider",
+        human_default=True,
+        human_required=True,
+    ),
+    _a("hosted_ui.deploy", T.IDENTITY, "Deploy the control UI to Vercel", kind="provider"),
+    _a(
+        "hosted_ui.status",
+        T.EXTERNAL_READ,
+        "Read the hosted control UI deployment",
+        kind="provider",
+    ),
+    _a("tunnel.status", T.EXTERNAL_READ, "Read the public tunnel status", kind="provider"),
+    _a("tunnel.start", T.IDENTITY, "Start the public tunnel", kind="provider"),
+    _a("tunnel.stop", T.IDENTITY, "Stop the public tunnel", kind="provider"),
 ]
 
 # M7 accounts & team. Tier `identity`, but unlike the provider actions above they cannot be
@@ -178,6 +218,22 @@ _HUMAN_ONLY_ACTIONS = [
     _a("invitation.accept", T.IDENTITY, "Accept an invitation", kind="human_only", human_only=True),
     _a("member.update", T.IDENTITY, "Change a member", kind="human_only", human_only=True),
     _a("member.remove", T.IDENTITY, "Remove a member", kind="human_only", human_only=True),
+    # M8: third-party accounts and how the device is reached are the Founder's, never an agent's
+    # (agents use the guarded provider actions instead).
+    _a(
+        "connected_account.manage",
+        T.IDENTITY,
+        "Connect, test or revoke third-party accounts",
+        kind="human_only",
+        human_only=True,
+    ),
+    _a(
+        "reachability.manage",
+        T.IDENTITY,
+        "Change how this device is reached (network bind, tunnel, binaries)",
+        kind="human_only",
+        human_only=True,
+    ),
 ]
 HUMAN_ONLY: dict[str, ActionSpec] = {s.name: s for s in _HUMAN_ONLY_ACTIONS}
 

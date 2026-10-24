@@ -97,8 +97,8 @@ AuthSvc = Annotated[AuthService, Depends(get_auth_service)]
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 # Routes a ``write``-scoped API token may not call: team, policy, secrets, guardrails, system.
 _ADMIN_ONLY = re.compile(
-    r"^/(companies/[^/]+/(members|invitations|policy|credentials|guardrails|model-providers)"
-    r"(/|$)|system(/|$))"
+    r"^/(companies/[^/]+/(members|invitations|policy|credentials|guardrails|model-providers"
+    r"|connected-accounts|domain|hosted-ui|email|mailboxes)(/|$)|system(/|$)|reachability(/|$))"
 )
 _COMPANY_ADMIN = re.compile(r"^/companies/[^/]+(/(pause|resume))?/?$")
 

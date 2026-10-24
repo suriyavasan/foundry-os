@@ -1332,3 +1332,150 @@ that person → completed through the human endpoint → notifications.
 **Not** verified: a real authenticator app (codes are generated with `pyotp` in the tests), a TLS-terminating proxy or tunnel in front
 (the `Secure` flag, `X-Forwarded-*` handling), Postgres, email delivery (none exists), concurrent first-run setups from several
 processes (the claim is an atomic conditional UPDATE, tested in one process).
+
+---
+
+## Milestone 8 — Reachability & identity
+
+Spec: `docs/specs/m8-reachability-and-identity.md`. Operator guide: `docs/deploy-reachability.md`. Schema names and shapes follow the web
+contract (`web/src/api/types.ts` "Milestone 8"); every M8 check in `web/src/api/contract.check.ts` type-checks against this backend's
+OpenAPI (verified on a copy of `web/`). **No response carries a secret.** Provider tokens go once to `POST /companies/{cid}/credentials`
+(M3b store); a connected account only references the credential id.
+
+### Device level (installation owner only)
+
+"Owner" is the account that claimed the install (`users.is_local_owner`, the emergency-stop rule). Everyone else gets `403`; an agent's run
+token gets `403 guardrail_denied` (human-only action `reachability.manage`, with a `guardrail_events` row); a `write`-scoped API token gets
+`403` too (`reachability` is admin-only for unsafe methods).
+
+| Method & path | Purpose |
+|---|---|
+| `GET /reachability` | `ReachabilityStatus`: mode (`local`/`lan`/`public`), device name, hostname, `local_urls`, `lan` (addresses with interface and URL, `<host>.local` mDNS name), `tunnel` (state, URL, health, restarts, `binary`, `providers`), `active_url`, `public_exposure_blocked_reason` / `_code`, `domain` summary. Polls are local only (no network calls). |
+| `PATCH /reachability/lan` `{enabled}` | Persists the bind preference and returns `ReachabilityStatus`. Switching **on** needs the exposure gate. |
+| `POST /reachability/tunnel/start` `TunnelConfig {provider, hostname?}` | Starts the supervised tunnel; returns `TunnelStatus` (usually `starting`; poll). Gate enforced. |
+| `POST /reachability/tunnel/stop` | Stops it; `TunnelStatus`. |
+| `GET /reachability/tunnel/install-plan` *(added)* | Looks up the official cloudflared release and the published SHA-256 for this platform (metadata only; also fills `tunnel.binary.download_*`). |
+| `POST /reachability/tunnel/install` `{confirm: true, sha256?}` | Verified install into `data/bin/`. `409 confirmation_required` without `confirm`; `409 checksum_changed` when `sha256` is not the published one; `502` when the checksum is missing/disagrees/does not match the download. |
+| `GET /reachability/tunnel/logs` *(added)* | Last 200 lines of the tunnel process, secrets masked. |
+
+**Public-exposure gate** (`public_exposure_blocked_code`): `auth_local` (`COMPANY_OS_AUTH_MODE=local`), `no_password` (the install is not claimed yet),
+`weak_password` (the owner's password was not set under the M7 password policy and 2FA is off). Both LAN enabling and every tunnel start (also the
+agent actions `tunnel.start`, `hosted_ui.deploy`) are refused with `403` `{details: {reason: "public_exposure_blocked", code}}`. When the gate is open and
+2FA is off, `public_exposure_advice = "two_factor_recommended"` (advice, not a block). Switching LAN **off** is always allowed.
+
+**LAN.** The listening socket belongs to the launcher, not the app: `lan.enabled` is true only while the *running process* is bound to a
+non-loopback address (`COMPANY_OS_BIND_HOST`, set by `python -m app.serve`); `lan.requested` is the saved preference and
+`lan.restart_required` is true while they differ. `python -m app.serve` (and M9's `companyos up`) applies the preference at start and refuses
+to bind to the network when the gate is closed. `mode` is derived from facts (a running tunnel, a bound listener), never from the preference.
+
+**Tunnel.** Providers: `cloudflare_quick` (cloudflared `--url`, random `*.trycloudflare.com`, no account), `cloudflare_named` (token of a tunnel
+created through the owner's connected Cloudflare account; the hostname must be on a zone that account sees; the CNAME to
+`<tunnel-id>.cfargotunnel.com` is created proxied), `tailscale_funnel` (`tailscale funnel <port>` in the foreground; needs the Tailscale daemon
+running and a connected `tailscale` account). The supervisor restarts a dead process with backoff (1 s, 2 s, 4 s … capped at 60 s; `restarts`
+counts them), gives up with `state: "error"` after 8 consecutive failures, health-checks `<url>/api/health` every 30 s and restarts a tunnel
+that fails three checks in a row. A tunnel that was running is resumed at startup (`COMPANY_OS_TUNNEL_AUTORESUME`). The child gets a minimal
+environment (never the server's secrets); the named-tunnel token travels in `TUNNEL_TOKEN`, not argv.
+
+### Connected accounts (`/companies/{cid}`, owners/admins)
+
+| Method & path | Purpose |
+|---|---|
+| `GET /connected-accounts` | Page of `ConnectedAccount {id, provider, label, credential_id, scopes, status (connected/invalid/revoked), last_checked_at, metadata, last_error}`. |
+| `POST /connected-accounts` `ConnectedAccountCreate {provider, label, credential_id, extra_credential_ids?, metadata?}` | Connects, **runs the connection test**, and stores the result (`invalid` + `last_error` when it fails). Binds the credential to the provider and to the agent actions the provider enables. |
+| `POST /connected-accounts/{id}/test` | `ProviderCheck {ok, message, checked_at, account_label, scopes}`; also updates the account. |
+| `DELETE /connected-accounts/{id}` | Revokes (returns the account with `status: "revoked"`): agents lose the provider at once, its credentials are revoked/wiped unless still used elsewhere. |
+| `POST /connected-accounts/oauth/start` `{provider}` | `501 not_available` `{reason: "oauth_not_configured"}` for `gmail`/`outlook`: OAuth needs a client registered by the operator; nothing is faked. |
+| `GET /connected-accounts/providers` *(added)* | What can be connected: secret fields, metadata fields, the agent actions each enables. |
+
+Providers: `cloudflare` (account, zones, DNS records, tunnels, Email Routing), `vercel` (projects, deployments, domains), `github` (identity, fork/branch/file/PR),
+`agentmail` (inboxes, send), `resend` (domains, send), `tailscale` (local CLI; no secret), `porkbun` and `namecheap` (availability, pricing, registration).
+Extra secrets are keyed by field name in `extra_credential_ids` (`secret_api_key` for Porkbun; `webhook_secret` for AgentMail/Resend/Cloudflare inbound mail);
+they are control-plane only and are never offered to agents. Metadata holds non-secret facts only (a secret-looking key or value is `422`).
+Viewers/members get `403`; agents get `403 guardrail_denied` (`connected_account.manage`); a non-member gets `404`.
+
+### Provider actions (agents, `POST /agent/v1/provider-actions`)
+
+An agent never sees a credential: the control plane finds the connected account behind `credential_id`, runs the guardrail engine, then calls the
+provider itself. Parameters are validated **before** a review/approval is created (nobody is asked to approve a call that can never run).
+
+| Action | Tier | Default decision | Provider | Notes |
+|---|---|---|---|---|
+| `dns.read` `{domain, type?}` | external_read | allow | cloudflare | |
+| `dns.change` `{domain, changes[]}` | identity (+ domain/DNS ownership) | **human** | cloudflare | `changes[] {type A/AAAA/CNAME/TXT/MX, name, value, ttl?, proxied?}`; NS/SOA never. Plan then apply; only the listed names are touched. |
+| `domain.search` `{query}` | external_read | allow | porkbun, namecheap | quotes are `cost_kind: "estimated"` |
+| `domain.preview` `{registry_id, name, target?}` | external_read | allow | github | the exact file + PR text |
+| `domain.register_pr` `{…preview content}` | external_commitment | **human, cannot be lowered** | github | content must equal what the registry definition generates |
+| `domain.purchase` `{domain, years:1, max_price_micros}` | spend | **human, cannot be lowered** | porkbun, namecheap | re-quoted at purchase time; above the ceiling nothing is bought |
+| `hosted_ui.deploy` `{proxy_target, project?}` / `hosted_ui.status` | identity / external_read | Co-founder / allow | vercel | needs the exposure gate |
+| `tunnel.start` `{provider: cloudflare_quick\|cloudflare_named, hostname?}` / `tunnel.stop` / `tunnel.status` | identity / identity / external_read | Co-founder / Co-founder / allow | cloudflare | gate enforced |
+| `mailbox.create` `{local_part, owner_agent_id, display_name?}` | identity | Co-founder | agentmail, resend | |
+| `email.send` `{mailbox?, to, subject, body}` | external_communication | peer review | agentmail, resend | DLP, maker-checker, rate limit, AI-disclosure footer; sender must be a mailbox the agent owns |
+| `email.read` `{mailbox?, limit?, unread_only?}` | external_read | allow | agentmail, resend | inbound mail, wrapped as `<untrusted source="email">` |
+
+New registry rule (`ActionSpec.human_required`): `domain.register`, `domain.register_pr`, `domain.purchase` resolve to *at least* `human_approval` whatever the
+rules say (a `deny` rule is still honoured). The placeholder `ui.deploy` was replaced by `hosted_ui.deploy`. `company_provider_action` results are marked
+`untrusted` in the run spec. Approvals created by these actions carry the exact display fields the web renders in `scope` (`file_content`, `pr_title`,
+`pr_body`, `repo`, `changes`, `domain`, `max_price_micros`, `address`, `proxy_target` …); the approval is still bound by the payload digest, so the
+repeated call must be identical and is single-use.
+
+### Domain
+
+| Method & path | Purpose |
+|---|---|
+| `GET /domain` | `DomainPlan {domain, path, status, dns_status, tls_status, dns_records, steps, registration, last_checked_at, error}` |
+| `GET /domain/registries` / `GET /domain/free-providers` | Pages. Registry: `is-a.dev` (rules, eligibility and warnings as the registry documents them: non-commercial, human review, "do not use AI to generate your request"). Free provider: DigitalPlat FreeDomain (assisted: you register in its dashboard). |
+| `GET /domain/search?q=` | `DomainAvailability[]` from the connected registrars; a bare name is checked on `.com .net .org .io` only. `409` without a registrar account. |
+| `POST /domain/registrations/preview` `{registry_id, name, target?}` | `DomainRegistrationPreview`: the exact file, branch, PR title/body, who it is published as, eligibility and warnings. |
+| `POST /domain/registrations` `DomainRegistrationCreate` | `github_registry` and `paid_registrar` create an **approval for a human** (scope = exact content / price ceiling; `registration.approval_id`); nothing is published or bought until an owner/admin approves it (`/approvals/{id}/approve`), which consumes the approval and then acts. `free_provider` starts the assisted flow (no approval; steps in the plan). One domain at a time (`409 domain_exists`). Years must be 1. |
+| `POST /domain/verify` | Follows the PR (merged?), checks DNS (DoH lookups) and TLS (a real handshake) and returns the plan. |
+| `POST /domain/dns/plan`, `POST /domain/dns/apply` *(added)* | The Founder changes DNS through the connected Cloudflare account (a human acting directly). |
+
+### Hosted control UI
+
+`GET /hosted-ui` → `HostedUiDeployment | null` (refreshes a `deploying` deployment from Vercel); `POST /hosted-ui/deploy` deploys `web/dist` (setting
+`COMPANY_OS_WEB_DIST_DIR`) with a generated `vercel.json` rewriting `/api/:path*` to the public URL (active domain, else the running tunnel) and the SPA
+fallback to `/index.html`. A `vercel.json` inside the build is ignored. `409 no_account`, `422` without a public https URL or without a build, `403` without
+the exposure gate. The human click is the authorization; the agent path needs the Co-founder's approval.
+
+### E-mail identity
+
+| Method & path | Purpose |
+|---|---|
+| `GET /email`, `PATCH /email` `{provider?, ai_disclosure_footer?}` | `EmailIdentity`. Providers `agentmail`, `cloudflare_resend` (Resend on the company domain; needs a domain), `gmail`/`outlook` (`501`, OAuth not configured). The footer toggle is the company policy (`ai_disclosure_enabled`), human only. |
+| `POST /email/refresh` *(added)* | Re-checks the Resend sending domain and activates waiting mailboxes. |
+| `GET /mailboxes`, `POST /mailboxes` `{local_part, owner_agent_id, display_name?}` | Mailboxes (`company@`, `cofounder@`, per agent) mapped to one agent. Created by the Founder directly or by an agent through `mailbox.create`. |
+| `POST /api/webhooks/email/{company_id}/{source}` | Inbound mail, **no session**: `agentmail`/`resend` (Svix signature, secret = the account's `webhook_secret`) or `worker` (`X-Company-OS-Signature: sha256=<hmac>` from a Cloudflare Email Worker). Unknown company, no secret, bad/stale signature are all the same `401`; body ≤ 1 MiB (`413`); dedupe by message id. Stored as untrusted, scanned for injection phrases (flag only), the owner agent is woken with a neutral note (no mail text). |
+| `GET/PUT /notifications/preferences` *(added)* | `{email_kinds}` opt-in per kind, `email_available`. |
+
+Invitations (M7): `delivery: "email"` when the company has a working identity and a mailbox (the link exists only in that message; `invite_url` and `token` are
+`null`), else `"link"` as before; a send failure falls back to `"link"` with `delivery_note`. Notification e-mails are sent after the transaction commits, only for opted-in
+kinds, never with credential-shaped content, capped at 200 platform e-mails per company per day (`system_emails_per_day`).
+
+`GET /companies/{cid}/reachability/checklist` *(added)* → the Founder's one-time steps with status (`done`/`todo`/`attention`).
+
+### Events (company stream, invalidate-only)
+
+`reachability.updated`, `tunnel.updated`, `connected_account.updated`, `domain.updated`, `mailbox.updated`, `hosted_ui.updated`.
+
+### Differences from the web assumptions
+
+- `POST /connected-accounts/oauth/start` always answers `501` (no OAuth client ships with the repo). `credential_id` is optional in `ConnectedAccountCreate` (Tailscale has no secret); the web type always sends one, which is accepted.
+- `lan.enabled` means *bound*, not *requested* (see LAN above); the UI should show `lan.requested` / `lan.restart_required` after a toggle.
+- `DELETE /connected-accounts/{id}` returns the revoked account (200), not 204.
+- `DomainRegistrationCreate` accepts one year only; `github_registry` accepts an optional `target`.
+- Hosted-UI deploys by a human have no approval (`approval_id` is null); only the agent action is approved.
+- Added fields: `lan.{requested,bind_host,restart_required}`, `public_exposure_advice`, `two_factor_enabled`, `DomainRegistration.{cost_kind,max_price_micros}`, `DomainRegistry.warnings`, `Mailbox.error`, `ConnectedAccount.last_error`.
+
+### Verified and not verified (Milestone 8)
+
+Verified: the adapters against scripted HTTP (no network in the test suite); the tunnel supervisor with fake binaries (URL parsing, restart/backoff, give-up, health, stop,
+redaction, minimal environment); the cloudflared install against a scripted release (checksum match/mismatch/missing/disagreeing, official-URL guard, no
+download without confirmation); tiers, human floors and approval binding per provider action; the exposure gate; webhook signatures; inbound mail as untrusted data;
+DLP/footer/rate limits on outbound mail; invitations and notifications by e-mail; the OpenAPI against the web's M8 type checks; a live smoke on a temporary
+instance (own SQLite file, port 8707): first-run setup, real LAN address/mDNS detection, the saved LAN preference applied by `python -m app.serve` (reachable
+on the machine's LAN IP), the real Tailscale CLI status, cloudflared "install required" state, connect + test of a fake Cloudflare.
+
+**Not** verified against the real systems: any provider API (Cloudflare, Vercel, GitHub, AgentMail, Resend, Porkbun, Namecheap — shapes follow their documentation
+and fixtures only; Namecheap's XML and registrant fields least of all), a real cloudflared quick/named tunnel or Tailscale Funnel, the real cloudflared download,
+Svix signatures from the real services, the Cloudflare Email Worker, a LAN URL from *another* device, the is-a.dev registry accepting the generated file, TLS
+through a real domain, Postgres.

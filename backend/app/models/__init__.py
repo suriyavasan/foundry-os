@@ -19,6 +19,16 @@ from app.models.guardrails import (
 from app.models.ledger import BudgetReservation, UsageRecord
 from app.models.policy import CompanyPolicy
 from app.models.provider import Credential, ModelProvider
+from app.models.reachability import (
+    CompanyDomain,
+    ConnectedAccount,
+    DomainRegistration,
+    EmailIdentity,
+    HostedUi,
+    Mailbox,
+    MailMessage,
+    NotificationPreference,
+)
 from app.models.run import CompanyEvent, Job, RunEvent, TaskRun
 from app.models.schedule import Schedule, ScheduleFire
 from app.models.skill import AgentSkill, RoleTemplate, Skill, SkillBlob
@@ -34,6 +44,7 @@ __all__ = [
     "Invitation",
     "LoginThrottle",
     "Notification",
+    "NotificationPreference",
     "Approval",
     "Artifact",
     "ArtifactVersion",
@@ -41,7 +52,14 @@ __all__ = [
     "BudgetAlertMark",
     "BudgetReservation",
     "Company",
+    "CompanyDomain",
     "CompanyEvent",
+    "ConnectedAccount",
+    "DomainRegistration",
+    "EmailIdentity",
+    "HostedUi",
+    "MailMessage",
+    "Mailbox",
     "CompanyMember",
     "CompanyPolicy",
     "Credential",

@@ -63,11 +63,11 @@ describe('the top-bar globe', () => {
 
 describe('the LAN toggle gate', () => {
   it('is allowed when nothing blocks exposure', () => {
-    expect(lanToggle(makeReach())).toEqual({ checked: false, disabled: false, reason: null })
+    expect(lanToggle(makeReach())).toEqual({ checked: false, disabled: false, reason: null, live: false, restartRequired: false })
   })
   it('is disabled with the server’s own reason', () => {
     const s = makeReach({ public_exposure_blocked_reason: 'Password sign-in is not active.' })
-    expect(lanToggle(s)).toEqual({ checked: false, disabled: true, reason: 'Password sign-in is not active.' })
+    expect(lanToggle(s)).toEqual({ checked: false, disabled: true, reason: 'Password sign-in is not active.', live: false, restartRequired: false })
   })
   it('falls back to a fixed text per code when the server sent only a code', () => {
     expect(blockedReason(makeReach({ public_exposure_blocked_code: 'weak_password' }))).toMatch(/too weak/)
@@ -76,7 +76,17 @@ describe('the LAN toggle gate', () => {
   })
   it('can always be switched off', () => {
     const s = makeReach({ lan: { enabled: true }, public_exposure_blocked_reason: 'weak now' })
-    expect(lanToggle(s)).toEqual({ checked: true, disabled: false, reason: null })
+    expect(lanToggle(s)).toEqual({ checked: true, disabled: false, reason: null, live: true, restartRequired: false })
+  })
+  it('follows the saved preference and flags a pending restart (the server rebinds only on start)', () => {
+    const on = lanToggle(makeReach({ lan: { enabled: false, requested: true, restart_required: true } }))
+    expect(on).toMatchObject({ checked: true, live: false, restartRequired: true })
+    const off = lanToggle(makeReach({ lan: { enabled: true, requested: false, restart_required: true }, public_exposure_blocked_reason: 'weak now' }))
+    // still bound to the network: switching back on must stay possible even when exposure is now blocked
+    expect(off).toMatchObject({ checked: false, live: true, restartRequired: true, disabled: false })
+  })
+  it('derives a pending restart when the server omits restart_required', () => {
+    expect(lanToggle(makeReach({ lan: { enabled: false, requested: true } })).restartRequired).toBe(true)
   })
 })
 

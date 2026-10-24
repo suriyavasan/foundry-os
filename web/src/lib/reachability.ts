@@ -190,6 +190,10 @@ export interface LanToggleModel {
   disabled: boolean
   /** Why it is disabled: the server's own words when it gave any. */
   reason: string | null
+  /** The server is listening on the network right now. */
+  live: boolean
+  /** The saved setting is not in effect yet; restarting the server applies it. */
+  restartRequired: boolean
 }
 
 const BLOCK_FALLBACK: Record<string, string> = {
@@ -208,8 +212,11 @@ export function blockedReason(s: Pick<ReachabilityStatus, 'public_exposure_block
 
 export function lanToggle(s: ReachabilityStatus): LanToggleModel {
   const reason = blockedReason(s)
-  if (s.lan.enabled) return { checked: true, disabled: false, reason: null }
-  return { checked: false, disabled: reason !== null, reason }
+  // The switch reflects the saved preference; the server can only rebind on restart.
+  const wanted = s.lan.requested ?? s.lan.enabled
+  const restartRequired = s.lan.restart_required ?? wanted !== s.lan.enabled
+  if (wanted) return { checked: true, disabled: false, reason: null, live: s.lan.enabled, restartRequired }
+  return { checked: false, disabled: reason !== null && !s.lan.enabled, reason, live: s.lan.enabled, restartRequired }
 }
 
 /* ------------------------------------ the tunnel ------------------------------------ */

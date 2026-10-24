@@ -60,6 +60,8 @@ class InvitationCreated(Invitation):
     delivery: InvitationDeliveryLiteral
     invite_url: str | None = None
     token: str | None = None
+    # Added (M8): why the link is shown although an e-mail identity exists.
+    delivery_note: str | None = None
 
 
 class InvitationAccept(RequestModel):

@@ -67,6 +67,7 @@ TRIGGER_LABELS = {
     "project_done": "project work finished",
     "manual": "manual wake",
     "schedule": "schedule",
+    "email": "new e-mail",
 }
 
 

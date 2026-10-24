@@ -94,6 +94,8 @@ def facts_from_payload(payload: dict[str, Any] | None) -> Facts:
     payload = payload or {}
     params = payload.get("params") if isinstance(payload.get("params"), dict) else payload
     amount = params.get("amount_micros")
+    if amount is None:  # M8: a purchase is bound to its price ceiling
+        amount = params.get("max_price_micros")
     amount = amount if isinstance(amount, int) and not isinstance(amount, bool) else None
     target = None
     for key in ("url", "to", "domain", "host", "repo_url"):
@@ -202,16 +204,34 @@ def resolve(
     for rule in sorted((r for r in rules if _applies(r, agent, spec)), key=_order, reverse=True):
         if _conditions_hold(db, rule, agent, spec, facts, now):
             target = rule.action or f"tier {rule.tier}"
-            return Resolution(
-                rule.decision,
-                rule,
-                "rule",
-                f"rule {rule.id} ({target}, {rule.scope_type}"
-                + (f" {rule.scope_value}" if rule.scope_value else "")
-                + f") says {rule.decision}",
+            return _floor(
+                spec,
+                Resolution(
+                    rule.decision,
+                    rule,
+                    "rule",
+                    f"rule {rule.id} ({target}, {rule.scope_type}"
+                    + (f" {rule.scope_value}" if rule.scope_value else "")
+                    + f") says {rule.decision}",
+                ),
             )
     decision = default_decision(spec, limits, facts)
-    return Resolution(decision, None, "default", f"default for tier {spec.tier} is {decision}")
+    return _floor(
+        spec, Resolution(decision, None, "default", f"default for tier {spec.tier} is {decision}")
+    )
+
+
+def _floor(spec: ActionSpec, res: Resolution) -> Resolution:
+    """M8: actions that spend money or take a domain need a human, whatever the rules say (a
+    ``deny`` rule is still honoured)."""
+    if spec.human_required and res.decision in (D.ALLOW, D.PEER_REVIEW, D.COFOUNDER_APPROVAL):
+        return Resolution(
+            D.HUMAN_APPROVAL,
+            res.rule,
+            res.source,
+            f"{res.reason}; {spec.name} always needs a human decision (no rule can lower it)",
+        )
+    return res
 
 
 # ---------------------------------------------------------------- CRUD (humans only)

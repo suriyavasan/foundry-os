@@ -381,6 +381,11 @@ def decide(
         from app.services import tasks  # local: tasks depends on this module
 
         tasks.apply_plan_decision(db, ctx, approval, decision)
+    if approval.subject_type == "domain_registration":
+        from app.services import domains  # local: domains depends on this module
+
+        db.flush()  # autoflush is off: the decision must be in the database before it is consumed
+        domains.apply_decision(db, ctx, approval, decision)
     if approval.subject_type == "guardrail":
         from app.guardrails import peer  # local: the guardrail engine depends on this module
 

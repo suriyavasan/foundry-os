@@ -45,7 +45,7 @@
     "company_request_approval": {"action": "approval.request"},
     "company_decide_approval": {"action": "approval.decide"},
     "company_decide_peer_review": {"action": "peer_review.decide"},
-    "company_provider_action": {"action": "provider.action"},
+    "company_provider_action": {"action": "provider.action", "untrusted": "provider"},
     "company_find_colleagues": {"action": "colleagues.search"},
     "company_request_hire": {"action": "hire.request"},
     "company_search_skills": {"action": "skills.catalog"},

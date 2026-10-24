@@ -37,3 +37,14 @@ class NotificationsRead(RequestModel):
 class NotificationsReadResult(ApiModel):
     marked: int
     unread_count: int
+
+
+class NotificationPreferences(ApiModel):
+    """Added (M8): which kinds are also sent by e-mail (opt-in; needs a company e-mail identity)."""
+
+    email_kinds: list[str]
+    email_available: bool
+
+
+class NotificationPreferencesUpdate(RequestModel):
+    email_kinds: list[str] = Field(max_length=10)

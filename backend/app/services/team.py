@@ -348,6 +348,7 @@ def create_invitation(
     settings: Settings,
     *,
     now: datetime | None = None,
+    ic=None,
 ) -> schemas.InvitationCreated:
     require_human_admin(ctx, "invite people")
     now = now or utcnow()
@@ -409,13 +410,54 @@ def create_invitation(
     events.emit(db, ctx.company_id, "invitation.created", {"invitation_id": inv.id})
     db.commit()
     base = to_invitation(inv, now)
-    # Delivery: no email provider exists until M8, so the link is shown once and nothing is sent.
+    delivery, invite_url, token, note = "link", f"/invite/{raw}", raw, None
+    if ic is not None:  # M8: the company's own e-mail identity, when it works
+        delivery, invite_url, token, note = _deliver_invitation(db, ctx, ic, inv, raw, email, now)
     return schemas.InvitationCreated(
         **base.model_dump(),
-        delivery="link",
-        invite_url=f"/invite/{raw}",
-        token=raw,
+        delivery=delivery,  # type: ignore[arg-type]
+        invite_url=invite_url,
+        token=token,
+        delivery_note=note,
     )
+
+
+def _deliver_invitation(db, ctx, ic, inv, raw, email, now):
+    """E-mail the link from the company mailbox. On success the token exists only in that message
+    (the response carries no link); without a working identity the link is shown once, as in M7."""
+    from app.models.company import Company
+    from app.services import email_identity, mail_dispatch
+
+    link = f"/invite/{raw}", raw
+    if not email_identity.email_connected(db, ctx.company_id):
+        return "link", link[0], link[1], None
+    company = db.get(Company, ctx.company_id)
+    name = company.name if company else "the company"
+    url = f"{mail_dispatch.base_url(ic)}/invite/{raw}"
+    body = (
+        f"{ctx.principal.label} invited you to join {name} on Company OS as {inv.role}.\n\n"
+        f"Accept the invitation: {url}\n\n"
+        f"The link works once and expires on {inv.expires_at:%Y-%m-%d}. If you did not expect "
+        "this, ignore this message."
+    )
+    sent = email_identity.send_system_email(
+        db, ic, ctx.company_id, email, f"You are invited to {name}", body
+    )
+    if not sent:
+        db.rollback()
+        return "link", link[0], link[1], "The e-mail could not be sent; share the link yourself."
+    audit.record(
+        db,
+        company_id=ctx.company_id,
+        principal=ctx.principal,
+        action="invitation.emailed",
+        target_type="invitation",
+        target_id=inv.id,
+        summary=f"Emailed the invitation to {_mask(email)}",
+        data={"delivery": "email"},
+    )
+    db.commit()
+    return "email", None, None, None
 
 
 def list_invitations(

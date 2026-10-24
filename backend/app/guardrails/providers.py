@@ -48,6 +48,7 @@ class ProviderCall:
     company_id: str
     agent_id: str
     run_id: str
+    credential_id: str = ""
 
 
 class ProviderExecutor(Protocol):
@@ -128,6 +129,11 @@ def precheck(
             milestone="M8",
             details={"action": action, "provider": credential.provider},
         )
+    # M8 executors check the parameters here too: nobody should review or approve a call that can
+    # never run (a malformed DNS change, a registry file that is not what the registry generates).
+    prevalidate = getattr(executor, "prevalidate", None)
+    if prevalidate is not None:
+        prevalidate(db, rc, credential, action, dict(body.get("params") or {}))
     return action
 
 
@@ -178,9 +184,14 @@ def execute(
         company_id=rc.ctx.company_id,
         agent_id=rc.agent.id,
         run_id=rc.run.id,
+        credential_id=credential.id,
     )
+    # M8 executors need the database (the connected account, mailboxes, domains): they implement
+    # ``execute_in_session`` and make their own calls with the stored secrets. Plain executors
+    # (tests, small providers) keep the one-secret ``execute`` contract.
+    in_session = getattr(executor, "execute_in_session", None)
     try:
-        raw = executor.execute(call)
+        raw = in_session(db, call) if in_session else executor.execute(call)
     finally:
         del call
     result = redact_payload(raw if isinstance(raw, dict) else {"value": raw}, [secret])

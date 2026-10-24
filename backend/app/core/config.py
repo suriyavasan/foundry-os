@@ -91,6 +91,31 @@ class Settings(BaseSettings):
     # proxy / tunnel in front). Requests that arrive as https always get Secure.
     cookie_secure: bool | None = None
 
+    # --- Milestone 8: reachability & identity ------------------------------------------------
+    # The port the server listens on (the launcher sets it; the tunnel forwards to it).
+    port: int = 8700
+    # Where verified helper binaries (cloudflared) are installed. Default <data_dir>/bin.
+    bin_dir: Path | None = None
+    # Explicit cloudflared / tailscale paths (override detection).
+    cloudflared_path: Path | None = None
+    tailscale_path: Path | None = None
+    cloudflared_release_api: str = (
+        "https://api.github.com/repos/cloudflare/cloudflared/releases/latest"
+    )
+    tunnel_health_interval_seconds: float = 30.0
+    tunnel_start_timeout_seconds: float = 45.0
+    # Restart backoff: 1s, 2s, 4s ... capped here; after this many failures in a row the tunnel
+    # stops trying and reports an error.
+    tunnel_max_backoff_seconds: float = 60.0
+    tunnel_max_consecutive_failures: int = 8
+    # The built web UI deployed to Vercel (the hosted control UI). Default <repo>/web/dist.
+    web_dist_dir: Path | None = None
+    hosted_ui_max_bytes: int = 40 * 1024 * 1024
+    # Largest webhook body accepted (inbound mail).
+    webhook_max_bytes: int = 1024 * 1024
+    # Resume a tunnel that was running when the server last stopped.
+    tunnel_autoresume: bool = True
+
     # Hermes runtime. These use the plain HERMES_* names (no COMPANY_OS_ prefix).
     hermes_api_url: str | None = Field(
         default=None, validation_alias=AliasChoices("HERMES_API_URL", "COMPANY_OS_HERMES_API_URL")
@@ -124,6 +149,24 @@ class Settings(BaseSettings):
     @property
     def skills_blobs_dir(self) -> Path:
         return self.resolved_data_dir / "skills" / "blobs"
+
+    @property
+    def resolved_bin_dir(self) -> Path:
+        if self.bin_dir is not None:
+            return self.bin_dir if self.bin_dir.is_absolute() else BACKEND_DIR / self.bin_dir
+        return self.resolved_data_dir / "bin"
+
+    @property
+    def resolved_web_dist(self) -> Path:
+        if self.web_dist_dir is None:
+            return REPO_DIR / "web" / "dist"
+        return (
+            self.web_dist_dir if self.web_dist_dir.is_absolute() else REPO_DIR / self.web_dist_dir
+        )
+
+    @property
+    def local_url(self) -> str:
+        return f"http://127.0.0.1:{self.port}"
 
     @property
     def resolved_runtime_dir(self) -> Path:

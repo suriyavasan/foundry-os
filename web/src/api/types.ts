@@ -1714,8 +1714,14 @@ export interface LanAddress {
 }
 
 export interface LanStatus {
-  /** The server is bound to all interfaces. */
+  /** The server is bound to all interfaces right now. */
   enabled: boolean
+  /** The owner's saved preference. Applied when the server (re)starts. */
+  requested?: boolean
+  /** The address the running server is bound to (e.g. 127.0.0.1 or 0.0.0.0). */
+  bind_host?: string
+  /** The saved preference differs from the current binding; a restart applies it. */
+  restart_required?: boolean
   /** `<host>.local` mDNS name, when announced. */
   mdns_name: string | null
   mdns_url: string | null

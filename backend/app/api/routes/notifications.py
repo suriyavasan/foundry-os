@@ -7,6 +7,7 @@ from fastapi import APIRouter, Query
 from app.api.deps import CurrentPrincipal, DbSession
 from app.core.errors import Forbidden
 from app.schemas import notifications as schemas
+from app.services import mail_dispatch
 from app.services import notifications as service
 from app.services.pagination import DEFAULT_LIMIT, MAX_LIMIT
 
@@ -39,3 +40,25 @@ def mark_read(body: schemas.NotificationsRead, principal: CurrentPrincipal, db: 
     _human(principal)
     marked = service.mark_read(db, principal.id, ids=body.ids, all_=bool(body.all))
     return {"marked": marked, "unread_count": service.unread_count(db, principal.id)}
+
+
+def _prefs(db, principal) -> dict:
+    return {
+        "email_kinds": mail_dispatch.get_preferences(db, principal.id),
+        "email_available": mail_dispatch.any_email_identity(db, principal.id),
+    }
+
+
+@router.get("/preferences", response_model=schemas.NotificationPreferences)
+def get_preferences(principal: CurrentPrincipal, db: DbSession):
+    _human(principal)
+    return _prefs(db, principal)
+
+
+@router.put("/preferences", response_model=schemas.NotificationPreferences)
+def set_preferences(
+    body: schemas.NotificationPreferencesUpdate, principal: CurrentPrincipal, db: DbSession
+):
+    _human(principal)
+    mail_dispatch.set_preferences(db, principal.id, body.email_kinds)
+    return _prefs(db, principal)
