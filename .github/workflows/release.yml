@@ -8,7 +8,7 @@ name: Release
 # follow, each only after the release is public. Nothing is ever overwritten (no --clobber).
 #
 # Skipped, with the run staying green and the reason printed: a commit already contained in the latest tag,
-# a commit message with "[skip release]", and pushes that only touch docs/, site/ or *.md (SKIP_DOCS_ONLY=0
+# a commit subject with "[skip release]", and pushes that only touch docs/, site/ or *.md (SKIP_DOCS_ONLY=0
 # in scripts/next_version.sh turns that last rule off). Raise the minor/major with scripts/release.sh.
 #
 # By hand (workflow_dispatch): builds and tests everything; publishes only with publish=true, from main.

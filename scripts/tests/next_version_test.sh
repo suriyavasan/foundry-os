@@ -114,6 +114,12 @@ r=$(new_repo marker 0.1.0)
 git -C "$r" tag v0.1.0
 commit_file "$r" src/app.py two "tweak [skip release]"
 check "[skip release] -> skip" "$r" 0.1.1 false "[skip release]"
+r=$(new_repo marker-body 0.1.0)
+git -C "$r" tag v0.1.0
+commit_file "$r" src/app.py two "feature
+
+Explains the [skip release] marker in the body"
+check "[skip release] only in the body -> publish" "$r" 0.1.1 true
 
 # 7. a VERSION with a suffix is rejected, and so is garbage
 r=$(new_repo suffix 0.2.0-rc.1)

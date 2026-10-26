@@ -135,7 +135,7 @@ adapted), non-root, `/data` volume, `HEALTHCHECK`, published to
   `GITHUB_TOKEN`, so it starts no further workflow). `scripts/release.sh 0.2.0` raises the floor
   (edits `VERSION` + `CHANGELOG.md`, commits/tags/pushes nothing); the next push publishes it.
 - **Skipped with a green run and the reason printed:** the commit is already contained in the
-  latest tag; its message contains `[skip release]`; every file changed since the latest tag is
+  latest tag; its subject line contains `[skip release]`; every file changed since the latest tag is
   under `docs/` or `site/` or is `*.md` (`SKIP_DOCS_ONLY=0` turns that last rule off).
 - **Jobs:** `prepare` (version, skip rules, release notes, the bundle matrix from `PLATFORMS` in
   `packaging/versions.env`) -> `web` (build only) -> `bundle` per platform (build with `--version`,

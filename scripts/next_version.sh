@@ -18,7 +18,7 @@
 #
 # publish=false (exit status 0, the run stays green) when
 #   - the commit is already contained in the highest tag (a re-run, or an older commit that came second),
-#   - its message contains "[skip release]",
+#   - its subject line (first line of the message) contains "[skip release]",
 #   - every file changed since the highest tag is under docs/ or site/ or is a *.md file
 #     (switch off with SKIP_DOCS_ONLY=0).
 # Exit status 1 for a VERSION that is not X.Y.Z or a commit that cannot be resolved.
@@ -68,9 +68,9 @@ reason="new release v$version"
 if [ -n "$last" ] && git merge-base --is-ancestor "$sha" "v$last" 2>/dev/null; then
     publish=false
     reason="commit is already contained in v$last"
-elif git log -1 --format=%B "$sha" | grep -qF '[skip release]'; then
+elif git log -1 --format=%s "$sha" | grep -qF '[skip release]'; then
     publish=false
-    reason="commit message contains [skip release]"
+    reason="commit subject contains [skip release]"
 elif [ -n "$last" ] && [ "${SKIP_DOCS_ONLY:-1}" != 0 ]; then
     changed=$(git diff --name-only "v$last" "$sha")
     if [ -z "$changed" ]; then

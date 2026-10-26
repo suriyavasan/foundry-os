@@ -210,7 +210,7 @@ Releases are automatic: **every green push to `main` is published.** Do nothing 
 * **Release notes** are the `## [x.y.z]` section of `CHANGELOG.md` when there is one; otherwise one line per
   commit since the previous release, plus a compare link. Preview with `scripts/release.sh --notes 0.2.0`.
 * **Skipped (the run stays green and says why):** a commit already contained in the latest tag; a commit message
-  with `[skip release]`; a push that only changes `docs/`, `site/` or `*.md` files.
+  with `[skip release]` in its subject line; a push that only changes `docs/`, `site/` or `*.md` files.
 * **By hand.** Run the *Release* workflow from main (Actions tab). `sha` picks a commit, `publish` (default off)
   decides whether it publishes; without it everything is built and tested and nothing is published. A failed
   publish leaves at most a draft release, which the next run deletes and recreates.
