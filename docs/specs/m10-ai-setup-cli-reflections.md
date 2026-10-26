@@ -3,7 +3,7 @@
 Owner direction (2026-10-24):
 - Onboarding must make the user connect a **working AI API** (OpenRouter, Anthropic, OpenAI,
   or any OpenAI-compatible API). No working API → the platform cannot be used.
-- Optionally connect/install **coding CLIs** (Claude Code, Codex CLI, OpenCode, …) so
+- Optionally connect/install **coding CLIs** (Claude Code, Codex CLI, OpenCode, Antigravity CLI, …) so
   employees can do their work through them.
 - Two ways to run: **API only**, or **API for managing the company + CLIs for the work**.
   Company activity (AI Co-founder, HR, leads, reviews, planning) always uses the API; the
@@ -46,7 +46,7 @@ Owner direction (2026-10-24):
   { "ready": false, "blocking_reason": "no_tested_provider" | "provider_test_failed" | "no_default_model" | null,
     "management": { "provider_id": "…|null", "provider_name": "…", "kind": "openrouter", "model": "…", "last_test": ProviderTest|null },
     "work_mode": "api" | "hybrid",
-    "work_runtime": "company_agent" | "cli:claude_code" | "cli:codex" | "cli:opencode" | null,
+    "work_runtime": "company_agent" | "cli:claude_code" | "cli:codex" | "cli:opencode" | "cli:antigravity" | null,
     "clis": [CliRuntimeStatus] }
   ```
 - `PUT /api/companies/{cid}/ai-setup` `{management_provider_id, management_model, work_mode,
@@ -73,7 +73,7 @@ Owner direction (2026-10-24):
 The dispatcher picks the runtime per run and records `routing_reason`.
 
 ## 3. CLI runtimes (`backend/app/runtimes/cli/`)
-One `RuntimeAdapter` per CLI (`cli:claude_code`, `cli:codex`, `cli:opencode`), sharing a
+One `RuntimeAdapter` per CLI (`cli:claude_code`, `cli:codex`, `cli:opencode`, `cli:antigravity`), sharing a
 base (process spawning, minimal env, JSON-lines parsing, cancel SIGTERM→SIGKILL, timeouts,
 workspace, artifact collection).
 
@@ -99,7 +99,11 @@ Endpoints (installation owner only; agents 403):
 **Isolation & safety:**
 - `api_key` mode: isolated `HOME` per agent (`data/agents/<id>/cli-home`), key injected
   only into that process's env (`ANTHROPIC_API_KEY`, `CODEX_API_KEY`, provider env for
-  OpenCode). Strongest isolation — recommended.
+  OpenCode, `GEMINI_API_KEY` for Antigravity CLI). Strongest isolation — recommended.
+  Antigravity CLI (`agy`) supports only this mode: its settings and MCP servers live under
+  `$HOME/.gemini/`, which we never write in a person's real home. Not an npm package, so no
+  automatic install (`install.manual` carries Google's `curl | bash` command). Details and
+  verified/unverified flags: `docs/cli-runtimes.md`.
 - `own_login` mode: the CLI needs the real `HOME` to find its login → weaker isolation; UI
   shows a warning (and a note to check the tool's terms for automated use). Company OS never
   reads, copies or logs CLI credential files.
@@ -188,19 +192,26 @@ license clearly permits it — record the decision in the web README.
 1. **Welcome** — spotlight + text reveal ("A company that runs itself."), Start.
 2. **Your account** — username + password (+ setup token when required).
 3. **Your company** — name, then one-line idea (vanish-input), timezone.
-4. **Connect your AI** (mandatory) — provider cards: OpenRouter · Anthropic · OpenAI ·
-   OpenAI-compatible (base URL; local Ollama detected and offered here). Key input
-   write-only. "Test" runs the multi-step loader (Reachable → Authenticated → Tool calling →
-   Context window → Ready) with real results; model picker from `/models`. Continue is
-   disabled until ready.
-5. **How should work get done?** — two cards: "API only" / "API + coding CLIs". For CLIs:
-   Claude Code, Codex, OpenCode tiles with live status (installed/version, auth mode, sandbox
-   availability, test); Install (confirm dialog showing the exact command), auth mode choice
-   (API key recommended vs own login + warning), Test. Skippable (defaults to API only).
-6. **Meet your team** — AI Co-founder and HR appear (beams), summary of choices, Launch
+4. **Connect your AI** (mandatory, one screen, one save) — two labelled sections:
+   - **Model API** (required; runs the company: AI Co-founder, HR, leads, reviews) — provider
+     cards: OpenRouter · Anthropic · OpenAI · OpenAI-compatible (base URL; local Ollama
+     detected and offered here). Key input write-only. "Test" runs the multi-step loader
+     (Reachable → Authenticated → Tool calling → Context window → Ready) with real results;
+     model picker from `/models`. Testing stores nothing but the provider and its test.
+   - **Coding CLIs** (optional; hands-on work) — always visible, so people see what is on the
+     computer: Claude Code, Codex, OpenCode tiles with live status (installed/version, auth
+     mode, sandbox availability, test); Install (confirm dialog showing the exact command),
+     auth mode choice (API key recommended vs own login + warning), Test. One radio group
+     "Who does the hands-on work": "Model API only" (default) or a CLI that tested OK.
+   One button saves both (a single `PUT /ai-setup`); it is disabled until the model API
+   passed its test and the CLI choice is valid.
+5. **Meet your team** — AI Co-founder and HR appear (beams), summary of choices, Launch
    (moving-border) → canvas with the Command Center focused.
-Existing users whose company is not AI-ready see steps 4–5 as a full-screen gate after
-login. Settings → **AI** panel reopens steps 4–5 any time.
+Existing users whose company is not AI-ready see step 4 as a full-screen gate after
+login. Settings → **AI** panel shows the same form (one Save) any time.
+
+(Revised 2026-10-24: steps 4 and 5 were merged after user feedback — two separate saves hid
+the coding CLIs behind a mode card, so people could not tell whether a CLI was installed.)
 
 ## 7. Canvas layout
 Row 1 (tall): **Organization** (span 6) · **Reflections** (span 3) · **Command Center**

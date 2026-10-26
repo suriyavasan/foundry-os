@@ -53,6 +53,7 @@ from app.core.errors import register_exception_handlers
 from app.core.keys import SecretKeyProvider
 from app.core.netinfo import is_loopback_bind, is_loopback_request
 from app.core.owner_token import OwnerTokenProvider, install_log_redaction
+from app.core.ratelimit_http import HttpRateLimiter, HttpRateLimitMiddleware
 from app.db.session import build_engine, build_session_factory
 from app.guardrails.providers import ProviderRegistry
 from app.integrations.base import IntegrationHttp
@@ -214,6 +215,10 @@ def create_app(
     app.state.email_dispatcher = EmailDispatcher(session_factory, lambda: app.state.integrations)
     app.state.integrations.emails = app.state.email_dispatcher
 
+    # Generic per-IP rate limit + SSE cap (docs/security.md). Added before CORS so it sits inside
+    # it: a 429 still carries the CORS headers a cross-origin UI needs to read it.
+    app.state.http_rate_limiter = HttpRateLimiter(settings)
+    app.add_middleware(HttpRateLimitMiddleware, limiter=app.state.http_rate_limiter)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,

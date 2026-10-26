@@ -18,38 +18,55 @@ const routes = (over: Record<string, unknown> = {}) => ({
 })
 
 describe('Settings → AI panel (?panel=ai)', () => {
-  it('shows the management model and how work gets done, to revisit any time', async () => {
+  it('shows the model API (required) and the coding CLIs (optional) in one form, to revisit any time', async () => {
     vi.stubGlobal('fetch', mockApi(routes()).impl)
     renderCanvas('/c/c1?panel=ai')
     const dialog = await screen.findByRole('dialog', { name: 'AI settings' })
     const connected = await within(dialog).findByRole('region', { name: 'Connected AI' })
     expect(within(connected).getByText('OpenRouter')).toBeInTheDocument()
     expect(within(connected).getByText('anthropic/claude-sonnet-4.5')).toBeInTheDocument()
-    expect(within(dialog).getByRole('radiogroup', { name: 'Work mode' })).toBeInTheDocument()
+    expect(within(within(dialog).getByRole('region', { name: 'Model API' })).getByText('Required')).toBeInTheDocument()
+    expect(within(within(dialog).getByRole('region', { name: 'Coding CLIs' })).getByText('Optional')).toBeInTheDocument()
+    expect(await within(dialog).findByRole('radiogroup', { name: 'Who does the hands-on work' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('radio', { name: /Model API only/ })).toBeChecked()
+    expect(within(dialog).getByRole('button', { name: 'All providers' })).toBeInTheDocument()
+    expect(within(dialog).getAllByRole('button', { name: 'Save' })).toHaveLength(1)
     expect(within(dialog).getByRole('button', { name: 'Save' })).toBeDisabled() // nothing changed yet
   })
 
-  it('changes to API + coding CLIs, picks the CLI that tested OK and saves', async () => {
+  it('picks the CLI that tested OK and saves once', async () => {
     const api = mockApi(routes({ 'PUT /companies/c1/ai-setup': readyAiSetup({ work_mode: 'hybrid', work_runtime: 'cli:claude_code' }) }))
     vi.stubGlobal('fetch', api.impl)
     renderCanvas('/c/c1?panel=ai')
     const dialog = await screen.findByRole('dialog', { name: 'AI settings' })
     const user = userEvent.setup()
-    await user.click(await within(dialog).findByRole('radio', { name: /^API \+ coding CLIs/ }))
     const save = within(dialog).getByRole('button', { name: 'Save' })
-    await waitFor(() => expect(within(dialog).getByRole('radio', { name: /Use Claude Code for the work/ })).toBeChecked()) // the only CLI that tested OK
+    await user.click(await within(dialog).findByRole('radio', { name: /Use Claude Code for hands-on work/ }))
     await waitFor(() => expect(save).toBeEnabled())
     await user.click(save)
-    await waitFor(() => expect(api.calls.find((c) => c.method === 'PUT')?.body).toEqual({ management_provider_id: 'p1', management_model: 'anthropic/claude-sonnet-4.5', work_mode: 'hybrid', work_runtime: 'cli:claude_code' }))
+    await waitFor(() => expect(api.calls.filter((c) => c.method === 'PUT')).toHaveLength(1))
+    expect(api.calls.find((c) => c.method === 'PUT')?.body).toEqual({ management_provider_id: 'p1', management_model: 'anthropic/claude-sonnet-4.5', work_mode: 'hybrid', work_runtime: 'cli:claude_code' })
+    expect(await screen.findByText('Saved your AI setup')).toBeInTheDocument()
   })
 
-  it('will not save hybrid without a CLI that tested OK', async () => {
+  it('will not save a CLI that has not tested OK: its radio is disabled and nothing changes', async () => {
     vi.stubGlobal('fetch', mockApi(routes({ '/cli-runtimes': { items: [makeCli()] } })).impl)
     renderCanvas('/c/c1?panel=ai')
     const dialog = await screen.findByRole('dialog', { name: 'AI settings' })
-    await userEvent.click(await within(dialog).findByRole('radio', { name: /^API \+ coding CLIs/ }))
-    expect(await within(dialog).findByText(/Install a coding CLI and run its test first|Choose which CLI/)).toBeInTheDocument()
+    expect(await within(dialog).findByRole('radio', { name: /Use Claude Code for hands-on work/ })).toBeDisabled()
+    expect(within(dialog).getByText(/test it first/)).toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: 'Save' })).toBeDisabled()
+  })
+
+  it('shows a saved CLI as chosen and can go back to Model API only', async () => {
+    const api = mockApi(routes({ '/companies/c1/ai-setup': readyAiSetup({ work_mode: 'hybrid', work_runtime: 'cli:claude_code' }), 'PUT /companies/c1/ai-setup': readyAiSetup() }))
+    vi.stubGlobal('fetch', api.impl)
+    renderCanvas('/c/c1?panel=ai')
+    const dialog = await screen.findByRole('dialog', { name: 'AI settings' })
+    expect(await within(dialog).findByRole('radio', { name: /Use Claude Code for hands-on work/ })).toBeChecked()
+    await userEvent.click(within(dialog).getByRole('radio', { name: /Model API only/ }))
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(api.calls.find((c) => c.method === 'PUT')?.body).toMatchObject({ work_mode: 'api', work_runtime: 'company_agent' }))
   })
 
   it('can switch the management model: the picker opens from "Change provider or model"', async () => {
@@ -66,6 +83,7 @@ describe('Settings → AI panel (?panel=ai)', () => {
     const dialog = await screen.findByRole('dialog', { name: 'AI settings' })
     await within(dialog).findByRole('region', { name: 'Connected AI' })
     expect(within(dialog).queryByRole('button', { name: 'Test again' })).not.toBeInTheDocument()
+    await within(dialog).findByRole('radiogroup', { name: 'Who does the hands-on work' })
     expect(within(dialog).queryByRole('button', { name: 'Save' })).not.toBeInTheDocument()
     expect(within(dialog).getByText(/Only an owner or admin can change how work gets done/)).toBeInTheDocument()
   })

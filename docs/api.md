@@ -1529,7 +1529,7 @@ Migration `0009_ai_setup_cli_reflections` (existing companies get the `daily-ref
 default (`policy.default_model_provider_id` + `default_model_name`) and its latest test **for that model** has `ok: true`. Providers tested before M10 carry no
 `checks`, so an existing company is not ready until its provider is tested again.
 
-`PUT` (owner/admin) `AiSetupUpdate {management_provider_id, management_model, work_mode: "api"|"hybrid", work_runtime: "cli:claude_code"|"cli:codex"|"cli:opencode"|null}`
+`PUT` (owner/admin) `AiSetupUpdate {management_provider_id, management_model, work_mode: "api"|"hybrid", work_runtime: "cli:claude_code"|"cli:codex"|"cli:opencode"|"cli:antigravity"|null}`
 → `AiSetupStatus`. Makes the provider the company default (equipping the Co-founder and HR), stores the work mode. `hybrid` needs a `cli:*` runtime that is installed and has
 a sign-in mode; `api` clears the runtime. 409 `ai_not_ready` otherwise, 404 for a provider of another company, 403 for viewers/members.
 
@@ -1560,14 +1560,14 @@ has one, else `context_length` of the provider). OpenRouter's public model list 
 
 | Method & path | Purpose |
 |---|---|
-| `GET /cli-runtimes` → `{items: [CliRuntimeStatus], next_cursor: null}`; `GET /cli-runtimes/{id}` | `id` ∈ `claude_code`, `codex`, `opencode` |
-| `POST /cli-runtimes/{id}/install` `{confirm: true}` → `202 CliInstallLog` | runs exactly `install.command` (`npm install -g <package>`) as a supervised child: no shell, no sudo, 15 min limit. `confirm` missing/false → 422 and nothing starts; no npm → 409; already installed → 409 |
+| `GET /cli-runtimes` → `{items: [CliRuntimeStatus], next_cursor: null}`; `GET /cli-runtimes/{id}` | `id` ∈ `claude_code`, `codex`, `opencode`, `antigravity` (Antigravity CLI, binary `agy`) |
+| `POST /cli-runtimes/{id}/install` `{confirm: true}` → `202 CliInstallLog` | runs exactly `install.command` (`npm install -g <package>`) as a supervised child: no shell, no sudo, 15 min limit. `confirm` missing/false → 422 and nothing starts; no npm → 409; already installed → 409; `antigravity` (no npm package; Google ships a `curl \| bash` installer, never run from here) → 409 with the manual command |
 | `GET /cli-runtimes/{id}/install-log` → `CliInstallLog` | `{id, status: none|running|succeeded|failed, command, started_at, finished_at, exit_code, lines[≤400]}`, output scrubbed of secret-looking spans |
-| `PUT /cli-runtimes/{id}/auth` `{mode: "own_login"|"api_key", credential_id?, model_provider_id?, model?}` → `CliRuntimeStatus` | `api_key` needs `credential_id` (a credential of a company you administer; never returned). `model_provider_id` (OpenCode only) points the CLI at a company model provider (endpoint and key). OpenCode needs `model_provider_id` or a `provider/model` name in `model`. Clears `last_test` |
+| `PUT /cli-runtimes/{id}/auth` `{mode: "own_login"|"api_key", credential_id?, model_provider_id?, model?}` → `CliRuntimeStatus` | `mode` must be in the CLI's `auth_modes` (Antigravity CLI: `api_key` only, a Gemini API key; `own_login` → 422). `api_key` needs `credential_id` (a credential of a company you administer; never returned). `model_provider_id` (OpenCode only) points the CLI at a company model provider (endpoint and key). OpenCode needs `model_provider_id` or a `provider/model` name in `model`. Clears `last_test` |
 | `POST /cli-runtimes/{id}/test` → `CliRuntimeStatus` | one tiny headless prompt ("Reply with the single word OK.") in a temp dir, 60 s limit, `$0.05` cap where the CLI supports one, no tools / no company tools; stores `auth.last_test` |
 
 `CliRuntimeStatus`: `{id, display_name, installed, binary_path, version, auth_modes: ["own_login","api_key"], auth: {mode, configured, credential_id, last_test: {ok, detail, tested_at}|null, model_provider_id, model},
-sandbox: {available, kind: "os"|"docker"|"none", detail}, install: {available, command, requires: ["npm"], status}, login_hint, warnings[]}`. `install.available` = npm is present and the CLI is not installed.
+sandbox: {available, kind: "os"|"docker"|"none", detail}, install: {available, command|null, requires: ["npm"]|[], status, manual|null}, login_hint, warnings[]}`. `install.available` = the CLI has an npm package, npm is present and the CLI is not installed; `install.manual` is a command the person runs themselves (Antigravity CLI), never run by the server.
 Interactive logins (`claude` /login, `codex login`, `opencode auth login`) are the person's step in a terminal and are never automated.
 
 ### Work modes and routing
@@ -1647,3 +1647,65 @@ Verified: see the M10 report and `docs/cli-runtimes.md` ("What was and was not v
 recorded-format streams, the MCP server (stdio, against a stub API and against OpenCode live), reflections/standards rules, the Command Center, the migration; **live**: OpenCode + a temporary local Ollama
 (qwen2.5:7b) executing a hybrid-mode work task through the company MCP tools. **Not verified**: Claude Code and Codex runs (Claude Code was never started beyond `--version`; Codex is not installed), the
 real `npm install` path, `own_login` runs, Docker/Postgres.
+
+## Passkeys (WebAuthn sign-in, `/api/auth`)
+
+A passkey is a second way to sign in (and a phishing-resistant one). Humans only: an agent's run token gets `403 guardrail_denied`
+(action `passkey.manage`, with a guardrail event) on every route below, including the two public login routes; an API token gets
+`403 token_cannot_manage_account`; the owner-token bootstrap credential gets `403` with `details.reason = "passkeys_need_session"`.
+The management routes need a real browser session, and the cookie-authenticated `POST`/`PATCH`/`DELETE` ones need the CSRF header.
+Server library: `webauthn` (py_webauthn 3.x, BSD-3). Attestation is `none`; nothing about the authenticator model is trusted.
+
+| Method & path | Body → response | Notes |
+|---|---|---|
+| `GET /passkeys` | → `{items: PasskeyInfo[], next_cursor: null}` | oldest first |
+| `POST /passkeys/register/options` | `{name?}` → `PasskeyRegistrationOptions {attempt_id, public_key}` | `public_key` = `PublicKeyCredentialCreationOptions` JSON as produced by `webauthn.options_to_json` (base64url `challenge`, `user.id`, `excludeCredentials[].id`); `residentKey` and `userVerification` are `"preferred"`; `excludeCredentials` = this person's passkeys; `attestation: "none"`. At most 20 passkeys per person (`409`). A new request supersedes the person's unfinished one |
+| `POST /passkeys/register/verify` | `{attempt_id, name?, credential}` → `201 PasskeyInfo` | `credential` = the browser's `RegistrationResponseJSON`. Audit `auth.passkey_added`. `422` with `details.reason`: `challenge_unknown` / `challenge_used` / `challenge_expired` / `origin_mismatch` / `verification_failed`; `409` if the credential is already registered |
+| `PATCH /passkeys/{id}` | `{name}` → `PasskeyInfo` | own passkeys only (`404` otherwise). Audit `auth.passkey_renamed` |
+| `DELETE /passkeys/{id}` | optional `{password}` → `204` | needs a session **younger than 10 minutes** or the account password in the body (else `403`, `details.reason = "reauthentication_required"`; a wrong password is `401 invalid_credentials`, throttled like the password change). The last sign-in method of an account **without a password** cannot be removed: `409`, `details.reason = "last_sign_in_method"`. Audit `auth.passkey_removed` |
+| `POST /passkey/login/options` (public) | `{username?}` → `PasskeyLoginOptions {attempt_id, public_key}` | `public_key` = `PublicKeyCredentialRequestOptions` JSON; `userVerification: "preferred"`. Without a username `allowCredentials` is `[]` (discoverable credentials / conditional UI) |
+| `POST /passkey/login/verify` (public) | `{attempt_id, credential}` → `AuthSession` + `cos_session` / `cos_csrf` cookies | `credential` = `AuthenticationResponseJSON`. Same response and cookies as the password login. A passkey satisfies 2FA: no TOTP prompt. Every failure is the same `401 invalid_credentials` ("Passkey sign-in failed") |
+
+`PasskeyInfo = {id, name, created_at, last_used_at, transports: string[], backed_up: bool}`. Never returned: credential id, public key, counter.
+
+`AuthSession` (from `GET /session`, `/setup`, `/login`, `/passkey/login/verify`) gained `passkeys_count: int` (the signed-in person's passkeys, else 0)
+and `passkey_supported_origin: bool` (can *this request's* origin use WebAuthn at all; show the passkey UI only when true).
+
+**Challenges.** Created by the server, stored in `passkey_challenges`, valid 5 minutes, single use, and burnt *before* verification (a failed
+attempt cannot be retried: ask for new options). A registration challenge is bound to the person who asked; a login challenge to the anonymous
+`attempt_id`. The client's own challenge is never trusted. Expired rows are swept; at most 1000 unfinished login challenges exist at a time
+(`429`, `retry_after_seconds`).
+
+**RP id and origins** are derived from the request's `Host` header, never from the client:
+
+| Host | RP id | Accepted `clientDataJSON.origin` |
+|---|---|---|
+| `localhost`, `127.0.0.1` (any port) | `localhost` | `http(s)://<that host:port>`, `http://localhost:<port>` and `http://127.0.0.1:<port>`, and the loopback entries of `COMPANY_OS_CORS_ORIGINS` (the Vite dev server) |
+| the host of a **configured https origin**: the running tunnel URL (M8), a company custom domain (M8), an https `COMPANY_OS_PUBLIC_URL`, or an entry of `COMPANY_OS_PASSKEY_ORIGINS` (comma separated or a JSON list of origins) | that host name | exactly that origin |
+| anything else (LAN IP, `*.local`, an unknown name) | none | `passkey_supported_origin = false`; both options routes answer `400 passkey_origin_unsupported` |
+
+Verification rejects a response whose origin is not in the accepted set, whose RP-id hash differs, or whose RP id differs from the one the
+challenge was issued for. A passkey is bound to its RP id: one registered on `localhost` does not work on the tunnel domain and vice versa,
+and a quick tunnel (`*.trycloudflare.com`) gets a new host name on every start, so use a named tunnel or a custom domain for passkeys there.
+
+**LAN limits.** Browsers expose WebAuthn only in a secure context (HTTPS, or `localhost`). Opening Foundry AI OS at `http://192.168.x.x:8700` or
+`http://my-mac.local:8700` therefore cannot create or use a passkey (the browser refuses before the server is asked), and the server answers
+`passkey_supported_origin: false`. From another device on the LAN use the password (plus TOTP), or reach the install through its HTTPS address.
+The hosted control UI on another origin (Vercel) is not covered: its origin differs from the API's Host, so passkeys there are not supported yet.
+
+**Rate limits and enumeration.** `passkey/login/verify` shares the password login's throttle table and parameters: failures count per IP (`ip:<address>`,
+the same bucket as password logins) and per credential (`pk:<hash of the credential id>`), with the same exponential backoff and `429 rate_limited` (while
+locked, even a genuine assertion is refused). `passkey/login/options` answers the same shape for every username: a person with passkeys gets their real
+`allowCredentials`; an unknown username, or a person without a passkey, gets one or two **stable decoy ids** derived from the server key and the name (no
+`transports`), so the response does not say whether the account exists.
+
+**Clone detection.** The signature counter is checked only after the signature verified: if the stored counter is above 0 and the new one is not greater, the
+sign-in is refused (generic `401`), the stored counter is left alone, and `auth.passkey_clone_suspected` is audited. Authenticators that always report 0 keep working.
+
+**Exposure gate (M8).** At least one passkey counts as strong authentication, like 2FA: an owner whose password was not set under the policy may expose the
+device once a passkey exists (`GET /reachability`: `public_exposure_blocked_code` clears and `public_exposure_advice` is no longer `two_factor_recommended`).
+
+**Verified and not verified.** Verified: full registration and login ceremonies against a software authenticator built with `cryptography` (ES256, `attestation: none`,
+real signatures and counters; tests `test_passkeys.py`), the policy above, migration `0010` up/down. Not verified: a real browser/OS authenticator (Touch ID, Windows Hello, a
+FIDO2 key, a phone via hybrid), non-`none` attestation formats against real hardware, RS256/EdDSA authenticators, Postgres. User verification is requested (`preferred`) but not
+required, so a passkey on an authenticator without a PIN/biometric is possession-only while still counting as 2FA; requiring it is a one-line policy change if wanted.

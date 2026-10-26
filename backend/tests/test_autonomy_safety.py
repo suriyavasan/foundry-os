@@ -425,6 +425,13 @@ def test_idle_schedules_skip_and_busy_ones_fire(app, client, w, scheduler, worke
 def test_planning_schedules_respect_the_hourly_planning_limit(app, client, w, scheduler, clock):
     cid = w.cid
     set_policy(client, cid, max_planning_runs_per_hour=1)
+    # Only the heartbeat may fire here: the wall-clock routines (standup 09:00, reflection 20:00, ...)
+    # would otherwise fire whenever the suite happens to run near their time.
+    with app.state.session_factory() as db:
+        for s in db.scalars(select(Schedule).where(Schedule.company_id == cid)):
+            if s.name != "heartbeat":
+                s.enabled = False
+        db.commit()
     client.post(api(cid, "/goals"), json={"title": "Work exists", "status": "active"})
     client.post(api(cid, "/cofounder/wake"))  # uses the one planning run of this hour
     clock.advance(1900)

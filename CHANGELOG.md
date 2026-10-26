@@ -7,6 +7,15 @@ GitHub Release notes.
 
 ## [Unreleased]
 
+### Added
+
+- Google Antigravity CLI (`agy`) as a fourth coding-CLI work runtime (`cli:antigravity`), next to Claude Code,
+  Codex and OpenCode. It runs only with a Gemini API key (Google AI Studio) in an isolated per-agent home, with
+  shell commands and URL fetches denied by generated permission rules and only the workspace files and the
+  company tools allowed. It is coded from `agy --help` and Google's documentation and tested with a fake binary;
+  it has not been run against a real prompt. Google's installer is a `curl | bash` script, so Foundry AI OS shows
+  the command for you to run yourself instead of installing it.
+
 ## [0.1.0] - 2026-10-24
 
 > Intel Macs: use the Docker image. Key dependencies no longer publish Intel macOS builds, so there is no

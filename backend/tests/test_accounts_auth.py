@@ -51,6 +51,8 @@ def test_fresh_install_reports_setup_required_and_who_needs_the_token(app):
         "setup_token_required": True,
         "two_factor_required": False,
         "expires_at": None,
+        "passkeys_count": 0,
+        "passkey_supported_origin": False,  # http://testserver is neither localhost nor https
     }
     here = browser(app, loopback=True).get("/api/auth/session").json()
     assert here["state"] == "setup_required" and here["setup_token_required"] is False

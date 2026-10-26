@@ -302,7 +302,7 @@ export function CliTile({
           {onSelectForWork && (
             <label className={'flex items-center gap-2 text-[13px] ' + (ready ? 'cursor-pointer text-fg' : 'text-fg-3')}>
               <input type="radio" name="work-runtime" className="accent-(--accent)" checked={!!selectedForWork} disabled={!ready} onChange={onSelectForWork} />
-              Use {cli.display_name} for the work
+              Use {cli.display_name} for hands-on work
               {!ready && <span className="text-[12px]"> (test it first)</span>}
             </label>
           )}

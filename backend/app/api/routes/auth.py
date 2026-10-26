@@ -23,14 +23,16 @@ from app.api.deps import (
     owner_cookie_valid,
     reject_agent_credentials,
 )
-from app.core.errors import CsrfFailed, Unauthenticated
+from app.core.errors import CsrfFailed, Forbidden, Unauthenticated
 from app.core.netinfo import client_ip, is_loopback_request
 from app.core.owner_token import COOKIE_MAX_AGE_SECONDS, OWNER_COOKIE, OwnerTokenProvider
 from app.core.time import utcnow
 from app.models.user import User
 from app.schemas import auth as schemas
 from app.schemas.common import Page
+from app.services import reachability
 from app.services.auth import CSRF_COOKIE, CSRF_HEADER, SESSION_COOKIE
+from app.services.passkeys import PasskeyService, RpContext
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -88,6 +90,47 @@ def _auth_user(user: User) -> schemas.AuthUser:
     )
 
 
+def get_passkeys(request: Request, auth: AuthSvc) -> PasskeyService:
+    return PasskeyService(auth, request.app.state.settings)
+
+
+PasskeySvc = Annotated[PasskeyService, Depends(get_passkeys)]
+
+
+def _rp_context(request: Request, db: DbSession, passkeys: PasskeyService) -> RpContext | None:
+    """Where WebAuthn may be used from: derived from this request's Host, never from the client."""
+    ic = getattr(request.app.state, "integrations", None)
+    tunnel = reachability.public_url(ic) if ic is not None else None
+    return passkeys.resolve_rp(db, request.headers.get("host", ""), tunnel)
+
+
+def _session_extras(
+    request: Request, db: DbSession, auth: AuthSvc, user: User | None
+) -> dict[str, object]:
+    passkeys = PasskeyService(auth, request.app.state.settings)
+    return {
+        "passkeys_count": passkeys.count_for(db, user.id) if user is not None else 0,
+        "passkey_supported_origin": _rp_context(request, db, passkeys) is not None,
+    }
+
+
+def passkey_user(action: str = "passkey.manage"):
+    """The caller's account for passkey routes: a human (agents: 403 + guardrail event) with a
+    browser session. API tokens, and the owner-token bootstrap credential, are refused: a passkey
+    is bound to a person at a keyboard."""
+    base = account_user(action)
+
+    def dependency(user: User = Depends(base), info: CurrentAuth = None) -> User:  # type: ignore[assignment]
+        if info is None or info.kind != "session":
+            raise Forbidden(
+                "Passkeys are managed from a signed-in browser session",
+                details={"reason": "passkeys_need_session"},
+            )
+        return user
+
+    return dependency
+
+
 # ------------------------------------------------------------------ owner-token bootstrap
 
 
@@ -137,15 +180,18 @@ def get_session(request: Request, response: Response, db: DbSession, auth: AuthS
             state="authenticated",
             user=_auth_user(user),
             expires_at=info.session.expires_at if info and info.session else None,
+            **_session_extras(request, db, auth, user),
         )
+    extras = _session_extras(request, db, auth, None)
     if auth.setup_pending(db):
         holds_owner_credential = info is not None and info.kind == "owner"
         return schemas.AuthSession(
             state="setup_required",
             user=None,
             setup_token_required=not (is_loopback_request(request) or holds_owner_credential),
+            **extras,
         )
-    return schemas.AuthSession(state="unauthenticated", user=None)
+    return schemas.AuthSession(state="unauthenticated", user=None, **extras)
 
 
 @router.post(
@@ -178,7 +224,10 @@ def setup(
     _set_session_cookies(response, request, auth, session, raw)
     response.delete_cookie(OWNER_COOKIE, path="/")  # the bootstrap cookie has done its job
     return schemas.AuthSession(
-        state="authenticated", user=_auth_user(user), expires_at=session.expires_at
+        state="authenticated",
+        user=_auth_user(user),
+        expires_at=session.expires_at,
+        **_session_extras(request, db, auth, user),
     )
 
 
@@ -200,13 +249,19 @@ def login(
     )
     if outcome.two_factor_required:
         response.headers["Cache-Control"] = "no-store"
-        return schemas.AuthSession(state="unauthenticated", user=None, two_factor_required=True)
+        return schemas.AuthSession(
+            state="unauthenticated",
+            user=None,
+            two_factor_required=True,
+            **_session_extras(request, db, auth, None),
+        )
     assert outcome.session is not None
     _set_session_cookies(response, request, auth, outcome.session, outcome.session_token)
     return schemas.AuthSession(
         state="authenticated",
         user=_auth_user(outcome.user),
         expires_at=outcome.session.expires_at,
+        **_session_extras(request, db, auth, outcome.user),
     )
 
 
@@ -382,3 +437,153 @@ def twofa_disable(
 ):
     auth.twofa_disable(db, user, code=body.code, password=body.password)
     return Response(status_code=204)
+
+
+# ------------------------------------------------------------------ passkeys (WebAuthn)
+
+
+def _passkey_info(p) -> schemas.PasskeyInfo:
+    return schemas.PasskeyInfo(
+        id=p.id,
+        name=p.name,
+        created_at=p.created_at,
+        last_used_at=p.last_used_at,
+        transports=list(p.transports or []),
+        backed_up=p.backed_up,
+    )
+
+
+@router.get("/passkeys", response_model=Page[schemas.PasskeyInfo])
+def list_passkeys(
+    user: Annotated[User, Depends(passkey_user())], db: DbSession, passkeys: PasskeySvc
+):
+    return {
+        "items": [_passkey_info(p) for p in passkeys.list_for(db, user.id)],
+        "next_cursor": None,
+    }
+
+
+@router.post("/passkeys/register/options", response_model=schemas.PasskeyRegistrationOptions)
+def passkey_register_options(
+    body: schemas.PasskeyRegistrationOptionsRequest,
+    request: Request,
+    response: Response,
+    user: Annotated[User, Depends(passkey_user())],
+    db: DbSession,
+    passkeys: PasskeySvc,
+):
+    """Start adding a passkey: the WebAuthn creation options and the ``attempt_id`` to send back.
+    Needs the CSRF header (it is a cookie-authenticated POST)."""
+    attempt_id, public_key = passkeys.registration_options(
+        db, user, _rp_context(request, db, passkeys), name=body.name
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return schemas.PasskeyRegistrationOptions(attempt_id=attempt_id, public_key=public_key)
+
+
+@router.post("/passkeys/register/verify", response_model=schemas.PasskeyInfo, status_code=201)
+def passkey_register_verify(
+    body: schemas.PasskeyRegistrationVerify,
+    request: Request,
+    response: Response,
+    user: Annotated[User, Depends(passkey_user())],
+    db: DbSession,
+    passkeys: PasskeySvc,
+):
+    passkey = passkeys.registration_verify(
+        db,
+        user,
+        _rp_context(request, db, passkeys),
+        attempt_id=body.attempt_id,
+        name=body.name,
+        credential=body.credential,
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return _passkey_info(passkey)
+
+
+@router.patch("/passkeys/{passkey_id}", response_model=schemas.PasskeyInfo)
+def rename_passkey(
+    passkey_id: str,
+    body: schemas.PasskeyRename,
+    user: Annotated[User, Depends(passkey_user())],
+    db: DbSession,
+    passkeys: PasskeySvc,
+):
+    return _passkey_info(passkeys.rename(db, user, passkey_id, body.name))
+
+
+@router.delete("/passkeys/{passkey_id}", status_code=204)
+def delete_passkey(
+    passkey_id: str,
+    user: Annotated[User, Depends(passkey_user())],
+    info: CurrentAuth,
+    db: DbSession,
+    passkeys: PasskeySvc,
+    body: schemas.PasskeyDelete | None = None,
+):
+    """Needs a session younger than 10 minutes, or ``{password}`` in the body
+    (``403 reauthentication_required`` otherwise). The last sign-in method of an account without a
+    password cannot be removed (``409``)."""
+    passkeys.remove(
+        db,
+        user,
+        passkey_id,
+        session=info.session,
+        password=body.password if body else None,
+    )
+    return Response(status_code=204)
+
+
+@router.post(
+    "/passkey/login/options",
+    response_model=schemas.PasskeyLoginOptions,
+    dependencies=[Depends(reject_agent_credentials("session.create"))],
+)
+def passkey_login_options(
+    body: schemas.PasskeyLoginOptionsRequest,
+    request: Request,
+    response: Response,
+    db: DbSession,
+    passkeys: PasskeySvc,
+):
+    """Public. Same response shape for every username (known or not, with or without passkeys);
+    without a username ``allowCredentials`` is empty (discoverable credentials / conditional UI)."""
+    attempt_id, public_key = passkeys.login_options(
+        db, _rp_context(request, db, passkeys), username=body.username
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return schemas.PasskeyLoginOptions(attempt_id=attempt_id, public_key=public_key)
+
+
+@router.post(
+    "/passkey/login/verify",
+    response_model=schemas.AuthSession,
+    dependencies=[Depends(reject_agent_credentials("session.create"))],
+)
+def passkey_login_verify(
+    body: schemas.PasskeyLoginVerify,
+    request: Request,
+    response: Response,
+    db: DbSession,
+    auth: AuthSvc,
+    passkeys: PasskeySvc,
+):
+    """Public. Same answer and cookies as the password login; a passkey is its own second factor,
+    so no TOTP code is asked for."""
+    outcome = passkeys.login_verify(
+        db,
+        _rp_context(request, db, passkeys),
+        attempt_id=body.attempt_id,
+        credential=body.credential,
+        ip=client_ip(request),
+        user_agent=request.headers.get("user-agent"),
+    )
+    assert outcome.session is not None
+    _set_session_cookies(response, request, auth, outcome.session, outcome.session_token)
+    return schemas.AuthSession(
+        state="authenticated",
+        user=_auth_user(outcome.user),
+        expires_at=outcome.session.expires_at,
+        **_session_extras(request, db, auth, outcome.user),
+    )

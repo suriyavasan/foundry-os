@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Annotated
 
@@ -24,6 +25,19 @@ def _settings_for(data_dir: Path | None):
         return Settings()
     root = data_dir.expanduser().resolve()
     return Settings(database_url=f"sqlite:///{root / 'company_os.db'}", data_dir=root)
+
+
+def _read_passphrase(from_stdin: bool, *, confirm: bool) -> str:
+    """The backup passphrase: one line from stdin (``--passphrase-stdin``, for scripts) or a hidden
+    prompt. Never an argument: argv is visible to other users and lands in shell history."""
+    if from_stdin:
+        line = sys.stdin.readline()
+        value = line.rstrip("\r\n")
+    else:
+        value = typer.prompt("Backup passphrase", hide_input=True, confirmation_prompt=confirm)
+    if not value:
+        raise CliError("The passphrase is empty.", exit_code=2, code="passphrase_required")
+    return value
 
 
 def register(app: typer.Typer) -> None:
@@ -125,14 +139,33 @@ def register(app: typer.Typer) -> None:
         data_dir: Annotated[
             Path | None, typer.Option(help="Use this data directory instead of the configured one")
         ] = None,
+        encrypt: Annotated[
+            bool,
+            typer.Option(
+                "--encrypt",
+                help="Encrypt the archive (AES-256-GCM, scrypt key) -> *.tar.gz.enc. "
+                "Asks for a passphrase; there is no way to recover a lost one.",
+            ),
+        ] = False,
+        passphrase_stdin: Annotated[
+            bool,
+            typer.Option(
+                "--passphrase-stdin",
+                help="With --encrypt: read the passphrase from the first line of stdin "
+                "(for scripts) instead of prompting.",
+            ),
+        ] = False,
         json_out: JsonOpt = False,
     ) -> None:
         """Snapshot the database (SQLite online backup, safe while running) and the data files."""
         from app.ops.backup import OpsError, create_backup
 
         st = state(ctx, json_out)
+        if passphrase_stdin and not encrypt:
+            raise CliError("--passphrase-stdin only makes sense with --encrypt.", exit_code=2)
+        passphrase = _read_passphrase(passphrase_stdin, confirm=True) if encrypt else None
         try:
-            result = create_backup(_settings_for(data_dir), out)
+            result = create_backup(_settings_for(data_dir), out, passphrase=passphrase)
         except OpsError as exc:
             raise CliError(exc.message, exit_code=exc.exit_code, code=exc.code) from exc
         if st.json:
@@ -142,16 +175,24 @@ def register(app: typer.Typer) -> None:
                     "files": result.files,
                     "bytes": result.bytes,
                     "alembic_revision": result.alembic_revision,
+                    "encrypted": result.encrypted,
                 }
             )
         else:
             render.say(
                 f"Backup written to {result.path} ({result.files} files, {result.bytes:,} bytes)."
             )
-            render.say(
-                "It contains your secret key and owner token: keep it private (the file is mode 0600).",
-                style="yellow",
-            )
+            if result.encrypted:
+                render.say(
+                    "Encrypted with your passphrase (AES-256-GCM). Without the passphrase it cannot "
+                    "be restored: store the passphrase somewhere safe, separate from the file."
+                )
+            else:
+                render.say(
+                    "It contains your secret key and owner token and is NOT encrypted: keep it "
+                    "private (the file is mode 0600) or make backups with --encrypt.",
+                    style="yellow",
+                )
 
     @command(backup_app, "restore")
     def backup_restore(
@@ -175,15 +216,28 @@ def register(app: typer.Typer) -> None:
         verify_only: Annotated[
             bool, typer.Option("--verify-only", help="Check the archive's checksums and stop.")
         ] = False,
+        passphrase_stdin: Annotated[
+            bool,
+            typer.Option(
+                "--passphrase-stdin",
+                help="Encrypted backups: read the passphrase from the first line of stdin "
+                "instead of prompting.",
+            ),
+        ] = False,
         json_out: JsonOpt = False,
     ) -> None:
-        """Restore into a STOPPED install. Verifies every checksum before touching anything."""
-        from app.ops.backup import OpsError, restore_backup, verify_archive
+        """Restore into a STOPPED install. Verifies every checksum before touching anything.
+
+        Encrypted backups (*.tar.gz.enc) are recognised automatically and ask for the passphrase."""
+        from app.ops.backup import OpsError, is_encrypted, restore_backup, verify_archive
 
         st = state(ctx, json_out)
+        passphrase = None
+        if archive.is_file() and is_encrypted(archive):
+            passphrase = _read_passphrase(passphrase_stdin, confirm=False)
         try:
             if verify_only:
-                manifest = verify_archive(archive)
+                manifest = verify_archive(archive, passphrase=passphrase)
                 result = {
                     "verified": True,
                     "files": len(manifest["files"]),
@@ -204,7 +258,13 @@ def register(app: typer.Typer) -> None:
                     return False  # never block a script on a prompt
                 return typer.confirm(question, default=False)
 
-            outcome = restore_backup(archive, _settings_for(data_dir), force=force, confirm=confirm)
+            outcome = restore_backup(
+                archive,
+                _settings_for(data_dir),
+                force=force,
+                confirm=confirm,
+                passphrase=passphrase,
+            )
         except OpsError as exc:
             raise CliError(exc.message, exit_code=exc.exit_code, code=exc.code) from exc
         if st.json:

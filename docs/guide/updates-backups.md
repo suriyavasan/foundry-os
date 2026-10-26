@@ -29,7 +29,23 @@ What you get is one `.tar.gz` file with:
 
 It does **not** include temporary work folders, downloaded helper programs or earlier backups.
 
-**Guard that file.** It contains the key that unlocks your stored credentials, and the app does not encrypt it. The file is created readable only by you. If you copy it somewhere, put it on an encrypted disk or encrypt it yourself (for example with `age` or `gpg`).
+**Guard that file.** It contains the key that unlocks your stored credentials. A plain backup is not encrypted: it is created readable only by you, and `backup create` reminds you of that every time. If you copy it anywhere else (a USB stick, a cloud drive), make an encrypted one instead.
+
+### Encrypted backups
+
+```bash
+foundryos backup create --encrypt                      # asks for a passphrase (twice, hidden)
+foundryos backup create --encrypt --out /Volumes/Safe/ # saved as ...tar.gz.enc
+echo "$PASS" | foundryos backup create --encrypt --passphrase-stdin   # for scripts
+```
+
+- The file is encrypted and tamper-proof (AES-256-GCM, with the key derived from your passphrase by scrypt). Its name ends in `.tar.gz.enc`; without the passphrase it is unreadable, and nobody can tell what is in it.
+- **There is no way to recover a lost passphrase.** Store it in a password manager, separate from the backup. Use at least 8 characters; a few random words are better than a short clever one.
+- The passphrase is never a command-line argument (those are visible to other users on the machine and end up in your shell history). Piping it in with `--passphrase-stdin` is for scripts; at a terminal, use the prompt.
+- Restoring and checking work the same way: `foundryos backup restore ARCHIVE.tar.gz.enc` notices the file is encrypted and asks for the passphrase (`--passphrase-stdin` for scripts; add `--yes` too if you use `--force`, since both would read the keyboard). A wrong passphrase, or any change to the file (even one byte, a cut-off end, or reordered parts), is refused with a clear message and **nothing is written**.
+- Every backup file, encrypted or not, is created readable only by you (mode 0600).
+
+The automatic safety backup taken before an upgrade (see below) is deliberately **not** encrypted. It is made while Foundry starts, with nobody there to type a passphrase, and it sits in the data folder next to the very key it would protect. Treat `<data folder>/backups/` as secret as the data folder itself, and never copy those files off the machine without encrypting them.
 
 PostgreSQL installs are not covered by this command. Use `pg_dump` and copy the key files yourself. (PostgreSQL support has not been tested.)
 

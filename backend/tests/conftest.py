@@ -110,6 +110,9 @@ def make_settings(db_url: str, tmp_path: Path) -> Callable[..., Settings]:
         overrides.setdefault("argon2_time_cost", 1)
         overrides.setdefault("argon2_memory_kib", 64)
         overrides.setdefault("argon2_parallelism", 1)
+        # The generic per-IP HTTP rate limit is covered by tests/test_security_ratelimit.py; the
+        # rest of the suite makes hundreds of requests from one client.
+        overrides.setdefault("http_rate_limit_enabled", False)
         return Settings(_env_file=None, database_url=db_url, **overrides)
 
     return _make

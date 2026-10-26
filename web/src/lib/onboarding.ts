@@ -1,26 +1,25 @@
 /**
  * The onboarding step machine (docs/specs/m10 §6). Pure, so the rules are tested without a DOM.
  *
- *   setup  (first run): welcome -> account -> company -> ai -> work -> team
- *   gate   (an existing company whose AI is not ready): ai -> work
+ *   setup  (first run): welcome -> account -> company -> ai -> team
+ *   gate   (an existing company whose AI is not ready): ai
  *
  * Back never goes behind something that already happened: once the account exists there is no way back to the account
  * form, and once the company exists there is no way back to the company form. Moving forward is always an explicit
  * event from the step that finished its job (`account_created`, `company_created`, `next`).
  */
 
-export type StepId = 'welcome' | 'account' | 'company' | 'ai' | 'work' | 'team'
+export type StepId = 'welcome' | 'account' | 'company' | 'ai' | 'team'
 export type FlowMode = 'setup' | 'gate'
 
-export const SETUP_STEPS: readonly StepId[] = ['welcome', 'account', 'company', 'ai', 'work', 'team']
-export const GATE_STEPS: readonly StepId[] = ['ai', 'work']
+export const SETUP_STEPS: readonly StepId[] = ['welcome', 'account', 'company', 'ai', 'team']
+export const GATE_STEPS: readonly StepId[] = ['ai']
 
 export const STEP_LABEL: Record<StepId, string> = {
   welcome: 'Welcome',
   account: 'Your account',
   company: 'Your company',
   ai: 'Connect your AI',
-  work: 'How work gets done',
   team: 'Meet your team',
 }
 
@@ -31,7 +30,7 @@ export interface FlowState {
   step: StepId
   accountCreated: boolean
   companyId: string | null
-  /** The one-line idea typed in the company step; it becomes the first note once the AI works (end of the work step). */
+  /** The one-line idea typed in the company step; it becomes the first note once the AI works (end of the AI step). */
   idea: string
   done: boolean
 }
@@ -70,7 +69,7 @@ export function canGoBack(state: FlowState): boolean {
   if (prev === 'account') return !state.accountCreated
   if (prev === 'company') return !state.companyId
   if (prev === 'welcome') return !state.accountCreated
-  // gate: the AI step is the first, so never; work -> ai is allowed.
+  // team -> ai is allowed (the AI step is the first of the gate, so never back there).
   return true
 }
 
@@ -93,18 +92,18 @@ export function flowReducer(state: FlowState, ev: FlowEvent): FlowState {
   }
 }
 
-/** The "Step 2 of 6" line. */
+/** The "Step 2 of 5" line. */
 export function progressText(state: Pick<FlowState, 'mode' | 'step'>): string {
   const steps = stepsFor(state.mode)
   return `Step ${stepIndex(state) + 1} of ${steps.length} · ${STEP_LABEL[state.step]}`
 }
 
 /**
- * Whether the Continue of a step is enabled. The AI step needs a ready setup (the server said so); the work step needs a
- * valid choice (see `workModeProblem` in lib/aiSetup); the other steps submit their own forms.
+ * Whether the save of the AI step is enabled. The step has one save for both parts: the model API must be ready (the server
+ * said so, after a real test) and the coding-CLI choice must be valid (see `workModeProblem` in lib/aiSetup). A backend
+ * without the AI setup never blocks. The other steps submit their own forms.
  */
 export function canContinue(step: StepId, ctx: { aiReady: boolean; aiAvailable: boolean; workProblem: string | null }): boolean {
-  if (step === 'ai') return ctx.aiReady || !ctx.aiAvailable
-  if (step === 'work') return !ctx.aiAvailable || ctx.workProblem === null
+  if (step === 'ai') return !ctx.aiAvailable || (ctx.aiReady && ctx.workProblem === null)
   return true
 }

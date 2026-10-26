@@ -43,6 +43,7 @@ import {
 } from '@/components/ui'
 import { NewPasswordFields, PasswordInput } from '@/features/auth/PasswordFields'
 import { PanelFrame } from '@/features/canvas/PanelFrame'
+import { PasskeysCard } from './PasskeysCard'
 import { TOKEN_SCOPES, activeTokens, describeUserAgent, sortSessions, validateTokenName } from '@/lib/account'
 import { isTotpCode, normalizeTotp } from '@/lib/auth'
 import { formatDateTime, formatRelative } from '@/lib/format'
@@ -67,9 +68,10 @@ export function AccountPanel() {
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="space-y-4">
-            <ProfileCard user={status.session.user!} />
+            <ProfileCard user={status.session.user!} passkeysCount={status.session.passkeys_count} />
             <PasswordCard username={status.session.user!.username} displayName={status.session.user!.display_name} />
             <TwoFactorCard enabled={status.session.user!.two_factor_enabled === true} />
+            <PasskeysCard supportedOrigin={status.session.passkey_supported_origin} />
           </div>
           <div className="space-y-4">
             <SessionsCard />
@@ -83,7 +85,7 @@ export function AccountPanel() {
 
 /* --------------------------------- profile --------------------------------- */
 
-function ProfileCard({ user }: { user: AuthUser }) {
+function ProfileCard({ user, passkeysCount }: { user: AuthUser; passkeysCount?: number }) {
   const logout = useLogout()
   return (
     <Card>
@@ -102,6 +104,7 @@ function ProfileCard({ user }: { user: AuthUser }) {
             { label: 'Username', value: <span className="font-mono text-[12.5px]">@{user.username}</span> },
             { label: 'Email', value: user.email ?? <span className="text-fg-3">Not set</span> },
             { label: 'Two-step', value: user.two_factor_enabled ? <Badge tone="success">On</Badge> : <Badge tone="neutral">Off</Badge> },
+            ...(passkeysCount === undefined ? [] : [{ label: 'Passkeys', value: passkeysCount > 0 ? <Badge tone="success">{passkeysCount}</Badge> : <Badge tone="neutral">None</Badge> }]),
           ]}
         />
       </CardBody>

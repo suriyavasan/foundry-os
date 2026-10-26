@@ -213,3 +213,10 @@ check<WhenInSchema<'AiSetupUpdate', Same<T.WorkRuntime, NonNullable<M<'AiSetupUp
 check<WhenInSchema<'AiSetupStatus', Same<T.AiBlockingReason, NonNullable<M<'AiSetupStatus'>['blocking_reason']>>>>()
 check<WhenInSchema<'CliRuntimeStatus', Same<T.CliAuthMode, M<'CliRuntimeStatus'>['auth_modes'][number]>>>()
 check<WhenInSchema<'CliRuntimeStatus', Same<T.CliRuntimeId, M<'CliRuntimeStatus'>['id']>>>()
+
+// ---- Passkeys (WebAuthn sign-in) ----
+// The passkey backend is built in parallel; types.ts "Passkeys" documents the contract. Each check switches itself on when a
+// schema with that name appears after `pnpm gen:api`, and then fails typecheck on any drift.
+check<WhenInSchema<'PasskeyInfo', Accepts<T.PasskeyInfo, M<'PasskeyInfo'>>>>()
+check<WhenInSchema<'PasskeyRegistrationOptions', Accepts<T.PasskeyRegistrationOptions, M<'PasskeyRegistrationOptions'>>>>()
+check<WhenInSchema<'PasskeyLoginOptions', Accepts<T.PasskeyLoginOptions, M<'PasskeyLoginOptions'>>>>()

@@ -4195,7 +4195,7 @@ export interface components {
              */
             work_mode: "api" | "hybrid";
             /** Work Runtime */
-            work_runtime: ("company_agent" | "cli:claude_code" | "cli:codex" | "cli:opencode") | null;
+            work_runtime: ("company_agent" | "cli:claude_code" | "cli:codex" | "cli:opencode" | "cli:antigravity") | null;
             /** Clis */
             clis: components["schemas"]["CliRuntimeStatus"][];
         };
@@ -4212,7 +4212,7 @@ export interface components {
              */
             work_mode?: "api" | "hybrid";
             /** Work Runtime */
-            work_runtime?: ("company_agent" | "cli:claude_code" | "cli:codex" | "cli:opencode") | null;
+            work_runtime?: ("company_agent" | "cli:claude_code" | "cli:codex" | "cli:opencode" | "cli:antigravity") | null;
         };
         /** Alert */
         Alert: {
@@ -4794,7 +4794,7 @@ export interface components {
             /** Available */
             available: boolean;
             /** Command */
-            command: string;
+            command?: string | null;
             /** Requires */
             requires: string[];
             /**
@@ -4803,6 +4803,8 @@ export interface components {
              * @enum {string}
              */
             status: "none" | "running" | "succeeded" | "failed";
+            /** Manual */
+            manual?: string | null;
         };
         /**
          * CliInstallLog
@@ -4813,7 +4815,7 @@ export interface components {
              * Id
              * @enum {string}
              */
-            id: "claude_code" | "codex" | "opencode";
+            id: "claude_code" | "codex" | "opencode" | "antigravity";
             /**
              * Status
              * @enum {string}
@@ -4863,7 +4865,7 @@ export interface components {
              * Id
              * @enum {string}
              */
-            id: "claude_code" | "codex" | "opencode";
+            id: "claude_code" | "codex" | "opencode" | "antigravity";
             /** Display Name */
             display_name: string;
             /** Installed */

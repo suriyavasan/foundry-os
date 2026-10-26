@@ -30,7 +30,7 @@ function Teammate({ agent, role, i }: { agent: Agent; role: string; i: number })
   )
 }
 
-/** Step 6: the first two employees, a summary of the choices, and the launch button. */
+/** Step 5: the first two employees, a summary of the choices, and the launch button. */
 export function TeamStep({ companyId, companyIdea, onLaunch }: { companyId: string; companyIdea: string; onLaunch: () => void }) {
   const agents = useAgents(companyId)
   const ai = useAiSetup(companyId)

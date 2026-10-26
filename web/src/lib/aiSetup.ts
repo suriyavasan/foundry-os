@@ -14,6 +14,7 @@ import type {
   WorkRuntime,
 } from '@/api/types'
 import type { Tone } from '@/components/ui/Badge'
+import { ApiError, errorMessage } from '@/api/client'
 import { emptyProviderForm, type ProviderFormValues } from './providers'
 
 /**
@@ -301,10 +302,6 @@ export function filterModels(models: ModelOption[], query: string, limit = 50): 
 /* ------------------------------------ work modes ----------------------------------- */
 
 export const WORK_MODE_LABEL: Record<WorkMode, string> = { api: 'API only', hybrid: 'API + coding CLIs' }
-export const WORK_MODE_BLURB: Record<WorkMode, string> = {
-  api: 'Every employee works through your API provider. Simplest, and the strongest isolation.',
-  hybrid: 'Your API runs the company (AI Co-founder, HR, leads, reviews). Employees do hands-on work through a coding CLI such as Claude Code, Codex or OpenCode.',
-}
 
 export const COMPANY_AGENT_WORK_RUNTIME: WorkRuntime = 'company_agent'
 
@@ -332,8 +329,15 @@ export function workModeProblem(mode: WorkMode, runtime: WorkRuntime | null, cli
 }
 
 /** The `PUT /ai-setup` body for a choice of mode and runtime, or null when no management model is known yet. */
-export function aiSetupUpdate(ai: Pick<AiSetupStatus, 'management'>, mode: WorkMode, runtime: WorkRuntime | null): AiSetupUpdate | null {
-  const { provider_id, model } = ai.management
+export function aiSetupUpdate(
+  ai: Pick<AiSetupStatus, 'management'>,
+  mode: WorkMode,
+  runtime: WorkRuntime | null,
+  /** A management selection that is not saved yet (a provider that just passed its test); it wins over the saved one. */
+  management?: { providerId: string; model: string } | null,
+): AiSetupUpdate | null {
+  const provider_id = management?.providerId ?? ai.management.provider_id
+  const model = management?.model ?? ai.management.model
   if (!provider_id || !model) return null
   return {
     management_provider_id: provider_id,
@@ -341,6 +345,16 @@ export function aiSetupUpdate(ai: Pick<AiSetupStatus, 'management'>, mode: WorkM
     work_mode: mode,
     work_runtime: mode === 'api' ? COMPANY_AGENT_WORK_RUNTIME : runtime,
   }
+}
+
+/** What a failed `PUT /ai-setup` said, including the readiness reason the server attaches to a 409 `ai_not_ready`. */
+export function putFailure(err: unknown): string {
+  if (err instanceof ApiError && err.code === 'ai_not_ready') {
+    const d = err.details as { reason?: string; blocking_reason?: string } | null
+    const reason = d?.reason ?? d?.blocking_reason
+    return `${err.message}${reason && reason in BLOCKING_REASON_TEXT ? ` ${blockingReasonText(reason)}` : ''}`
+  }
+  return errorMessage(err)
 }
 
 /* -------------------------------------- CLI tiles ---------------------------------- */
@@ -375,6 +389,13 @@ export function cliStatusLine(cli: CliRuntimeStatus): CliStatusLine {
   if (cli.auth.last_test?.ok) return { label: `Ready${version}`, tone: 'success' }
   if (cli.auth.last_test && !cli.auth.last_test.ok) return { label: `Test failed${version}`, tone: 'danger' }
   return { label: `Installed${version}`, tone: 'info' }
+}
+
+/** The one-word state of a CLI for a summary line: "ready", "not installed", "test failed" or "installed, not tested". */
+export function cliBrief(cli: CliRuntimeStatus): string {
+  if (!cli.installed) return 'not installed'
+  if (cliReady(cli)) return 'ready'
+  return cliStatusLine(cli).tone === 'danger' ? 'test failed' : 'installed, not tested'
 }
 
 /** Defensive read of one `CliRuntimeStatus`. */

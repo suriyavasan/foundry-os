@@ -52,8 +52,8 @@ function backend() {
   return { api, order }
 }
 
-describe('first run, all six screens on an M10 backend', () => {
-  it('Welcome -> account -> company -> connect your AI -> how work gets done -> meet your team -> the app', async () => {
+describe('first run, all five screens on an M10 backend', () => {
+  it('Welcome -> account -> company -> connect your AI (one save) -> meet your team -> the app', async () => {
     const { api, order } = backend()
     renderWithProviders(
       <AuthGate>
@@ -64,7 +64,7 @@ describe('first run, all six screens on an M10 backend', () => {
 
     // 1 Welcome
     expect(await screen.findByRole('heading', { name: 'A company that runs itself.' })).toBeInTheDocument()
-    expect(screen.getByText('Step 1 of 6 · Welcome')).toBeInTheDocument()
+    expect(screen.getByText('Step 1 of 5 · Welcome')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Back' })).not.toBeInTheDocument()
     await u.click(screen.getByRole('button', { name: /Start/ }))
 
@@ -83,23 +83,18 @@ describe('first run, all six screens on an M10 backend', () => {
 
     // 4 Connect your AI: mandatory
     expect(await screen.findByRole('heading', { name: 'Connect your AI' })).toBeInTheDocument()
-    expect(screen.getByText('Step 4 of 6 · Connect your AI')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
+    expect(screen.getByText('Step 4 of 5 · Connect your AI')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save and continue' })).toBeDisabled()
     expect(api.calls.some((c) => c.path.endsWith('/notes'))).toBe(false) // the server would refuse a note now
     await u.click(await screen.findByRole('radio', { name: /OpenRouter/ }))
     await u.type(screen.getByLabelText(/OpenRouter API key/), 'sk-or-secret')
-    await u.type(screen.getByLabelText(/^Model\b/, { selector: 'input' }), 'anthropic/claude-sonnet-4.5')
+    await u.type(screen.getByLabelText(/^Model(?! API)\b/, { selector: 'input' }), 'anthropic/claude-sonnet-4.5')
     await u.click(screen.getByRole('button', { name: 'Test connection' }))
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled())
-    await u.click(screen.getByRole('button', { name: 'Continue' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save and continue' })).toBeEnabled())
+    expect(order).toEqual([]) // testing saved nothing
+    await u.click(screen.getByRole('button', { name: 'Save and continue' }))
 
-    // 5 How should work get done?
-    expect(await screen.findByRole('heading', { name: 'How should work get done?' })).toBeInTheDocument()
-    expect(screen.getByText('Step 5 of 6 · How work gets done')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument()
-    await u.click(screen.getByRole('button', { name: 'Continue' }))
-
-    // 6 Meet your team: the first note was posted only now that the AI works
+    // 5 Meet your team: the first note was posted only now that the AI works
     expect(await screen.findByRole('heading', { name: 'Meet your team' })).toBeInTheDocument()
     expect(order).toEqual(['PUT ai-setup api', 'POST notes'])
     expect(api.calls.find((c) => c.path === '/companies/c9/notes')?.body).toEqual({ body: 'Sell lemonade' })

@@ -1,19 +1,21 @@
-import { useReducer } from 'react'
+import { useReducer, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { seedCompanyIdea } from '@/api'
 import { useToast } from '@/components/ui'
 import { canEditPolicy, useCompanyRole } from '@/features/canvas/hooks'
+import { passkeyEnvironment } from '@/lib/webauthn'
 import { flowReducer, initialFlow, canGoBack, type FlowMode } from '@/lib/onboarding'
 import { setLastCompanyId } from '@/lib/storage'
 import { StepFrame } from './StepFrame'
 import { AccountStep } from './steps/AccountStep'
-import { ConnectAiStep, WorkModeStep } from './steps/AiSteps'
+import { PasskeyStep } from './steps/PasskeyStep'
+import { AiStep } from './steps/AiSteps'
 import { CompanyStep } from './steps/CompanyStep'
 import { TeamStep } from './steps/TeamStep'
 import { WelcomeStep } from './steps/WelcomeStep'
 
 /**
- * The onboarding: six full-screen steps for a first run (`setup`), or the two AI steps as a gate for a company that is not
+ * The onboarding: five full-screen steps for a first run (`setup`), or the one AI step as a gate for a company that is not
  * AI-ready (`gate`). The step order and what is allowed is lib/onboarding (tested on its own); this component only renders
  * the current step and performs the one side effect that has to wait for a working AI: posting the one-line idea as the
  * first Founder's note (the server refuses notes until the AI is ready).
@@ -31,6 +33,9 @@ export function OnboardingFlow({
   onDone: () => void
 }) {
   const [flow, dispatch] = useReducer(flowReducer, undefined, () => initialFlow(mode, { companyId: gateCompanyId }))
+  // After the account exists, an optional "add a passkey" screen can sit between the account and the company. It is only
+  // offered when the server speaks passkeys and this browser and address can use them, and it never blocks the flow.
+  const [passkeyOffer, setPasskeyOffer] = useState(false)
   const navigate = useNavigate()
   const toast = useToast()
   const companyId = flow.companyId
@@ -48,7 +53,7 @@ export function OnboardingFlow({
     onDone()
   }
 
-  async function afterWork() {
+  async function afterAi() {
     if (mode === 'setup' && companyId) {
       const where = await seedCompanyIdea(companyId, flow.idea)
       if (where === 'failed') toast.error('The company was created, but your idea could not be saved. Add it from the Command Center.')
@@ -66,9 +71,22 @@ export function OnboardingFlow({
         </StepFrame>
       )
     case 'account':
+      if (passkeyOffer) {
+        return (
+          <StepFrame flow={flow} step="account" fx="spotlight">
+            <PasskeyStep onDone={() => dispatch({ type: 'account_created' })} />
+          </StepFrame>
+        )
+      }
       return (
         <StepFrame flow={flow} step="account" onBack={back} fx="spotlight">
-          <AccountStep tokenRequired={setupTokenRequired} onDone={() => dispatch({ type: 'account_created' })} />
+          <AccountStep
+            tokenRequired={setupTokenRequired}
+            onDone={(session) => {
+              if (passkeyEnvironment(session) === 'ready') setPasskeyOffer(true)
+              else dispatch({ type: 'account_created' })
+            }}
+          />
         </StepFrame>
       )
     case 'company':
@@ -80,13 +98,7 @@ export function OnboardingFlow({
     case 'ai':
       return (
         <StepFrame flow={flow} step="ai" wide fx="spotlight">
-          {companyId && <ConnectAiStep companyId={companyId} canEdit={canEdit} onContinue={() => dispatch({ type: 'next' })} />}
-        </StepFrame>
-      )
-    case 'work':
-      return (
-        <StepFrame flow={flow} step="work" wide onBack={back} fx="spotlight">
-          {companyId && <WorkModeStep companyId={companyId} canManage={canEdit} finishLabel={mode === 'setup' ? 'Continue' : 'Open my company'} onDone={afterWork} />}
+          {companyId && <AiStep companyId={companyId} canEdit={canEdit} finishLabel={mode === 'setup' ? 'Save and continue' : 'Save and open my company'} onDone={afterAi} />}
         </StepFrame>
       )
     case 'team':

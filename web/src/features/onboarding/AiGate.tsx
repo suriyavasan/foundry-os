@@ -7,7 +7,7 @@ import { blockingReasonText } from '@/lib/aiSetup'
 import { OnboardingFlow } from './OnboardingFlow'
 
 /**
- * Shown instead of the canvas while the company's AI is not ready (spec §6): the two AI steps, full screen. The platform
+ * Shown instead of the canvas while the company's AI is not ready (spec §6): the AI step, full screen. The platform
  * is unusable without a working API, so there is no way past this screen except finishing it. A person who cannot change
  * the setup (not an owner or admin) is told who can.
  */

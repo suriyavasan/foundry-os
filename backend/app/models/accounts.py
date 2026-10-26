@@ -4,8 +4,18 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    ForeignKey,
+    Index,
+    Integer,
+    LargeBinary,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.types import JSON
 
 from app.core.ids import new_id
 from app.core.time import utcnow
@@ -106,3 +116,46 @@ class Notification(Base):
     related_id: Mapped[str | None] = mapped_column(String(36))
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)
     read_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+
+
+class Passkey(Base):
+    """A WebAuthn credential of one person. ``credential_id`` is base64url (the credential id is
+    public); ``public_key`` is the COSE key. Neither is a secret: the private key never leaves the
+    authenticator."""
+
+    __tablename__ = "passkeys"
+    __table_args__ = (
+        Index("ix_passkeys_user_id", "user_id"),
+        UniqueConstraint("credential_id", name="uq_passkeys_credential_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    credential_id: Mapped[str] = mapped_column(String(1400), nullable=False)
+    public_key: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    sign_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    transports: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    aaguid: Mapped[str | None] = mapped_column(String(36))
+    name: Mapped[str] = mapped_column(String(80), default="Passkey", nullable=False)
+    backed_up: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)
+    last_used_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+
+
+class PasskeyChallenge(Base):
+    """A server-issued WebAuthn challenge: single use, short lived, bound to a purpose and (for a
+    registration) to the signed-in user. ``id`` is the ``attempt_id`` the client echoes back; the
+    client never supplies the challenge itself."""
+
+    __tablename__ = "passkey_challenges"
+    __table_args__ = (Index("ix_passkey_challenges_expires_at", "expires_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    purpose: Mapped[str] = mapped_column(String(16), nullable=False)  # register | login
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    challenge: Mapped[str] = mapped_column(String(128), nullable=False)  # base64url
+    rp_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    name: Mapped[str | None] = mapped_column(String(80))  # label chosen when registration began
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(UTCDateTime)

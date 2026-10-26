@@ -11,8 +11,10 @@ from app.schemas.providers import ProviderTest
 
 BlockingReasonLiteral = Literal["no_tested_provider", "provider_test_failed", "no_default_model"]
 WorkModeLiteral = Literal["api", "hybrid"]
-WorkRuntimeLiteral = Literal["company_agent", "cli:claude_code", "cli:codex", "cli:opencode"]
-CliIdLiteral = Literal["claude_code", "codex", "opencode"]
+WorkRuntimeLiteral = Literal[
+    "company_agent", "cli:claude_code", "cli:codex", "cli:opencode", "cli:antigravity"
+]
+CliIdLiteral = Literal["claude_code", "codex", "opencode", "antigravity"]
 CliAuthModeLiteral = Literal["own_login", "api_key"]
 
 
@@ -39,10 +41,12 @@ class CliSandbox(ApiModel):
 
 
 class CliInstall(ApiModel):
-    available: bool  # npm is here and the CLI is not installed yet
-    command: str
+    available: bool  # npm is here, the CLI has an npm package and is not installed yet
+    command: str | None = None  # None: no automatic install (see ``manual``)
     requires: list[str]
     status: Literal["none", "running", "succeeded", "failed"] = "none"
+    # Run by the person themselves when there is no automatic install; never run by the server.
+    manual: str | None = None
 
 
 class CliRuntimeStatus(ApiModel):

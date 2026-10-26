@@ -54,7 +54,7 @@ function resetForNewIdentity(qc: QueryClient) {
   void qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'auth' })
 }
 
-function adoptSession(qc: QueryClient, session: AuthSession) {
+export function adoptSession(qc: QueryClient, session: AuthSession) {
   qc.setQueryData(qk.authSession, session)
   if (session.state === 'authenticated') resetForNewIdentity(qc)
 }

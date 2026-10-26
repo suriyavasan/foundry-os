@@ -1,8 +1,11 @@
+import { Info, KeyRound } from 'lucide-react'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { useLogin } from '@/api'
+import { useQueryClient } from '@tanstack/react-query'
+import { qk, useLogin, usePasskeyLogin } from '@/api'
 import type { AuthSession } from '@/api/types'
 import { Button, Field, FormError, Input } from '@/components/ui'
-import { describeLoginFailure, formatWait, isTotpCode, loginFailureText, loginNeedsSecondFactor, normalizeTotp, type LoginFailure } from '@/lib/auth'
+import { describeLoginFailure, formatWait, isTotpCode, loginNeedsSecondFactor, normalizeTotp } from '@/lib/auth'
+import { conditionalMediationAvailable, describePasskeyFailure, passkeyEnvironment, passkeyEnvironmentMessage, passkeyFailureText, type PasskeyFailure } from '@/lib/webauthn'
 import { PasswordInput } from './PasswordFields'
 
 /**
@@ -14,18 +17,25 @@ export function LoginForm({
   onSuccess,
   submitLabel = 'Sign in',
   initialUsername = '',
+  passkeys = false,
 }: {
   onSuccess: (session: AuthSession) => void | Promise<void>
   submitLabel?: string
   initialUsername?: string
+  /** Offer "Sign in with a passkey" (and passkey autofill) where the backend and browser support it. */
+  passkeys?: boolean
 }) {
   const login = useLogin()
+  const passkeyLogin = usePasskeyLogin()
+  const autofillLogin = usePasskeyLogin()
+  // Read, not subscribed: the gate has already loaded the session to show this form, and a second observer would refetch it.
+  const sessionData = useQueryClient().getQueryData<AuthSession>(qk.authSession)
   const [username, setUsername] = useState(initialUsername)
   const [password, setPassword] = useState('')
   const [code, setCode] = useState('')
   const [secondFactor, setSecondFactor] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<{ username?: string; password?: string; code?: string }>({})
-  const [failure, setFailure] = useState<LoginFailure | null>(null)
+  const [failure, setFailure] = useState<PasskeyFailure | null>(null)
   const [failures, setFailures] = useState(0)
   const [wait, setWait] = useState(0)
   const passwordRef = useRef<HTMLInputElement>(null)
@@ -45,6 +55,74 @@ export function LoginForm({
   }, [failures, secondFactor])
 
   const blocked = wait > 0
+
+  // Passkeys: the backend must speak them (a 404 later hides them again), the origin must allow them, the browser must have them.
+  const [passkeysMissing, setPasskeysMissing] = useState(false)
+  const [autofill, setAutofill] = useState(false)
+  const [rearm, setRearm] = useState(0)
+  const autofillControl = useRef<AbortController | null>(null)
+  const env = passkeyEnvironment(sessionData)
+  const passkeyUi = passkeys && !passkeysMissing && !secondFactor
+  const showPasskey = passkeyUi && env === 'ready'
+  const envMessage = passkeyUi ? passkeyEnvironmentMessage(env) : null
+
+  useEffect(() => {
+    if (!showPasskey) return
+    let live = true
+    void conditionalMediationAvailable().then((ok) => {
+      if (live) setAutofill(ok)
+    })
+    return () => {
+      live = false
+    }
+  }, [showPasskey])
+
+  // Conditional UI: the browser offers saved passkeys inside the username field; picking one signs in with no clicks.
+  const { mutateAsync: autofillSignIn } = autofillLogin
+  useEffect(() => {
+    if (!showPasskey || !autofill) return
+    const control = new AbortController()
+    autofillControl.current = control
+    autofillSignIn({ conditional: true, signal: control.signal })
+      .then(async (session) => {
+        if (session.state === 'authenticated') await onSuccess(session)
+      })
+      .catch((err) => {
+        if (control.signal.aborted) return
+        const f = describePasskeyFailure(err)
+        if (f.kind === 'missing') setPasskeysMissing(true)
+        else if (f.kind === 'rate_limited' || f.kind === 'locked' || f.kind === 'network') {
+          setFailure(f)
+          setWait(f.retryAfterSeconds ? Math.ceil(f.retryAfterSeconds) : 0)
+        }
+      })
+    return () => control.abort()
+    // onSuccess is called, not depended on: re-arming the autofill request must not follow a parent re-render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showPasskey, autofill, rearm, autofillSignIn])
+
+  async function signInWithPasskey() {
+    if (blocked) return
+    autofillControl.current?.abort()
+    setFailure(null)
+    setFieldErrors({})
+    try {
+      const session = await passkeyLogin.mutateAsync({ ...(username.trim() ? { username: username.trim() } : null) })
+      if (session.state === 'authenticated') {
+        setPassword('')
+        await onSuccess(session)
+      }
+    } catch (err) {
+      const f = describePasskeyFailure(err)
+      if (f.kind === 'missing') {
+        setPasskeysMissing(true)
+        return
+      }
+      setFailure(f)
+      setWait(f.retryAfterSeconds ? Math.ceil(f.retryAfterSeconds) : 0)
+      if (f.kind !== 'rate_limited' && f.kind !== 'locked') setRearm((n) => n + 1)
+    }
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -89,7 +167,7 @@ export function LoginForm({
     setFieldErrors({})
   }
 
-  const message = failure ? loginFailureText(failure, wait) : null
+  const message = failure ? passkeyFailureText(failure, wait) : null
 
   return (
     <form onSubmit={submit} noValidate className="space-y-4" aria-label={secondFactor ? 'Two-step verification' : 'Sign in'}>
@@ -117,12 +195,12 @@ export function LoginForm({
         </>
       ) : (
         <>
-          <Field label="Username" required error={fieldErrors.username}>
+          <Field label="Username" required error={fieldErrors.username} hint={showPasskey ? 'Optional if you sign in with a passkey.' : undefined}>
             {({ id, invalid, describedBy }) => (
               <Input
                 id={id}
                 autoFocus={!initialUsername}
-                autoComplete="username"
+                autoComplete={showPasskey && autofill ? 'username webauthn' : 'username'}
                 autoCapitalize="none"
                 spellCheck={false}
                 value={username}
@@ -132,6 +210,30 @@ export function LoginForm({
               />
             )}
           </Field>
+          {showPasskey && (
+            <>
+              <Button
+                variant="primary"
+                className="w-full"
+                icon={<KeyRound className="size-3.5" />}
+                loading={passkeyLogin.isPending}
+                disabled={blocked || login.isPending}
+                onClick={() => void signInWithPasskey()}
+              >
+                {blocked ? `Try again in ${formatWait(wait)}` : 'Sign in with a passkey'}
+              </Button>
+              {passkeyLogin.isPending && (
+                <p role="status" className="text-[12px] text-fg-3">
+                  Follow the prompt from your browser or device.
+                </p>
+              )}
+              <div className="flex items-center gap-3 text-[11.5px] text-fg-3" aria-hidden>
+                <span className="h-px flex-1 bg-line" />
+                or use your password
+                <span className="h-px flex-1 bg-line" />
+              </div>
+            </>
+          )}
           <Field label="Password" required error={fieldErrors.password}>
             {({ id, invalid, describedBy }) => (
               <PasswordInput id={id} ref={passwordRef} autoFocus={!!initialUsername} autoComplete="current-password" value={password} invalid={invalid} aria-describedby={describedBy} onChange={(e) => setPassword(e.target.value)} />
@@ -143,7 +245,7 @@ export function LoginForm({
       <FormError message={message} />
 
       <div className="flex items-center gap-2">
-        <Button type="submit" variant="primary" className="flex-1" loading={login.isPending} disabled={blocked}>
+        <Button type="submit" variant={showPasskey ? 'secondary' : 'primary'} className="flex-1" loading={login.isPending} disabled={blocked}>
           {blocked ? `Try again in ${formatWait(wait)}` : secondFactor ? 'Verify' : submitLabel}
         </Button>
         {secondFactor && (
@@ -152,6 +254,12 @@ export function LoginForm({
           </Button>
         )}
       </div>
+      {envMessage && (
+        <p role="note" className="flex gap-2 rounded-md border border-line bg-raised p-2.5 text-[12px] text-fg-2">
+          <Info className="mt-0.5 size-3.5 shrink-0 text-fg-3" aria-hidden />
+          <span>{envMessage}</span>
+        </p>
+      )}
     </form>
   )
 }

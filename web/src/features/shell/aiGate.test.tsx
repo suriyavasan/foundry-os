@@ -18,12 +18,12 @@ const routes = (ai: unknown, extra: Record<string, unknown> = {}) => ({
 })
 
 describe('the AI gate on the canvas', () => {
-  it('blocks the canvas with the two AI steps when the AI is not ready', async () => {
+  it('blocks the canvas with the AI step when the AI is not ready', async () => {
     vi.stubGlobal('fetch', mockApi(routes(notReady())).impl)
     renderCanvas()
     expect(await screen.findByRole('heading', { name: 'Connect your AI' })).toBeInTheDocument()
-    expect(screen.getByText('Step 1 of 2 · Connect your AI')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
+    expect(screen.getByText('Step 1 of 1 · Connect your AI')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save and open my company' })).toBeDisabled()
     // no canvas, no top bar, no widgets, no command palette
     expect(screen.queryByRole('region', { name: 'Organization' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Open command palette' })).not.toBeInTheDocument()
@@ -57,7 +57,7 @@ describe('the AI gate on the canvas', () => {
     expect(screen.queryByRole('heading', { name: 'Connect your AI' })).not.toBeInTheDocument()
   }, 15_000)
 
-  it('walks the two steps and then lets the person into the company, even though saving the model already made it ready', async () => {
+  it('tests the model API, then one save lets the person into the company', async () => {
     let ai = notReady()
     const api = mockApi(
       routes(() => jsonResponse(ai), {
@@ -81,14 +81,14 @@ describe('the AI gate on the canvas', () => {
     renderCanvas()
     await userEvent.click(await screen.findByRole('radio', { name: /OpenRouter/ }))
     await userEvent.type(screen.getByLabelText(/OpenRouter API key/), 'sk-key')
-    await userEvent.type(screen.getByLabelText(/^Model\b/, { selector: 'input' }), 'm')
+    await userEvent.type(screen.getByLabelText(/^Model(?! API)\b/, { selector: 'input' }), 'm')
     await userEvent.click(screen.getByRole('button', { name: 'Test connection' }))
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled())
-    // ready on the server now, but the gate stays until its own steps are done
+    const save = screen.getByRole('button', { name: 'Save and open my company' })
+    await waitFor(() => expect(save).toBeEnabled())
+    // testing saves nothing, so the server is still not ready and the gate stays until the save
+    expect(api.calls.some((c) => c.method === 'PUT')).toBe(false)
     expect(screen.queryByRole('region', { name: 'Organization' })).not.toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
-    expect(await screen.findByRole('heading', { name: 'How should work get done?' })).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Open my company' }))
+    await userEvent.click(save)
     expect(await screen.findByRole('region', { name: 'Organization' })).toBeInTheDocument()
   })
 

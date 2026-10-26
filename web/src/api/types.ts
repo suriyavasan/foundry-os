@@ -1516,6 +1516,13 @@ export interface AuthSession {
   /** Login answered "password ok, now the authenticator code". */
   two_factor_required?: boolean
   expires_at?: Timestamp | null
+  /** Passkeys registered by the signed-in account. Absent on a backend without passkeys. */
+  passkeys_count?: number
+  /**
+   * Whether this origin can use passkeys (localhost or HTTPS, and the address the server expects). Absent on a backend
+   * without passkeys: the UI treats that as "no passkey support" and shows nothing.
+   */
+  passkey_supported_origin?: boolean
 }
 
 export interface SetupRequest {
@@ -1582,6 +1589,67 @@ export interface TwoFactorVerifyResult {
   enabled: boolean
   /** Shown once, when the server issues them. */
   recovery_codes?: string[]
+}
+
+/* ---- Passkeys (WebAuthn) ----
+ * The backend is built in parallel against this contract; the schema names PasskeyInfo, PasskeyRegistrationOptions and
+ * PasskeyLoginOptions are re-checked in contract.check.ts as soon as a generated schema carries them. A 404 on any of
+ * these endpoints means "no passkeys here": the UI hides every passkey surface.
+ *   GET    /auth/passkeys                        Page<PasskeyInfo>
+ *   POST   /auth/passkeys/register/options       {name?} -> PasskeyRegistrationOptions
+ *   POST   /auth/passkeys/register/verify        {attempt_id, name?, credential} -> PasskeyInfo
+ *   PATCH  /auth/passkeys/{id}                   {name} -> PasskeyInfo
+ *   DELETE /auth/passkeys/{id}                   {password?}   403 reauth_required -> ask for the password and retry; 409 last sign-in method
+ *   POST   /auth/passkey/login/options           {username?} -> PasskeyLoginOptions
+ *   POST   /auth/passkey/login/verify            {attempt_id, credential} -> AuthSession (+ cookies)
+ * `public_key` is the WebAuthn options object as JSON with base64url strings where the browser wants buffers;
+ * `credential` is the matching JSON form of the PublicKeyCredential (see lib/webauthn.ts).
+ */
+export interface PasskeyInfo {
+  id: Uuid
+  name: string
+  created_at: Timestamp
+  last_used_at: Timestamp | null
+  transports: string[]
+  /** Synced by a password manager or cloud keychain, i.e. not tied to one device. */
+  backed_up: boolean
+}
+
+export interface PasskeyRegistrationOptions {
+  attempt_id: string
+  public_key: Record<string, unknown>
+}
+
+export interface PasskeyLoginOptions {
+  attempt_id: string
+  public_key: Record<string, unknown>
+}
+
+export interface PasskeyRegistrationOptionsRequest {
+  name?: string
+}
+
+export interface PasskeyRegistrationVerify {
+  attempt_id: string
+  name?: string
+  credential: Record<string, unknown>
+}
+
+export interface PasskeyRename {
+  name: string
+}
+
+export interface PasskeyDelete {
+  password?: string
+}
+
+export interface PasskeyLoginOptionsRequest {
+  username?: string
+}
+
+export interface PasskeyLoginVerify {
+  attempt_id: string
+  credential: Record<string, unknown>
 }
 
 export type MemberRole = 'owner' | 'admin' | 'member' | 'viewer'
@@ -2051,8 +2119,8 @@ export interface ProviderTest {
 
 export type AiBlockingReason = 'no_tested_provider' | 'provider_test_failed' | 'no_default_model'
 export type WorkMode = 'api' | 'hybrid'
-export type CliRuntimeId = 'claude_code' | 'codex' | 'opencode'
-export type WorkRuntime = 'company_agent' | 'cli:claude_code' | 'cli:codex' | 'cli:opencode'
+export type CliRuntimeId = 'claude_code' | 'codex' | 'opencode' | 'antigravity'
+export type WorkRuntime = 'company_agent' | 'cli:claude_code' | 'cli:codex' | 'cli:opencode' | 'cli:antigravity'
 export type CliAuthMode = 'own_login' | 'api_key'
 export type CliSandboxKind = 'os' | 'docker' | 'none'
 
@@ -2080,7 +2148,8 @@ export interface CliRuntimeStatus {
     model?: string | null
   }
   sandbox: { available: boolean; kind: CliSandboxKind; detail: string | null }
-  install: { available: boolean; command: string | null; requires: string[] }
+  /** `manual`: a command the person runs themselves when there is no automatic install (Antigravity). */
+  install: { available: boolean; command?: string | null; requires: string[]; manual?: string | null }
   login_hint: string | null
   warnings: string[]
 }

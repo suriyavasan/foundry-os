@@ -1,7 +1,6 @@
 import { CheckCircle2, Lock, RefreshCw } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ApiError,
   errorMessage,
   isNotDeployed,
   useAiSetup,
@@ -19,7 +18,6 @@ import { Badge, Button, Field, FormError, Input } from '@/components/ui'
 import { GlowCard } from '@/features/onboarding/fx/GlowCard'
 import { MultiStepLoader } from '@/features/onboarding/fx/MultiStepLoader'
 import {
-  BLOCKING_REASON_TEXT,
   COMPANY_AGENT_WORK_RUNTIME,
   OLLAMA_CARD,
   PROVIDER_CARDS,
@@ -29,6 +27,7 @@ import {
   firstFailure,
   loaderSteps,
   providerFormFor,
+  putFailure,
   testPassed,
   type ModelOption,
   type ProviderCardDef,
@@ -39,25 +38,30 @@ import { ModelPicker } from './ModelPicker'
 
 const KIND_TO_CARD: Record<string, ProviderCardId> = { openrouter: 'openrouter', anthropic: 'anthropic', openai: 'openai', openai_compatible: 'openai_compatible', ollama: 'ollama' }
 
-/** What a failed `PUT /ai-setup` said, including the readiness reason the server attaches to a 409. */
-function putFailure(err: unknown): string {
-  if (err instanceof ApiError && err.code === 'ai_not_ready') {
-    const d = err.details as { reason?: string; blocking_reason?: string } | null
-    const reason = d?.reason ?? d?.blocking_reason
-    return `${err.message}${reason && reason in BLOCKING_REASON_TEXT ? ` ${blockingReasonText(reason)}` : ''}`
-  }
-  return errorMessage(err)
-}
-
 /**
  * Connect your AI (spec §6 step 4): choose a provider, give it a key (write-only), test it (real checks, shown by the
  * multi-step loader), pick the model, and save it as the management model. The platform cannot be used without this, so the
  * parent's Continue stays disabled until the server reports `ready`.
  *
+ * With `deferSave` nothing is saved here: a passed test is reported through `onTested` and the parent saves the whole AI setup
+ * (this model plus how work gets done) with its own button. Without it, a passed test is saved as the management model.
+ *
  * The key follows the same path as everywhere else: it goes to the credential endpoint once, the field is emptied the moment
  * the server has it, the provider only references the credential's id, and no error text is allowed to echo it.
  */
-export function ConnectAiSection({ companyId, canEdit = true }: { companyId: string; canEdit?: boolean }) {
+export function ConnectAiSection({
+  companyId,
+  canEdit = true,
+  deferSave = false,
+  onTested,
+}: {
+  companyId: string
+  canEdit?: boolean
+  /** Do not save on a passed test; report the tested selection through `onTested` instead. */
+  deferSave?: boolean
+  /** The provider and model that just passed their test, or null when there is none (failed, changed or not run yet). */
+  onTested?: (sel: { providerId: string; model: string } | null) => void
+}) {
   const ai = useAiSetup(companyId)
   const providers = useModelProviders(companyId)
   const detect = useDetectProviders(companyId)
@@ -108,7 +112,24 @@ export function ConnectAiSection({ companyId, canEdit = true }: { companyId: str
     return []
   }, [models.data, cardId, detected])
 
+  const tested = (sel: { providerId: string; model: string } | null) => {
+    if (deferSave) onTested?.(sel)
+  }
+
+  // After the parent saved (or anything else changed the connection), show the connection that is now in force.
+  const mgmtKey = `${status?.management.provider_id ?? ''}|${status?.management.model ?? ''}`
+  const [seenMgmtKey, setSeenMgmtKey] = useState(mgmtKey)
+  if (seenMgmtKey !== mgmtKey) {
+    setSeenMgmtKey(mgmtKey)
+    setChanging(false)
+    if (deferSave) {
+      setTest(null)
+      setSaved(false)
+    }
+  }
+
   function resetFlow() {
+    tested(null)
     setTest(null)
     setSaved(false)
     setError(null)
@@ -135,6 +156,7 @@ export function ConnectAiSection({ companyId, canEdit = true }: { companyId: str
 
   /** Create what is missing, test, and on a pass save it as the management model. */
   async function run(target?: { providerId: string; model: string }) {
+    tested(null)
     setError(null)
     setSaved(false)
     setTest(null)
@@ -180,7 +202,10 @@ export function ConnectAiSection({ companyId, canEdit = true }: { companyId: str
 
       const result = await providerTest.mutateAsync(pid)
       setTest(result)
-      if (testPassed(result)) {
+      if (testPassed(result) && deferSave) {
+        tested({ providerId: pid, model: modelName })
+        setSaved(true)
+      } else if (testPassed(result)) {
         await saveAi.mutateAsync({
           management_provider_id: pid,
           management_model: modelName,
@@ -228,7 +253,7 @@ export function ConnectAiSection({ companyId, canEdit = true }: { companyId: str
               <MultiStepLoader steps={steps} label="Last test" />
             </div>
           )}
-          {saved && <p role="status" className="mt-3 text-[12.5px] text-success">Tested and saved as your management model.</p>}
+          {saved && !deferSave && <p role="status" className="mt-3 text-[12.5px] text-success">Tested and saved as your management model.</p>}
         </div>
         <FormError message={error} />
         {canEdit && (
@@ -388,7 +413,8 @@ export function ConnectAiSection({ companyId, canEdit = true }: { companyId: str
           )}
           {saved && (
             <p role="status" className="mt-3 flex items-center gap-1.5 text-[13px] font-medium text-success">
-              <CheckCircle2 className="size-4" aria-hidden /> Connected. This is now your management model.
+              <CheckCircle2 className="size-4" aria-hidden />
+              {deferSave ? 'Test passed. It is saved with the button below.' : 'Connected. This is now your management model.'}
             </p>
           )}
         </div>

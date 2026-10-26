@@ -15,12 +15,14 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core import netguard
 from app.core.crypto import CredentialCipher
 from app.core.errors import Conflict, Forbidden, NotFound, ValidationFailed
 from app.core.principal import CompanyContext, require_human_admin
 from app.core.time import utcnow
 from app.models.agent import Agent
 from app.models.enums import AgentKind, AgentStatus, CostKind, RoleFamily
+from app.models.guardrails import SystemState
 from app.models.policy import CompanyPolicy
 from app.models.provider import ModelProvider
 from app.providers import probe
@@ -53,6 +55,43 @@ def _require_human(ctx: CompanyContext) -> None:
         raise Forbidden("Agents cannot access model providers")
 
 
+# ---------------------------------------------------------------- private-network opt-in
+# The owner's per-provider opt-in lives in the existing ``system_state`` key/value table (one row
+# per provider that has it on, key ``pn:<provider id>``): no schema change, and it is only ever
+# read after the provider itself was loaded through its company.
+
+
+def _net_key(provider_id: str) -> str:
+    return f"pn:{provider_id}"
+
+
+def allows_private_network(db: Session, provider_id: str) -> bool:
+    row = db.get(SystemState, _net_key(provider_id))
+    return bool(row and (row.value or {}).get("allow_private_network"))
+
+
+def _set_private_network(db: Session, provider_id: str, allowed: bool) -> None:
+    row = db.get(SystemState, _net_key(provider_id))
+    if allowed:
+        if row is None:
+            db.add(
+                SystemState(
+                    key=_net_key(provider_id),
+                    value={"allow_private_network": True},
+                    updated_at=utcnow(),
+                )
+            )
+        else:
+            row.value = {"allow_private_network": True}
+            row.updated_at = utcnow()
+    elif row is not None:
+        db.delete(row)
+
+
+def _policy_for(db: Session, row: ModelProvider, override: bool = False) -> netguard.Policy:
+    return netguard.provider_policy(row.kind, override or allows_private_network(db, row.id))
+
+
 def _load(db: Session, company_id: str, provider_id: str) -> ModelProvider:
     row = db.scalar(
         select(ModelProvider).where(
@@ -79,6 +118,15 @@ def get_provider(db: Session, ctx: CompanyContext, provider_id: str) -> ModelPro
 
 def serialize(db: Session, company_id: str, rows: list[ModelProvider]) -> list[dict]:
     default_id = policy.load_policy(db, company_id).default_model_provider_id
+    keys = {_net_key(r.id): r.id for r in rows}
+    opted_in = (
+        {
+            keys[k]
+            for k in db.scalars(select(SystemState.key).where(SystemState.key.in_(list(keys))))
+        }
+        if keys
+        else set()
+    )
     out = []
     for row in rows:
         out.append(
@@ -93,6 +141,7 @@ def serialize(db: Session, company_id: str, rows: list[ModelProvider]) -> list[d
                 "context_length": row.context_length,
                 "is_local": row.is_local,
                 "enabled": row.enabled,
+                "allow_private_network": row.id in opted_in,
                 "input_price_per_mtok_micros": row.input_price_per_mtok_micros,
                 "output_price_per_mtok_micros": row.output_price_per_mtok_micros,
                 "last_test": row.last_test,
@@ -104,7 +153,7 @@ def serialize(db: Session, company_id: str, rows: list[ModelProvider]) -> list[d
     return out
 
 
-def _normalize_url(kind: str, base_url: str | None) -> str | None:
+def _normalize_url(kind: str, base_url: str | None, allow_private: bool = False) -> str | None:
     default, _, _ = KINDS[kind]
     url = (base_url or "").strip() or default
     if url is None:
@@ -117,7 +166,31 @@ def _normalize_url(kind: str, base_url: str | None) -> str | None:
         raise ValidationFailed(
             f"base_url {problem}", details=[{"loc": ["body", "base_url"], "msg": problem}]
         )
+    require_valid_destination(kind, url, allow_private)
     return probe.ollama_root(url) if kind == "ollama" else url.rstrip("/")
+
+
+def require_valid_destination(kind: str, url: str, allow_private: bool = False) -> None:
+    """SSRF guard for a URL an owner/admin supplies (422 ``unsafe_url``). Resolves the host and
+    refuses link-local / cloud-metadata / reserved addresses always, loopback for cloud kinds,
+    private networks without the opt-in. A name that does not resolve *yet* is accepted here (it
+    fails at test time); every real request is checked again and pinned to the validated address
+    (``netguard``)."""
+    if allow_private and kind not in netguard.LOCAL_MODEL_KINDS:
+        raise ValidationFailed(
+            f"{kind} providers must use a public address; allow_private_network is only for "
+            "ollama and openai_compatible",
+            details=[
+                {"loc": ["body", "allow_private_network"], "msg": "not allowed for this kind"}
+            ],
+        )
+    pol = netguard.provider_policy(kind, allow_private)
+    netguard.check_url(
+        url,
+        allow_loopback=pol.allow_loopback,
+        allow_private=pol.allow_private,
+        require_resolution=False,
+    )
 
 
 def create_provider(
@@ -132,11 +205,12 @@ def create_provider(
         )
     if data.credential_id:
         credentials.require_usable(db, ctx.company_id, data.credential_id)
+    base_url = _normalize_url(kind, data.base_url, data.allow_private_network)
     row = ModelProvider(
         company_id=ctx.company_id,
         name=data.name,
         kind=kind,
-        base_url=_normalize_url(kind, data.base_url),
+        base_url=base_url,
         credential_id=data.credential_id,
         default_model=data.default_model,
         context_length=data.context_length,
@@ -151,6 +225,7 @@ def create_provider(
     except IntegrityError as exc:
         db.rollback()
         raise Conflict(f"A model provider named {data.name!r} already exists") from exc
+    _set_private_network(db, row.id, data.allow_private_network)
     audit.record(
         db,
         company_id=ctx.company_id,
@@ -164,6 +239,7 @@ def create_provider(
             "kind": row.kind,
             "default_model": row.default_model,
             "is_local": row.is_local,
+            "allow_private_network": data.allow_private_network,
             "has_credential": row.credential_id is not None,
         },
     )
@@ -250,11 +326,21 @@ def update_provider(
     row = _load(db, ctx.company_id, provider_id)
     fields = data.model_fields_set
     changed: list[str] = []
-    if "base_url" in fields:
-        value = _normalize_url(row.kind, data.base_url)
+    was_private = allows_private_network(db, row.id)
+    now_private = data.allow_private_network if "allow_private_network" in fields else was_private
+    if "base_url" in fields or now_private != was_private:
+        # the (url, opt-in) pair is re-validated whenever either half changes
+        value = _normalize_url(
+            row.kind,
+            data.base_url if "base_url" in fields else row.base_url,
+            bool(now_private),
+        )
         if value != row.base_url:
             row.base_url = value
             changed.append("base_url")
+    if now_private != was_private:
+        _set_private_network(db, row.id, bool(now_private))
+        changed.append("allow_private_network")
     if "credential_id" in fields:
         if data.credential_id:
             credentials.require_usable(db, ctx.company_id, data.credential_id)
@@ -336,6 +422,7 @@ def delete_provider(db: Session, ctx: CompanyContext, provider_id: str) -> None:
         data={"name": row.name, "kind": row.kind},
     )
     events.emit(db, ctx.company_id, "model_provider.deleted", {"provider_id": row.id})
+    _set_private_network(db, row.id, False)
     db.delete(row)
     db.commit()
 
@@ -350,11 +437,14 @@ def test_provider(
     cipher: CredentialCipher,
     *,
     model: str | None = None,
+    allow_private_network: bool = False,
     transport: httpx.BaseTransport | None = None,
 ) -> ModelProvider:
     require_human_admin(ctx, "test model providers")
     row = _load(db, ctx.company_id, provider_id)
-    outcome = _run_test(db, row, cipher, transport, model=model)
+    outcome = _run_test(
+        db, row, cipher, transport, model=model, allow_private_network=allow_private_network
+    )
     row.last_test = outcome.as_dict()
     audit.record(
         db,
@@ -397,7 +487,9 @@ def list_models(
                 [], False, "The provider's credential is missing or unreadable"
             )
     base = row.base_url or KINDS[row.kind][0] or ""
-    return probe.list_models(row.kind, base, api_key, transport=transport)
+    return probe.list_models(
+        row.kind, base, api_key, transport=transport, policy=_policy_for(db, row)
+    )
 
 
 def _run_test(
@@ -407,10 +499,14 @@ def _run_test(
     transport: httpx.BaseTransport | None,
     *,
     model: str | None = None,
+    allow_private_network: bool = False,
 ) -> probe.CheckOutcome:
     model = model or row.default_model
+    net = _policy_for(db, row, allow_private_network)
     if row.kind == "ollama":
-        return probe.check_ollama(row.base_url, model, row.context_length, transport=transport)
+        return probe.check_ollama(
+            row.base_url, model, row.context_length, transport=transport, policy=net
+        )
     api_key = None
     if row.credential_id:
         try:
@@ -430,6 +526,7 @@ def _run_test(
         model,
         configured_context=row.context_length,
         transport=transport,
+        policy=net,
     )
 
 
@@ -445,7 +542,19 @@ def detect_ollama(
     call (idempotent: an existing provider for the same URL is returned, never duplicated)."""
     require_human_admin(ctx, "detect model providers")
     request = request or DetectRequest()
-    scan = probe.scan_ollama(request.base_url, transport=transport)
+    if request.base_url and request.base_url.strip():
+        problem = probe.validate_http_url(request.base_url.strip())
+        if problem:
+            raise ValidationFailed(
+                f"base_url {problem}",
+                details=[{"loc": ["body", "base_url"], "msg": problem}],
+            )
+        require_valid_destination("ollama", request.base_url.strip(), request.allow_private_network)
+    scan = probe.scan_ollama(
+        request.base_url,
+        transport=transport,
+        policy=netguard.provider_policy("ollama", request.allow_private_network),
+    )
     recommended = probe.recommend(scan.models)
     existing = db.scalar(
         select(ModelProvider).where(
@@ -517,9 +626,12 @@ def detect_ollama(
                 default_model=chosen.name,
                 context_length=request.context_length,
                 make_default=request.make_default,
+                allow_private_network=request.allow_private_network,
             ),
         )
-    outcome = _run_test(db, row, cipher, transport)
+    outcome = _run_test(
+        db, row, cipher, transport, allow_private_network=request.allow_private_network
+    )
     row.last_test = outcome.as_dict()
     db.commit()
     result.registered = serialize_one(db, ctx.company_id, row)  # type: ignore[assignment]

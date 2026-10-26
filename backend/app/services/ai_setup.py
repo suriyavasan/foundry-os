@@ -32,7 +32,13 @@ from app.services import audit, events, model_providers, policy
 ENFORCED = True
 AI_SETUP_REQUIRED = "ai_setup_required"  # Task.blocked_reason while the gate is closed
 CLI_RUNTIME_PREFIX = "cli:"
-WORK_RUNTIMES = ("company_agent", "cli:claude_code", "cli:codex", "cli:opencode")
+WORK_RUNTIMES = (
+    "company_agent",
+    "cli:claude_code",
+    "cli:codex",
+    "cli:opencode",
+    "cli:antigravity",
+)
 
 
 @dataclass

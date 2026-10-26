@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { useAuthSession, useSetup } from '@/api'
+import type { AuthSession } from '@/api/types'
 import { Button, Field, FormError, Input } from '@/components/ui'
 import { NewPasswordFields } from '@/features/auth/PasswordFields'
 import { DISPLAY_NAME_MAX, describeSetupFailure, suggestUsername, validateDisplayName, validateEmail, validateUsername, type SetupFailure } from '@/lib/auth'
@@ -13,7 +14,7 @@ export const SETUP_TOKEN_FILE = 'data/owner.token'
  * against the person's own details, the setup token only when the server asks for it (not on the machine that runs the
  * server), and a clear way forward when someone else finished setup first.
  */
-export function AccountStep({ tokenRequired, onDone }: { tokenRequired: boolean; onDone: () => void }) {
+export function AccountStep({ tokenRequired, onDone }: { tokenRequired: boolean; onDone: (session: AuthSession) => void }) {
   const setup = useSetup()
   const session = useAuthSession()
   const [displayName, setDisplayName] = useState('')
@@ -48,7 +49,7 @@ export function AccountStep({ tokenRequired, onDone }: { tokenRequired: boolean;
     setErrors(next)
     if (Object.values(next).some(Boolean)) return
     try {
-      await setup.mutateAsync({
+      const created = await setup.mutateAsync({
         username,
         display_name: displayName.trim(),
         password,
@@ -58,7 +59,7 @@ export function AccountStep({ tokenRequired, onDone }: { tokenRequired: boolean;
       setPassword('')
       setConfirm('')
       setToken('')
-      onDone()
+      onDone(created)
     } catch (err) {
       const f: SetupFailure = describeSetupFailure(err)
       setErrors({ ...f.fields })

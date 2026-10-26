@@ -81,6 +81,9 @@ class ProviderTestRequest(RequestModel):
     """Optional body of ``POST .../test``: test another model than the provider's default."""
 
     model: str | None = Field(default=None, min_length=1, max_length=160)
+    # Allow this one test to reach a private-network address (RFC 1918 / CGNAT / ULA) even if the
+    # provider has not been saved with the opt-in. Never persisted by a test.
+    allow_private_network: bool = False
 
 
 class ProviderModel(ApiModel):
@@ -108,6 +111,8 @@ class ModelProvider(ApiModel):
     context_length: int
     is_local: bool
     enabled: bool
+    # The owner's explicit opt-in to reach a private-network address (ollama / openai_compatible).
+    allow_private_network: bool = False
     input_price_per_mtok_micros: int | None
     output_price_per_mtok_micros: int | None
     last_test: ProviderTest | None
@@ -125,6 +130,10 @@ class ModelProviderCreate(RequestModel):
     context_length: int = Field(default=32768, ge=8192, le=10_000_000)
     is_local: bool | None = None  # default: true for ollama, false otherwise
     enabled: bool = True
+    # Explicit opt-in: the endpoint is on a private network (192.168.x.x, 10.x.x.x, 172.16-31.x.x,
+    # Tailscale 100.64/10, IPv6 ULA). Loopback needs no opt-in for ollama / openai_compatible;
+    # link-local and cloud-metadata addresses are never allowed. Cloud kinds refuse it.
+    allow_private_network: bool = False
     input_price_per_mtok_micros: int | None = Field(default=None, ge=0, le=MAX_BUDGET_MICROS)
     output_price_per_mtok_micros: int | None = Field(default=None, ge=0, le=MAX_BUDGET_MICROS)
     make_default: bool = False  # also set as the company default model
@@ -138,10 +147,13 @@ class ModelProviderUpdate(RequestModel):
     context_length: int | None = Field(default=None, ge=8192, le=10_000_000)
     is_local: bool | None = None
     enabled: bool | None = None
+    allow_private_network: bool | None = None
     input_price_per_mtok_micros: int | None = Field(default=None, ge=0, le=MAX_BUDGET_MICROS)
     output_price_per_mtok_micros: int | None = Field(default=None, ge=0, le=MAX_BUDGET_MICROS)
 
-    @field_validator("name", "default_model", "context_length", "is_local", "enabled")
+    @field_validator(
+        "name", "default_model", "context_length", "is_local", "enabled", "allow_private_network"
+    )
     @classmethod
     def _not_null(cls, v):
         if v is None:
@@ -177,3 +189,5 @@ class DetectRequest(RequestModel):
     model: str | None = Field(default=None, max_length=160)
     context_length: int = Field(default=32768, ge=8192, le=10_000_000)
     make_default: bool = True
+    # The Ollama server is on a private network (also saved on the provider when registering).
+    allow_private_network: bool = False

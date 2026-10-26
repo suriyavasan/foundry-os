@@ -8,7 +8,12 @@ Archive layout (``.tar.gz``, mode 0600)::
 
 Not included (re-creatable or machine-local): ``workspaces/`` (run scratch space), ``bin/`` (downloaded
 helper binaries), ``run/`` (pid files), ``backups/``, ``*.pid``, caches. **The archive contains the secret
-key and the owner token**: treat it like the secrets themselves (store it encrypted, e.g. age/gpg).
+key and the owner token**: treat it like the secrets themselves. ``create_backup(..., passphrase=...)``
+writes the same archive through authenticated encryption instead (``*.tar.gz.enc``, format in
+``app.ops.backup_crypto``: scrypt + AES-256-GCM in chunks); restore detects it by its magic bytes and needs
+the passphrase. Every backup file is created mode 0600. Automatic pre-upgrade backups stay unencrypted:
+they live in the data directory next to ``secret.key`` (same trust boundary) and an unattended start has
+no human to ask for a passphrase.
 
 Restore verifies every file against the manifest *before* anything in the data directory is touched,
 refuses when a Foundry AI OS process is using the directory, and replaces existing data only with
@@ -27,14 +32,14 @@ import shutil
 import sqlite3
 import tarfile
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
 
 from app.core.config import APP_VERSION, Settings, sqlite_file_path
-from app.ops import pidfile
+from app.ops import backup_crypto, pidfile
 
 FORMAT = 1
 MANIFEST = "manifest.json"
@@ -64,6 +69,7 @@ class BackupResult:
     files: int
     bytes: int
     alembic_revision: str | None
+    encrypted: bool = False
 
 
 @dataclass
@@ -166,23 +172,67 @@ class _HashingReader:
         return data
 
 
+def _write_members(
+    tar: tarfile.TarFile, manifest: dict, sources: list[tuple[str, Path]], now: datetime
+) -> None:
+    body = json.dumps(manifest, indent=2).encode()
+    info = tarfile.TarInfo(MANIFEST)
+    info.size = len(body)
+    info.mtime = int(now.timestamp())
+    info.mode = 0o600
+    tar.addfile(info, io.BytesIO(body))
+    expected = {e["path"]: e for e in manifest["files"]}
+    for arcname, path in sources:
+        st = path.stat()
+        tinfo = tarfile.TarInfo(arcname)
+        tinfo.size = expected[arcname]["size"]
+        tinfo.mtime = int(st.st_mtime)
+        tinfo.mode = 0o600
+        with path.open("rb") as fh:
+            reader = _HashingReader(fh)
+            if st.st_size != tinfo.size:
+                raise OpsError(
+                    f"{path} changed while it was being backed up; run the backup again."
+                )
+            tar.addfile(tinfo, reader)
+            if reader.hash.hexdigest() != expected[arcname]["sha256"]:
+                raise OpsError(
+                    f"{path} changed while it was being backed up; run the backup again."
+                )
+
+
 def create_backup(
-    settings: Settings, out: Path | None = None, *, now: datetime | None = None
+    settings: Settings,
+    out: Path | None = None,
+    *,
+    now: datetime | None = None,
+    passphrase: str | None = None,
+    kdf_log2_n: int = backup_crypto.DEFAULT_LOG2_N,
 ) -> BackupResult:
+    """Write a backup. With ``passphrase`` the whole archive is encrypted (``*.tar.gz.enc``)."""
+    if passphrase is not None and len(passphrase) < backup_crypto.MIN_PASSPHRASE_CHARS:
+        raise OpsError(
+            f"The passphrase must be at least {backup_crypto.MIN_PASSPHRASE_CHARS} characters.",
+            exit_code=2,
+            code="weak_passphrase",
+        )
+    suffix = ".tar.gz.enc" if passphrase is not None else ".tar.gz"
     db_file = _database_file(settings)
     data_dir = settings.resolved_data_dir
     now = now or datetime.now(UTC)
     stamp = now.strftime("%Y%m%d-%H%M%S")
-    default_name = f"companyos-backup-{stamp}.tar.gz"
+    default_name = f"companyos-backup-{stamp}{suffix}"
     if out is None:
         out = data_dir / "backups" / default_name
         n = 1
         while out.exists():  # two backups in the same second
-            out = data_dir / "backups" / f"companyos-backup-{stamp}-{n}.tar.gz"
+            out = data_dir / "backups" / f"companyos-backup-{stamp}-{n}{suffix}"
             n += 1
     out = out.expanduser()
     if out.is_dir():
         out = out / default_name
+    elif passphrase is not None and out.name.endswith(".tar.gz"):
+        out = out.with_name(out.name + ".enc")  # the name says what is inside
     out.parent.mkdir(parents=True, exist_ok=True)
     if out.exists():
         raise OpsError(f"{out} already exists; choose another --out.", exit_code=6, code="exists")
@@ -211,36 +261,28 @@ def create_backup(
         tmp_out = out.with_name(out.name + ".partial")
         fd = os.open(tmp_out, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         try:
-            with os.fdopen(fd, "wb") as raw, tarfile.open(fileobj=raw, mode="w:gz") as tar:
-                body = json.dumps(manifest, indent=2).encode()
-                info = tarfile.TarInfo(MANIFEST)
-                info.size = len(body)
-                info.mtime = int(now.timestamp())
-                info.mode = 0o600
-                tar.addfile(info, io.BytesIO(body))
-                expected = {e["path"]: e for e in entries}
-                for arcname, path in sources:
-                    st = path.stat()
-                    tinfo = tarfile.TarInfo(arcname)
-                    tinfo.size = expected[arcname]["size"]
-                    tinfo.mtime = int(st.st_mtime)
-                    tinfo.mode = 0o600
-                    with path.open("rb") as fh:
-                        reader = _HashingReader(fh)
-                        if st.st_size != tinfo.size:
-                            raise OpsError(
-                                f"{path} changed while it was being backed up; run the backup again."
-                            )
-                        tar.addfile(tinfo, reader)
-                        if reader.hash.hexdigest() != expected[arcname]["sha256"]:
-                            raise OpsError(
-                                f"{path} changed while it was being backed up; run the backup again."
-                            )
+            with os.fdopen(fd, "wb") as raw:
+                sink = (
+                    backup_crypto.EncryptWriter(raw, passphrase, log2_n=kdf_log2_n)
+                    if passphrase is not None
+                    else raw
+                )
+                with tarfile.open(fileobj=sink, mode="w:gz") as tar:
+                    _write_members(tar, manifest, sources, now)
+                if isinstance(sink, backup_crypto.EncryptWriter):
+                    sink.finish()  # the last chunk carries the "end of file" authentication
             os.replace(tmp_out, out)
+            os.chmod(out, 0o600)
         finally:
             with contextlib.suppress(OSError):
                 tmp_out.unlink()
-    return BackupResult(out, len(entries), sum(e["size"] for e in entries), revision)
+    return BackupResult(
+        out,
+        len(entries),
+        sum(e["size"] for e in entries),
+        revision,
+        encrypted=passphrase is not None,
+    )
 
 
 # ------------------------------------------------------------------------------ restore
@@ -260,9 +302,49 @@ def _safe_member_path(name: str) -> str:
     return norm
 
 
-def read_manifest(archive: Path) -> dict:
+def is_encrypted(archive: Path) -> bool:
+    """True when ``archive`` is an encrypted backup (recognised by its magic bytes, not its name)."""
     try:
+        with archive.open("rb") as fh:
+            return backup_crypto.is_encrypted_header(fh.read(len(backup_crypto.MAGIC)))
+    except OSError:
+        return False
+
+
+_CRYPTO_EXIT = {"wrong_passphrase": 3}
+
+
+@contextlib.contextmanager
+def _open_tar(
+    archive: Path, passphrase: str | None, *, authenticate_all: bool = True
+) -> Iterator[tarfile.TarFile]:
+    """The archive as a tar stream. Plain archives are opened as before. An encrypted one is
+    decrypted on the fly (one chunk in memory) and, unless ``authenticate_all`` is off, read to its
+    end afterwards so truncation and appended data fail authentication as well."""
+    if not is_encrypted(archive):
         with tarfile.open(archive, "r:gz") as tar:
+            yield tar
+        return
+    if not passphrase:
+        raise OpsError(
+            "This backup is encrypted: a passphrase is required.",
+            exit_code=2,
+            code="passphrase_required",
+        )
+    try:
+        with archive.open("rb") as raw:
+            reader = backup_crypto.DecryptReader(raw, passphrase)
+            with tarfile.open(fileobj=reader, mode="r|gz") as tar:
+                yield tar
+            if authenticate_all:
+                reader.drain()
+    except backup_crypto.CryptoFailure as exc:
+        raise OpsError(exc.message, exit_code=_CRYPTO_EXIT.get(exc.code, 1), code=exc.code) from exc
+
+
+def read_manifest(archive: Path, passphrase: str | None = None) -> dict:
+    try:
+        with _open_tar(archive, passphrase, authenticate_all=False) as tar:
             for member in tar:
                 if member.name == MANIFEST:
                     if member.size > MAX_MANIFEST_BYTES or not member.isfile():
@@ -294,10 +376,13 @@ def read_manifest(archive: Path) -> dict:
     return data
 
 
-def verify_archive(archive: Path, staging: Path | None = None) -> dict:
+def verify_archive(
+    archive: Path, staging: Path | None = None, passphrase: str | None = None
+) -> dict:
     """Check every member against the manifest. With ``staging``, also extract the verified files there.
-    Raises :class:`OpsError` on any difference (damaged, truncated or modified archive)."""
-    manifest = read_manifest(archive)
+    Raises :class:`OpsError` on any difference (damaged, truncated or modified archive); for an
+    encrypted archive that includes any failure of the authenticated encryption."""
+    manifest = read_manifest(archive, passphrase)
     expected: dict[str, dict] = {}
     for entry in manifest["files"]:
         try:
@@ -312,7 +397,7 @@ def verify_archive(archive: Path, staging: Path | None = None) -> dict:
         expected[path] = {"sha256": digest, "size": size}
     seen: set[str] = set()
     try:
-        with tarfile.open(archive, "r:gz") as tar:
+        with _open_tar(archive, passphrase) as tar:
             for member in tar:
                 if member.name == MANIFEST:
                     continue
@@ -397,6 +482,7 @@ def restore_backup(
     force: bool = False,
     confirm: Callable[[str], bool] | None = None,
     now: datetime | None = None,
+    passphrase: str | None = None,
 ) -> RestoreResult:
     db_file = _database_file(settings)
     data_dir = settings.resolved_data_dir
@@ -414,11 +500,15 @@ def restore_backup(
             code="running",
         )
 
+    if is_encrypted(archive):
+        # Fail on a missing/wrong passphrase before anything (even the staging folder) is created.
+        read_manifest(archive, passphrase)
+
     staging = data_dir.parent / f".{data_dir.name}.restore-staging-{now.strftime('%Y%m%d%H%M%S')}"
     data_dir.parent.mkdir(parents=True, exist_ok=True)
-    staging.mkdir(parents=True, exist_ok=False)
+    staging.mkdir(mode=0o700, parents=False, exist_ok=False)  # it briefly holds decrypted secrets
     try:
-        manifest = verify_archive(archive, staging)
+        manifest = verify_archive(archive, staging, passphrase)
         snapshot = staging / DB_MEMBER
         try:
             conn = sqlite3.connect(snapshot)

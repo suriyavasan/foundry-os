@@ -39,13 +39,14 @@ def build_default_registry(
         from app.runtimes.company_agent import CompanyAgentAdapter
 
         registry.register(CompanyAgentAdapter(settings, session_factory, keys))
-        # M10: the coding CLIs (Claude Code, Codex, OpenCode). Registered always; each reports
-        # "not configured" until it is installed and told how to sign in.
+        # M10: the coding CLIs (Claude Code, Codex, OpenCode, Antigravity). Registered always; each
+        # reports "not configured" until it is installed and told how to sign in.
+        from app.runtimes.cli.antigravity import AntigravityAdapter
         from app.runtimes.cli.claude_code import ClaudeCodeAdapter
         from app.runtimes.cli.codex import CodexAdapter
         from app.runtimes.cli.opencode import OpenCodeAdapter
 
-        for adapter_class in (ClaudeCodeAdapter, CodexAdapter, OpenCodeAdapter):
+        for adapter_class in (ClaudeCodeAdapter, CodexAdapter, OpenCodeAdapter, AntigravityAdapter):
             registry.register(adapter_class(settings, session_factory, keys, cli_env))  # type: ignore[arg-type]
     if settings.enable_test_runtimes:
         # Test fixture only; reported with kind "test_fixture" and absent from default config.

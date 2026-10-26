@@ -47,10 +47,10 @@ describe('AuthGate on an M7 backend', () => {
     renderGate()
     // M10: the onboarding opens on a welcome screen; the account form is the second of six steps.
     expect(await screen.findByRole('heading', { name: 'A company that runs itself.' })).toBeInTheDocument()
-    expect(screen.getByText(/Step 1 of 6/)).toBeInTheDocument()
+    expect(screen.getByText(/Step 1 of 5/)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /Start/ }))
     expect(await screen.findByRole('heading', { name: 'Create your account' })).toBeInTheDocument()
-    expect(screen.getByText(/Step 2 of 6/)).toBeInTheDocument()
+    expect(screen.getByText(/Step 2 of 5/)).toBeInTheDocument()
   })
 
   it('keeps the owner-token flow on a backend without /auth/session', async () => {
@@ -287,14 +287,12 @@ describe('setup wizard', () => {
     await screen.findByRole('heading', { name: 'Connect your AI' })
   }
 
-  async function throughAiAndWork() {
-    await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
-    await screen.findByRole('heading', { name: 'How should work get done?' })
-    await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
+  async function throughAi() {
+    await userEvent.click(screen.getByRole('button', { name: 'Save and continue' }))
     await screen.findByRole('heading', { name: 'Meet your team' })
   }
 
-  it('sends the token, then walks company -> AI -> work -> team -> the app, staying in the onboarding after sign-in', async () => {
+  it('sends the token, then walks company -> AI -> team -> the app, staying in the onboarding after sign-in', async () => {
     const api = setup({ tokenRequired: true })
     await userEvent.click(await screen.findByRole('button', { name: /Start/ }))
     await fillAccountFields()
@@ -320,11 +318,11 @@ describe('setup wizard', () => {
     const created = api.calls.find((c) => c.method === 'POST' && c.path === '/companies')!
     expect(created.body).toMatchObject({ name: 'Acme', founder: { name: 'Atlas' } })
     expect(typeof (created.body as { timezone: string }).timezone).toBe('string')
-    // The server refuses notes until the AI works, so the idea waits until the work step is done.
+    // The server refuses notes until the AI works, so the idea waits until the AI step is saved.
     expect(api.calls.some((c) => c.path === '/companies/c9/notes')).toBe(false)
     expect(api.calls.some((c) => c.method === 'PATCH')).toBe(false)
 
-    await throughAiAndWork()
+    await throughAi()
     expect(api.calls.find((c) => c.path === '/companies/c9/notes')!.body).toEqual({ body: 'A newsletter about research papers' })
     expect(api.calls.some((c) => c.method === 'PATCH')).toBe(false)
     await userEvent.click(screen.getByRole('button', { name: /Launch/ }))
@@ -334,14 +332,14 @@ describe('setup wizard', () => {
   it('does not post a note when no idea was written', async () => {
     const api = setup()
     await toAiStep()
-    await throughAiAndWork()
+    await throughAi()
     expect(api.calls.some((c) => c.path.endsWith('/notes'))).toBe(false)
   })
 
   it('keeps the idea as the strategic goal when the backend has no notes yet', async () => {
     const api = setup({ notes: false })
     await toAiStep({ idea: 'Sell lemonade' })
-    await throughAiAndWork()
+    await throughAi()
     expect(api.calls.find((c) => c.method === 'PATCH' && c.path === '/companies/c9')!.body).toEqual({ strategic_goal: 'Sell lemonade' })
   })
 
@@ -349,7 +347,7 @@ describe('setup wizard', () => {
     setup()
     await toAiStep()
     expect(await screen.findByText(/AI setup is not available on this server yet/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Save and continue' })).toBeEnabled()
   })
 
   it('offers sign-in when someone else finished setup first', async () => {

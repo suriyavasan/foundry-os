@@ -12,7 +12,17 @@ from app.runtimes.base import ArtifactRef
 
 MAX_FILES = 20
 MAX_FILE_BYTES = 1_000_000
-SKIP_DIRS = {".git", "node_modules", ".venv", "__pycache__", ".opencode", ".claude", ".codex"}
+SKIP_DIRS = {
+    ".git",
+    "node_modules",
+    ".venv",
+    "__pycache__",
+    ".opencode",
+    ".claude",
+    ".codex",
+    ".agents",
+    ".gemini",
+}
 
 
 @dataclass(frozen=True)

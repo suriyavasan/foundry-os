@@ -31,6 +31,7 @@ from app.integrations.cloudflare import CloudflareClient, apply_dns_plan, plan_d
 from app.integrations.context import IntegrationContext
 from app.integrations.registries import valid_hostname
 from app.integrations.tunnel import TunnelSpec
+from app.models.accounts import Passkey
 from app.models.company import CompanyMember
 from app.models.enums import MemberRole, MemberStatus
 from app.models.guardrails import SystemState
@@ -109,6 +110,14 @@ def audit_device(
 # ------------------------------------------------------------------ the exposure gate
 
 
+def owner_has_strong_auth(db: Session, owner: User) -> bool:
+    """Two-factor sign-in or at least one passkey: either makes up for a password that was not set
+    under the policy (a passkey is phishing-resistant and needs the device)."""
+    return bool(owner.totp_enabled) or bool(
+        db.scalar(select(Passkey.id).where(Passkey.user_id == owner.id).limit(1))
+    )
+
+
 def exposure_block(db: Session, settings) -> dict[str, str] | None:
     """Why this device may not be exposed beyond localhost, or None when it may. ``code`` is one of
     ``auth_local``, ``no_password``, ``weak_password``."""
@@ -126,11 +135,11 @@ def exposure_block(db: Session, settings) -> dict[str, str] | None:
             "code": "no_password",
             "reason": "The owner account has no password yet. Finish the first-run setup first.",
         }
-    if owner.password_changed_at is None and not owner.totp_enabled:
+    if owner.password_changed_at is None and not owner_has_strong_auth(db, owner):
         return {
             "code": "weak_password",
             "reason": "The owner password was not set under the password policy. Change it (or "
-            "turn on 2FA) before exposing this device.",
+            "turn on 2FA or add a passkey) before exposing this device.",
         }
     return None
 
@@ -375,6 +384,7 @@ def status(db: Session, ic: IntegrationContext, principal: Principal) -> dict[st
         if domain_row:
             break
     two_fa = bool(user.totp_enabled)
+    strong = owner_has_strong_auth(db, user)
     return {
         "mode": mode,
         "device_name": device_name,
@@ -394,7 +404,7 @@ def status(db: Session, ic: IntegrationContext, principal: Principal) -> dict[st
         "active_url": active,
         "public_exposure_blocked_reason": block["reason"] if block else None,
         "public_exposure_blocked_code": block["code"] if block else None,
-        "public_exposure_advice": "two_factor_recommended" if not block and not two_fa else None,
+        "public_exposure_advice": "two_factor_recommended" if not block and not strong else None,
         "two_factor_enabled": two_fa,
         "domain": (
             {

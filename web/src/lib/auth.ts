@@ -39,6 +39,8 @@ export function normalizeAuthSession(raw: unknown): AuthSession {
     ...(o.setup_token_required === true ? { setup_token_required: true } : null),
     ...(o.two_factor_required === true || twoFactorState ? { two_factor_required: true } : null),
     ...(str(o.expires_at) ? { expires_at: str(o.expires_at) } : null),
+    ...(typeof o.passkeys_count === 'number' ? { passkeys_count: o.passkeys_count } : null),
+    ...(typeof o.passkey_supported_origin === 'boolean' ? { passkey_supported_origin: o.passkey_supported_origin } : null),
   }
 }
 
@@ -141,7 +143,7 @@ export function formatWait(seconds: number): string {
   return `${Math.round(m / 60)} hours`
 }
 
-function retryAfter(err: ApiError): number | null {
+export function retryAfter(err: ApiError): number | null {
   const d = obj(err.details)
   for (const key of ['retry_after_seconds', 'retry_after']) {
     const v = d?.[key]
@@ -150,7 +152,7 @@ function retryAfter(err: ApiError): number | null {
   return null
 }
 
-const reasonOf = (err: ApiError): string | null => str(obj(err.details)?.reason)
+export const reasonOf = (err: ApiError): string | null => str(obj(err.details)?.reason)
 
 /** Map a failed login to what the form says. `secondFactor` is true while the authenticator-code step is showing. */
 export function describeLoginFailure(err: unknown, { secondFactor = false }: { secondFactor?: boolean } = {}): LoginFailure {

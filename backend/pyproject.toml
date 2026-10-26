@@ -24,6 +24,7 @@ dependencies = [
     "typer>=0.15",
     "rich>=13.7",
     "segno>=1.6",
+    "webauthn>=3.0.1",
 ]
 
 [dependency-groups]

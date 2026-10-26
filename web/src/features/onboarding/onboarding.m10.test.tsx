@@ -71,21 +71,36 @@ function renderGate(onDone = vi.fn()) {
 async function chooseOpenRouter(model = 'anthropic/claude-sonnet-4.5') {
   await userEvent.click(await screen.findByRole('radio', { name: /OpenRouter/ }))
   await userEvent.type(screen.getByLabelText(/OpenRouter API key/), SECRET)
-  await userEvent.type(screen.getByLabelText(/^Model\b/, { selector: 'input' }), model)
+  await userEvent.type(screen.getByLabelText(/^Model(?! API)\b/, { selector: 'input' }), model)
 }
 
-const continueBtn = () => screen.getByRole('button', { name: 'Continue' })
+const saveBtn = () => screen.getByRole('button', { name: 'Save and open my company' })
+const testPassedMsg = () => screen.findByText(/Test passed\. It is saved with the button below/)
+const readyClis = (...ids: Array<[string, string]>) => ids.map(([id, name]) => makeCli({ id, display_name: name, auth: { mode: 'api_key', configured: true, credential_id: 'c', last_test: { ok: true, detail: 'OK', tested_at: null } } }))
 
-describe('the AI gate as a two-step onboarding (existing users)', () => {
-  it('is just "Connect your AI" and "How should work get done?", with no welcome, account or company step', async () => {
+describe('the AI gate as a one-step onboarding (existing users)', () => {
+  it('is just "Connect your AI", with no welcome, account or company step', async () => {
     backend()
     renderGate()
     expect(await screen.findByRole('heading', { name: 'Connect your AI' })).toBeInTheDocument()
-    expect(screen.getByText('Step 1 of 2 · Connect your AI')).toBeInTheDocument()
+    expect(screen.getByText('Step 1 of 1 · Connect your AI')).toBeInTheDocument()
     expect(screen.queryByText(/A company that runs itself/)).not.toBeInTheDocument()
     expect(screen.queryByLabelText(/Your name/)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Back' })).not.toBeInTheDocument()
-    expect(within(screen.getByRole('list', { name: 'Setup progress' })).getAllByRole('listitem')).toHaveLength(2)
+    expect(within(screen.getByRole('list', { name: 'Setup progress' })).getAllByRole('listitem')).toHaveLength(1)
+  })
+
+  it('lays out the model API as required and the coding CLIs as optional, with one save', async () => {
+    backend({ clis: [makeCli()] })
+    renderGate()
+    const api = await screen.findByRole('region', { name: 'Model API' })
+    expect(within(api).getByText('Required')).toBeInTheDocument()
+    expect(within(api).getByText(/Runs the company/)).toBeInTheDocument()
+    const cli = screen.getByRole('region', { name: 'Coding CLIs' })
+    expect(within(cli).getByText('Optional')).toBeInTheDocument()
+    expect(within(cli).getByText(/Skip it and they do everything through the model API/)).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /^Save/ })).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument()
   })
 
   it('offers the four providers and tells you why you are here', async () => {
@@ -96,48 +111,50 @@ describe('the AI gate as a two-step onboarding (existing users)', () => {
     expect(screen.getByText(/Connect an AI provider and run its test/)).toBeInTheDocument()
   })
 
-  it('Continue is disabled until the setup is ready', async () => {
+  it('the save is disabled until the model API passed its test, and says why', async () => {
     backend()
     renderGate()
     await screen.findByRole('heading', { name: 'Connect your AI' })
-    expect(continueBtn()).toBeDisabled()
+    expect(saveBtn()).toBeDisabled()
+    expect(await screen.findByText('Test the model API to continue.')).toBeInTheDocument()
   })
 })
 
 describe('Connect your AI: key, test, model, ready', () => {
-  it('stores the key once as a credential, makes the provider with the credential id, tests it with the loader showing every real check, and saves it', async () => {
+  it('stores the key once as a credential, makes the provider with the credential id, tests it with the loader showing every real check, and saves nothing until the one button is pressed', async () => {
     const api = backend()
-    renderGate()
+    const done = renderGate()
     await chooseOpenRouter()
     const key = screen.getByLabelText(/OpenRouter API key/)
     expect(key).toHaveAttribute('type', 'password')
     await userEvent.click(screen.getByRole('button', { name: 'Test connection' }))
 
-    // saved: the form gives way to the connected summary, whose "last test" lists every real check with the server's detail
-    const summary = await screen.findByRole('region', { name: 'Connected AI' })
-    const loader = within(summary).getByRole('list', { name: 'Last test' })
+    // the form stays; the loader shows every real check with the server's detail, and nothing is saved yet
+    expect(await testPassedMsg()).toBeInTheDocument()
+    const loader = screen.getByRole('list', { name: 'Connection test' })
     for (const label of ['Reachable', 'Authenticated', 'Tool calling', 'Context window', 'Model available', 'Ready']) expect(within(loader).getByRole('listitem', { name: `${label}: passed` })).toBeInTheDocument()
     expect(within(loader).getByText('tool_calling is fine')).toBeInTheDocument() // the server's own detail
 
-    // the order of events and what each carried
-    const posts = api.calls.filter((c) => c.method !== 'GET' && c.path.startsWith('/companies/c1'))
-    expect(posts.map((c) => `${c.method} ${c.path}`)).toEqual([
-      'POST /companies/c1/credentials',
-      'POST /companies/c1/model-providers',
-      'POST /companies/c1/model-providers/p1/test',
-      'PUT /companies/c1/ai-setup',
-    ])
-    expect(posts[0]!.body).toEqual({ name: 'openrouter-key', kind: 'api_key', value: SECRET })
-    expect(posts[1]!.body).toMatchObject({ kind: 'openrouter', credential_id: 'cr1', default_model: 'anthropic/claude-sonnet-4.5' })
-    expect(JSON.stringify(posts.slice(1))).not.toContain(SECRET) // the secret went to the credential endpoint only
-    expect(posts[3]!.body).toEqual({ management_provider_id: 'p1', management_model: 'anthropic/claude-sonnet-4.5', work_mode: 'api', work_runtime: 'company_agent' })
-    expect(key).not.toBeInTheDocument() // the connected summary replaced the form, so the key field is gone
+    // the order of events and what each carried: testing never saves
+    const writes = () => api.calls.filter((c) => c.method !== 'GET' && c.path.startsWith('/companies/c1'))
+    expect(writes().map((c) => `${c.method} ${c.path}`)).toEqual(['POST /companies/c1/credentials', 'POST /companies/c1/model-providers', 'POST /companies/c1/model-providers/p1/test'])
+    expect(writes()[0]!.body).toEqual({ name: 'openrouter-key', kind: 'api_key', value: SECRET })
+    expect(writes()[1]!.body).toMatchObject({ kind: 'openrouter', credential_id: 'cr1', default_model: 'anthropic/claude-sonnet-4.5' })
+    expect(JSON.stringify(writes().slice(1))).not.toContain(SECRET) // the secret went to the credential endpoint only
+    expect(key).toHaveValue('') // the server has the key; the browser forgot it
     expect(document.body.innerHTML).not.toContain(SECRET)
 
-    await waitFor(() => expect(continueBtn()).toBeEnabled())
+    await waitFor(() => expect(saveBtn()).toBeEnabled())
+    expect(saveBtn()).toBeEnabled()
+    expect(screen.queryByText('Test the model API to continue.')).not.toBeInTheDocument()
+    await userEvent.click(saveBtn())
+    await waitFor(() => expect(done).toHaveBeenCalled())
+    const puts = api.calls.filter((c) => c.method === 'PUT')
+    expect(puts).toHaveLength(1)
+    expect(puts[0]!.body).toEqual({ management_provider_id: 'p1', management_model: 'anthropic/claude-sonnet-4.5', work_mode: 'api', work_runtime: 'company_agent' })
   })
 
-  it('a failing check says which and why, saves nothing and keeps Continue disabled', async () => {
+  it('a failing check says which and why, saves nothing and keeps the save disabled', async () => {
     const api = backend({ test: makeProviderTest({ failing: 'tool_calling' }) })
     renderGate()
     await chooseOpenRouter()
@@ -149,7 +166,8 @@ describe('Connect your AI: key, test, model, ready', () => {
     expect(within(loader).getByText('tool_calling failed: nope')).toBeInTheDocument()
     expect(await screen.findByRole('alert')).toHaveTextContent(/tool calling failed: tool_calling failed: nope/)
     expect(api.calls.some((c) => c.method === 'PUT')).toBe(false)
-    expect(continueBtn()).toBeDisabled()
+    expect(saveBtn()).toBeDisabled()
+    expect(await screen.findByText('Test the model API to continue.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Test again' })).toBeEnabled()
   })
 
@@ -160,14 +178,18 @@ describe('Connect your AI: key, test, model, ready', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Test connection' }))
     await screen.findByRole('listitem', { name: 'Model available: failed' })
     // the provider now exists, so its model list is offered as a picker
-    // Re-query the input at every step: it re-renders once the model list arrives (slow CI runners hit this).
-    const modelInput = () => screen.getByLabelText(/^Model\b/, { selector: 'input' })
+    // re-query each time: the input re-renders when the model list arrives, so a kept reference goes stale
+    const modelInput = () => screen.getByLabelText(/^Model(?! API)\b/, { selector: 'input' })
     await userEvent.clear(modelInput())
     await userEvent.click(modelInput())
     const option = await screen.findByRole('option', { name: /openai\/gpt-4\.1/ })
     await userEvent.click(option)
     await waitFor(() => expect(modelInput()).toHaveValue('openai/gpt-4.1'))
     await userEvent.click(screen.getByRole('button', { name: 'Test connection' })) // a changed model clears the old result
+    await testPassedMsg()
+    expect(api.calls.some((c) => c.method === 'PUT')).toBe(false)
+    await waitFor(() => expect(saveBtn()).toBeEnabled())
+    await userEvent.click(saveBtn())
     await waitFor(() => expect(api.calls.some((c) => c.method === 'PUT')).toBe(true))
     expect(api.calls.filter((c) => c.method === 'POST' && c.path === '/companies/c1/credentials')).toHaveLength(1)
     expect(api.calls.filter((c) => c.method === 'POST' && c.path === '/companies/c1/model-providers')).toHaveLength(1)
@@ -181,18 +203,18 @@ describe('Connect your AI: key, test, model, ready', () => {
     await userEvent.click(await screen.findByRole('radio', { name: /OpenRouter/ }))
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'anthropic/claude-sonnet-4.5' })) // an example fills the field
-    expect(screen.getByLabelText(/^Model\b/, { selector: 'input' })).toHaveValue('anthropic/claude-sonnet-4.5')
-    expect(screen.getByLabelText(/^Model\b/, { selector: 'input' })).toHaveAttribute('placeholder', 'Type the model name')
+    expect(screen.getByLabelText(/^Model(?! API)\b/, { selector: 'input' })).toHaveValue('anthropic/claude-sonnet-4.5')
+    expect(screen.getByLabelText(/^Model(?! API)\b/, { selector: 'input' })).toHaveAttribute('placeholder', 'Type the model name')
   })
 
   it('requires a key for a cloud provider and a base URL for an OpenAI-compatible one, before any request', async () => {
     const api = backend()
     renderGate()
     await userEvent.click(await screen.findByRole('radio', { name: /OpenRouter/ }))
-    await userEvent.type(screen.getByLabelText(/^Model\b/, { selector: 'input' }), 'm')
+    await userEvent.type(screen.getByLabelText(/^Model(?! API)\b/, { selector: 'input' }), 'm')
     expect(screen.getByRole('button', { name: 'Test connection' })).toBeDisabled() // no key yet
     await userEvent.click(screen.getByRole('radio', { name: /^OpenAI-compatible/ }))
-    await userEvent.type(screen.getByLabelText(/^Model\b/, { selector: 'input' }), 'm')
+    await userEvent.type(screen.getByLabelText(/^Model(?! API)\b/, { selector: 'input' }), 'm')
     expect(screen.getByRole('button', { name: 'Test connection' })).toBeDisabled() // no base URL
     await userEvent.type(screen.getByLabelText(/Base URL/), 'http://127.0.0.1:1234/v1')
     expect(screen.getByRole('button', { name: 'Test connection' })).toBeEnabled()
@@ -239,8 +261,11 @@ describe('Connect your AI: key, test, model, ready', () => {
     renderGate()
     await chooseOpenRouter()
     await userEvent.click(screen.getByRole('button', { name: 'Test connection' }))
+    await testPassedMsg()
+    await waitFor(() => expect(saveBtn()).toBeEnabled())
+    await userEvent.click(saveBtn()) // the reason shows up after pressing save, not after testing
     expect(await screen.findByText(/latest test did not pass for this model/)).toBeInTheDocument()
-    expect(continueBtn()).toBeDisabled()
+    expect(screen.getByText(/The last test of your AI provider did not pass/)).toBeInTheDocument()
   })
 })
 
@@ -254,10 +279,13 @@ describe('Connect your AI: local Ollama and providers that already exist', () =>
     await userEvent.click(radio)
     expect(screen.getByLabelText(/Base URL/)).toHaveValue('http://127.0.0.1:11434')
     expect(screen.queryByLabelText(/API key/)).not.toBeInTheDocument()
-    const model = screen.getByLabelText(/^Model\b/, { selector: 'input' })
+    const model = screen.getByLabelText(/^Model(?! API)\b/, { selector: 'input' })
     await userEvent.click(model)
     await userEvent.click(await screen.findByRole('option', { name: /qwen2\.5:7b/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Test connection' }))
+    await testPassedMsg()
+    await waitFor(() => expect(saveBtn()).toBeEnabled())
+    await userEvent.click(saveBtn())
     await waitFor(() => expect(api.calls.some((c) => c.method === 'PUT')).toBe(true))
     expect(api.calls.some((c) => c.path === '/companies/c1/credentials')).toBe(false) // no key for a local model
     expect(api.calls.find((c) => c.path === '/companies/c1/model-providers' && c.method === 'POST')?.body).toMatchObject({ kind: 'ollama', base_url: 'http://127.0.0.1:11434', default_model: 'qwen2.5:7b', is_local: true })
@@ -276,9 +304,12 @@ describe('Connect your AI: local Ollama and providers that already exist', () =>
     const api = backend({ providers: [existing] })
     renderGate()
     await userEvent.click(await screen.findByRole('button', { name: /Team OpenRouter/ }))
-    expect(screen.getByLabelText(/^Model\b/, { selector: 'input' })).toHaveValue('openai/gpt-4.1')
+    expect(screen.getByLabelText(/^Model(?! API)\b/, { selector: 'input' })).toHaveValue('openai/gpt-4.1')
     expect(screen.queryByLabelText(/API key/)).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Test connection' }))
+    await testPassedMsg()
+    await waitFor(() => expect(saveBtn()).toBeEnabled())
+    await userEvent.click(saveBtn())
     await waitFor(() => expect(api.calls.some((c) => c.method === 'PUT')).toBe(true))
     expect(api.calls.some((c) => c.path === '/companies/c1/credentials')).toBe(false)
     expect(api.calls.filter((c) => c.method === 'POST' && c.path === '/companies/c1/model-providers')).toHaveLength(0)
@@ -287,89 +318,106 @@ describe('Connect your AI: local Ollama and providers that already exist', () =>
 
   it('shows what is connected when the AI is already ready, and lets you test it again', async () => {
     const api = backend({ ai: readyAiSetup() })
-    renderGate()
+    const done = renderGate()
     const summary = await screen.findByRole('region', { name: 'Connected AI' })
     expect(within(summary).getByText('OpenRouter')).toBeInTheDocument()
     expect(within(summary).getByText('anthropic/claude-sonnet-4.5')).toBeInTheDocument()
     expect(within(summary).getAllByText('Ready').length).toBeGreaterThan(0)
-    expect(continueBtn()).toBeEnabled()
+    expect(saveBtn()).toBeEnabled()
+    // saving with nothing changed writes nothing
     api.calls.length = 0
+    await userEvent.click(saveBtn())
+    await waitFor(() => expect(done).toHaveBeenCalled())
+    expect(api.calls.some((c) => c.method === 'PUT')).toBe(false)
   })
 })
 
-describe('How should work get done?', () => {
-  async function toWork(b: Backend) {
+describe('Coding CLIs: optional, always visible, saved together with the model API', () => {
+  async function toForm(b: Backend) {
     const api = backend({ ai: readyAiSetup(), ...b })
     const done = renderGate()
     await screen.findByRole('region', { name: 'Connected AI' })
-    await userEvent.click(continueBtn())
-    await screen.findByRole('heading', { name: 'How should work get done?' })
+    await screen.findByRole('radiogroup', { name: 'Who does the hands-on work' })
     return { api, done }
   }
+  const handsOn = () => screen.getByRole('radiogroup', { name: 'Who does the hands-on work' })
+  const codex = makeCli({ id: 'codex', display_name: 'Codex CLI', installed: false, version: null, binary_path: null, install: { available: true, command: 'npm install -g @openai/codex', requires: ['npm'] } })
 
-  it('has two cards, API only selected by default; Continue finishes the gate without saving anything new', async () => {
-    const { api, done } = await toWork({})
-    const group = screen.getByRole('radiogroup', { name: 'Work mode' })
-    expect(within(group).getByRole('radio', { name: /^API only/ })).toBeChecked()
-    expect(within(group).getByRole('radio', { name: /^API \+ coding CLIs/ })).not.toBeChecked()
-    expect(screen.getByText('Step 2 of 2 · How work gets done')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Open my company' }))
+  it('lists the CLIs and what is installed with no extra click; Model API only is checked by default; saving writes nothing new', async () => {
+    const { api, done } = await toForm({ clis: [...readyClis(['claude_code', 'Claude Code']), codex, makeCli({ id: 'opencode', display_name: 'OpenCode', version: null })] })
+    expect(screen.getByRole('article', { name: 'Claude Code' })).toBeInTheDocument()
+    expect(screen.getByRole('article', { name: 'Codex CLI' })).toBeInTheDocument()
+    expect(screen.getByRole('article', { name: 'OpenCode' })).toBeInTheDocument()
+    expect(screen.getByText(/Claude Code — ready · Codex CLI — not installed · OpenCode — installed, not tested/)).toBeInTheDocument()
+    expect(within(handsOn()).getByRole('radio', { name: /Model API only/ })).toBeChecked()
+    expect(within(handsOn()).getByRole('radio', { name: /Use Claude Code for hands-on work/ })).not.toBeChecked()
+    expect(saveBtn()).toBeEnabled() // optional: nothing to decide
+    await userEvent.click(saveBtn())
     await waitFor(() => expect(done).toHaveBeenCalled())
     expect(api.calls.some((c) => c.method === 'PUT')).toBe(false)
   })
 
-  it('hybrid shows the CLI tiles from /cli-runtimes and blocks Continue until one that tested OK is picked', async () => {
-    const tested = (id: string, name: string) => makeCli({ id, display_name: name, auth: { mode: 'api_key', configured: true, credential_id: 'c', last_test: { ok: true, detail: 'OK', tested_at: null } } })
-    const untested = makeCli({ id: 'codex', display_name: 'Codex CLI', installed: false, version: null, binary_path: null, install: { available: true, command: 'npm install -g @openai/codex', requires: ['npm'] } })
-    const { api, done } = await toWork({ clis: [tested('claude_code', 'Claude Code'), tested('opencode', 'OpenCode'), untested] })
-    await userEvent.click(screen.getByRole('radio', { name: /^API \+ coding CLIs/ }))
-    expect(await screen.findByRole('article', { name: 'Claude Code' })).toBeInTheDocument()
-    expect(screen.getByRole('article', { name: 'Codex CLI' })).toBeInTheDocument()
-    expect(screen.getByText(/Choose which CLI should do the work/)).toBeInTheDocument() // two are ready: the person must pick
-    const finish = screen.getByRole('button', { name: 'Open my company' })
-    expect(finish).toBeDisabled()
-    expect(within(screen.getByRole('article', { name: 'Codex CLI' })).queryByRole('radio')).not.toBeInTheDocument() // not installed: nothing to choose yet
-    await userEvent.click(within(screen.getByRole('article', { name: 'Claude Code' })).getByRole('radio', { name: /Use Claude Code for the work/ }))
-    await waitFor(() => expect(finish).toBeEnabled())
-    await userEvent.click(finish)
+  it('picking a CLI that tested OK and saving PUTs hybrid with that runtime', async () => {
+    const { api, done } = await toForm({ clis: [...readyClis(['claude_code', 'Claude Code'], ['opencode', 'OpenCode']), codex] })
+    await userEvent.click(within(screen.getByRole('article', { name: 'Claude Code' })).getByRole('radio', { name: /Use Claude Code for hands-on work/ }))
+    expect(within(handsOn()).getByRole('radio', { name: /Model API only/ })).not.toBeChecked()
+    await userEvent.click(saveBtn())
     await waitFor(() => expect(done).toHaveBeenCalled())
-    expect(api.calls.find((c) => c.method === 'PUT')?.body).toEqual({ management_provider_id: 'p1', management_model: 'anthropic/claude-sonnet-4.5', work_mode: 'hybrid', work_runtime: 'cli:claude_code' })
+    const puts = api.calls.filter((c) => c.method === 'PUT')
+    expect(puts).toHaveLength(1)
+    expect(puts[0]!.body).toEqual({ management_provider_id: 'p1', management_model: 'anthropic/claude-sonnet-4.5', work_mode: 'hybrid', work_runtime: 'cli:claude_code' })
   })
 
-  it('hybrid with exactly one CLI that tested OK preselects it (and says so by checking its radio)', async () => {
-    await toWork({ clis: [makeCli({ auth: { mode: 'api_key', configured: true, credential_id: 'c', last_test: { ok: true, detail: 'OK', tested_at: null } } })] })
-    await userEvent.click(screen.getByRole('radio', { name: /^API \+ coding CLIs/ }))
-    expect(await screen.findByRole('radio', { name: /Use Claude Code for the work/ })).toBeChecked()
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Open my company' })).toBeEnabled())
+  it('does not preselect a CLI by itself, even when exactly one is ready', async () => {
+    await toForm({ clis: readyClis(['claude_code', 'Claude Code']) })
+    expect(screen.getByRole('radio', { name: /Use Claude Code for hands-on work/ })).not.toBeChecked()
+    expect(within(handsOn()).getByRole('radio', { name: /Model API only/ })).toBeChecked()
   })
 
-  it('hybrid with no tested CLI says what to do and cannot be saved', async () => {
-    await toWork({ clis: [makeCli({ auth: { mode: 'api_key', configured: true, credential_id: 'c', last_test: null } })] })
-    await userEvent.click(screen.getByRole('radio', { name: /^API \+ coding CLIs/ }))
-    expect(await screen.findByText(/Install a coding CLI and run its test first/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Open my company' })).toBeDisabled()
-    // ...but the person can still go on with API only
-    expect(screen.getByRole('button', { name: 'Skip, use API only' })).toBeEnabled()
+  it('a CLI that has not tested OK is disabled ("test it first"); a CLI that is not installed has no radio', async () => {
+    await toForm({ clis: [makeCli({ auth: { mode: 'api_key', configured: true, credential_id: 'c', last_test: null } }), codex] })
+    expect(screen.getByRole('radio', { name: /Use Claude Code for hands-on work/ })).toBeDisabled()
+    expect(screen.getByText(/test it first/)).toBeInTheDocument()
+    expect(within(screen.getByRole('article', { name: 'Codex CLI' })).queryByRole('radio')).not.toBeInTheDocument()
+    expect(saveBtn()).toBeEnabled() // the model API alone is a complete setup
   })
 
-  it('skipping means API only: nothing is saved when it already is, and a hybrid setup is reset', async () => {
-    const hybrid = readyAiSetup({ work_mode: 'hybrid', work_runtime: 'cli:claude_code' })
-    const api = backend({ ai: hybrid, clis: [makeCli({ auth: { mode: 'api_key', configured: true, credential_id: 'c', last_test: { ok: true, detail: 'OK', tested_at: null } } })] })
-    const done = renderGate()
-    await screen.findByRole('region', { name: 'Connected AI' })
-    await userEvent.click(continueBtn())
-    await screen.findByRole('heading', { name: 'How should work get done?' })
-    expect(screen.getByRole('radio', { name: /^API \+ coding CLIs/ })).toBeChecked()
-    await userEvent.click(screen.getByRole('button', { name: 'Skip, use API only' }))
+  it('preselects the saved CLI, and going back to Model API only saves api + company_agent', async () => {
+    const { api, done } = await toForm({ ai: readyAiSetup({ work_mode: 'hybrid', work_runtime: 'cli:claude_code' }), clis: readyClis(['claude_code', 'Claude Code']) })
+    expect(screen.getByRole('radio', { name: /Use Claude Code for hands-on work/ })).toBeChecked()
+    await userEvent.click(within(handsOn()).getByRole('radio', { name: /Model API only/ }))
+    await userEvent.click(saveBtn())
     await waitFor(() => expect(done).toHaveBeenCalled())
     expect(api.calls.find((c) => c.method === 'PUT')?.body).toMatchObject({ work_mode: 'api', work_runtime: 'company_agent' })
   })
 
-  it('degrades when the server does not report CLIs yet', async () => {
-    await toWork({ clis: 'missing' })
-    await userEvent.click(screen.getByRole('radio', { name: /^API \+ coding CLIs/ }))
-    expect(await screen.findByText(/does not report coding CLIs yet/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Skip, use API only' })).toBeEnabled()
+  it('one save sends both parts: the tested model API and the chosen CLI, in a single PUT', async () => {
+    const api = backend({ clis: readyClis(['claude_code', 'Claude Code']) })
+    const done = renderGate()
+    await chooseOpenRouter()
+    await userEvent.click(screen.getByRole('button', { name: 'Test connection' }))
+    await testPassedMsg()
+    expect(api.calls.some((c) => c.method === 'PUT')).toBe(false) // testing saves nothing
+    await userEvent.click(screen.getByRole('radio', { name: /Use Claude Code for hands-on work/ }))
+    await userEvent.click(saveBtn())
+    await waitFor(() => expect(done).toHaveBeenCalled())
+    const puts = api.calls.filter((c) => c.method === 'PUT')
+    expect(puts).toHaveLength(1)
+    expect(puts[0]!.body).toEqual({ management_provider_id: 'p1', management_model: 'anthropic/claude-sonnet-4.5', work_mode: 'hybrid', work_runtime: 'cli:claude_code' })
+  })
+
+  it('degrades when the server does not report CLIs yet: the model API alone works and the save is still usable', async () => {
+    const { done } = await toForm({ clis: 'missing' })
+    expect(screen.getByText(/does not report coding CLIs yet/)).toBeInTheDocument()
+    expect(screen.getByText(/The model API alone works/)).toBeInTheDocument()
+    await userEvent.click(saveBtn())
+    await waitFor(() => expect(done).toHaveBeenCalled())
+  })
+
+  it('says so when no CLI is known', async () => {
+    await toForm({ clis: [] })
+    expect(screen.getByText(/No coding CLI is known to this server/)).toBeInTheDocument()
+    expect(within(handsOn()).getByRole('radio', { name: /Model API only/ })).toBeChecked()
   })
 
   it('shows the CLI tiles read-only to someone who cannot manage them (member)', async () => {
@@ -384,7 +432,10 @@ describe('How should work get done?', () => {
     )
     renderGate()
     await screen.findByRole('region', { name: 'Connected AI' })
+    await screen.findByRole('radiogroup', { name: 'Who does the hands-on work' })
     expect(screen.queryByRole('button', { name: 'Test again' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Change provider or model' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Save and open my company' })).not.toBeInTheDocument()
+    expect(screen.getByText(/Only an owner or admin can change how work gets done/)).toBeInTheDocument()
   })
 })

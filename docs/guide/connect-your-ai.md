@@ -56,9 +56,9 @@ Foundry prefers a free model (a local one) when it can, and uses a paid one only
 
 ## Coding tools (optional)
 
-Claude Code, Codex CLI and OpenCode are programs you run in a terminal that write and edit files. Foundry can use them as the "hands" of your employees while your API connection stays the "brain" of the company (Co-founder, HR, leads, reviews).
+Claude Code, Codex CLI, OpenCode and Google's Antigravity CLI (`agy`) are programs you run in a terminal that write and edit files. Foundry can use them as the "hands" of your employees while your API connection stays the "brain" of the company (Co-founder, HR, leads, reviews).
 
-> Status: this is in progress and not in a release yet. Claude Code and OpenCode were found installed on the developer's machine; Codex CLI was not. Treat it as experimental until you see it in the release notes.
+> Status: this is in progress and not in a release yet. Claude Code and OpenCode were found installed on the developer's machine; Codex CLI was not. Antigravity CLI is installed there too, but was only checked with `--help`, never run on a real task. It works only with a Gemini API key from Google AI Studio, and you install it yourself with Google's installer. Treat it as experimental until you see it in the release notes.
 
 How it works:
 

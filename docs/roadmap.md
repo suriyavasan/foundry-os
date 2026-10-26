@@ -152,7 +152,6 @@ can run an autonomous company - see the M5 status notes; stronger models are the
   credential") settled its reservation as an *estimate* ($0.05 each, three times), counting phantom spend toward budgets.
   It now releases the reservation (`docs/security.md` finding 2; decision D26).
 - **Dependency audit:** `pip-audit` (backend, runtime) and `pnpm audit` found nothing; Hermes' exact pins were not touched.
-- **Gaps, in short:** Postgres unverified (the Docker image is built and health-checked in CI; Compose is not run);
-  owner-supplied provider URLs are not SSRF-filtered; no generic per-IP rate limit; `style-src 'unsafe-inline'`;
-  backups are not encrypted by the app; the 7B model is a weak agent. Fixes for the SSRF guard, rate limit and
-  encrypted backups are built and tested locally but not merged yet. Full list: `docs/security.md` section 4.
+- **Gaps, in short:** Docker/Compose and Postgres unverified; `style-src 'unsafe-inline'`; the 7B model is a weak agent.
+  Three M9 gaps were closed afterwards (SSRF guard for owner-supplied URLs, generic per-IP rate limit, encrypted
+  backups: `docs/security.md` section 5). Full list: `docs/security.md` section 4.

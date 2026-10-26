@@ -6,8 +6,9 @@ per-request ``num_ctx`` and serves whatever context the *server* was started wit
 schemas) need ~5K tokens, so a default Ollama silently truncates the front of every prompt. We
 therefore load the model with a tiny request and read the really-served window from ``/api/ps``.
 
-Other providers get a cheap authenticated model-list call. NOT verified against real cloud
-accounts in M3b (no keys available): those paths are covered by mocked transports only.
+Other providers get a cheap authenticated model-list call plus one tiny tool-calling request.
+Verified against the real Anthropic API (claude-sonnet-5-5, 2026-10-24); the OpenAI, OpenRouter
+and OpenAI-compatible paths are still covered by mocked transports only.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from urllib.parse import urlparse
 
 import httpx
 
+from app.core import netguard
 from app.core.time import utcnow
 
 OLLAMA_DEFAULT_URL = "http://127.0.0.1:11434"
@@ -52,11 +54,25 @@ def validate_http_url(url: str) -> str | None:
     return None
 
 
-def _client(transport: httpx.BaseTransport | None, timeout: float) -> httpx.Client:
+def _client(
+    transport: httpx.BaseTransport | None, timeout: float, policy: netguard.Policy
+) -> httpx.Client:
+    """An injected ``transport`` replaces the network (tests), so there is nothing to guard; the real
+    one resolves and validates every destination and connects to the validated IP (``netguard``)."""
     # trust_env=False: a local model endpoint must not be routed through an env proxy.
     return httpx.Client(
-        transport=transport, timeout=timeout, trust_env=False, follow_redirects=False
+        transport=transport or netguard.GuardedTransport(policy),
+        timeout=timeout,
+        trust_env=False,
+        follow_redirects=False,
     )
+
+
+def _why(exc: Exception) -> str:
+    """Short, safe description of a failed request (the guard's reason is useful to the owner)."""
+    if isinstance(exc, netguard.BlockedDestination):
+        return f"blocked: {exc}"
+    return type(exc).__name__
 
 
 @dataclass
@@ -98,11 +114,12 @@ def scan_ollama(
     *,
     transport: httpx.BaseTransport | None = None,
     max_models: int = 30,
+    policy: netguard.Policy = netguard.LOCAL_MODEL,
 ) -> OllamaScan:
     root = ollama_root(base_url)
     scan = OllamaScan(base_url=root)
     try:
-        with _client(transport, 4.0) as http:
+        with _client(transport, 4.0, policy) as http:
             resp = http.get(f"{root}/api/tags")
             if resp.status_code != 200:
                 scan.error = f"Ollama answered HTTP {resp.status_code} on /api/tags"
@@ -143,7 +160,7 @@ def scan_ollama(
             except (httpx.HTTPError, ValueError):
                 pass
     except httpx.HTTPError as exc:
-        scan.error = f"Cannot reach Ollama at {root} ({type(exc).__name__})"
+        scan.error = f"Cannot reach Ollama at {root} ({_why(exc)})"
     except ValueError:
         scan.error = f"Ollama at {root} returned an unreadable answer"
     return scan
@@ -320,13 +337,14 @@ def check_ollama(
     *,
     transport: httpx.BaseTransport | None = None,
     chat_timeout: float = 240.0,
+    policy: netguard.Policy = netguard.LOCAL_MODEL,
 ) -> CheckOutcome:
     root = ollama_root(base_url)
     out = CheckOutcome(
         status="error", message="", context_length_configured=configured_context, model=model
     )
     checks: dict[str, Check] = {}
-    scan = scan_ollama(root, transport=transport)
+    scan = scan_ollama(root, transport=transport, policy=policy)
     if not scan.reachable:
         out.message = scan.error or f"Cannot reach Ollama at {root}"
         checks["reachable"] = Check("reachable", False, out.message)
@@ -356,7 +374,7 @@ def check_ollama(
         )
     started = time.monotonic()
     try:
-        with _client(transport, chat_timeout) as http:
+        with _client(transport, chat_timeout, policy) as http:
             # Exactly what the runtime uses: the OpenAI-compatible endpoint with a tool. Loads the model.
             resp = http.post(
                 f"{root}/v1/chat/completions",
@@ -388,7 +406,7 @@ def check_ollama(
         checks["tool_calling"] = Check("tool_calling", False, out.message)
         return _finish(out, checks)
     except (httpx.HTTPError, ValueError) as exc:
-        out.message = f"Ollama request failed ({type(exc).__name__})"
+        out.message = f"Ollama request failed ({_why(exc)})"
         checks["tool_calling"] = Check("tool_calling", False, out.message)
         return _finish(out, checks)
 
@@ -434,9 +452,11 @@ def check_http_provider(
     *,
     configured_context: int | None = None,
     transport: httpx.BaseTransport | None = None,
+    policy: netguard.Policy | None = None,
 ) -> CheckOutcome:
     """Authenticated model-list call plus one tiny tool-calling request (a few dozen tokens).
     Never echoes keys or response bodies."""
+    policy = policy or netguard.provider_policy(kind)
     out = CheckOutcome(
         status="error", message="", context_length_configured=configured_context, model=model
     )
@@ -458,7 +478,7 @@ def check_http_provider(
     ids: dict[str, int | None] = {}
     auth_failed: int | None = None
     try:
-        with _client(transport, 30.0) as http:
+        with _client(transport, 30.0, policy) as http:
             resp = http.get(
                 list_url, headers=headers, params={"limit": 1000} if kind == "anthropic" else None
             )
@@ -541,7 +561,7 @@ def check_http_provider(
         checks["reachable"] = Check("reachable", False, out.message)
         return _finish(out, checks)
     except httpx.HTTPError as exc:
-        out.message = f"Cannot reach {kind} ({type(exc).__name__})"
+        out.message = f"Cannot reach {kind} ({_why(exc)})"
         checks["reachable"] = Check("reachable", False, out.message)
         return _finish(out, checks)
     if out.latency_ms is None:
@@ -587,10 +607,12 @@ def list_models(
     *,
     transport: httpx.BaseTransport | None = None,
     limit: int = 500,
+    policy: netguard.Policy | None = None,
 ) -> ModelListing:
     """The provider's own model list (for pickers). Never echoes keys or response bodies."""
+    policy = policy or netguard.provider_policy(kind)
     if kind == "ollama":
-        scan = scan_ollama(base_url, transport=transport)
+        scan = scan_ollama(base_url, transport=transport, policy=policy)
         if not scan.reachable:
             return ModelListing([], False, scan.error or "Ollama is not reachable")
         return ModelListing(
@@ -617,12 +639,12 @@ def list_models(
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
     try:
-        with _client(transport, 20.0) as http:
+        with _client(transport, 20.0, policy) as http:
             resp = http.get(
                 url, headers=headers, params={"limit": 1000} if kind == "anthropic" else None
             )
     except httpx.HTTPError as exc:
-        return ModelListing([], False, f"Cannot reach {kind} ({type(exc).__name__})")
+        return ModelListing([], False, f"Cannot reach {kind} ({_why(exc)})")
     if resp.status_code in (401, 403):
         return ModelListing([], False, f"{kind} rejected the credential (HTTP {resp.status_code})")
     if resp.status_code != 200:

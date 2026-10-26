@@ -14,12 +14,12 @@
 - **Command Center and Reflections.** Type a note or a `/command` and always get an answer back. The Co-founder also posts reflections on how the company is doing. You react, and the standards you endorse become rules every agent follows.
 - **Guardrails written as code, not as polite requests.** Risky actions are sorted into tiers. Anything with real money or a real-world commitment waits for your approval. Budgets, rate limits and an emergency stop are enforced by the program, and agents cannot change their own limits.
 - **It runs on your machine.** Your data stays in a folder on your computer. You bring your own AI: a key from OpenRouter, Anthropic or OpenAI, any OpenAI-compatible service, or a free local model through Ollama.
-- **Coding tools can do the work.** Optionally, employees can do their work through coding command-line tools you already have (Claude Code, Codex, OpenCode), while your AI key runs the management side.
+- **Coding tools can do the work.** Optionally, employees can do their work through coding command-line tools you already have (Claude Code, Codex, OpenCode, Google Antigravity CLI), while your AI key runs the management side.
 - **Reach it from anywhere.** Use it on your phone over your home network, or through a secure tunnel, your own domain and company email. You connect each outside account once; the AI Co-founder never signs up for anything by itself.
 
 ## Install
 
-> **Available from the first release (v0.1.0).** The installers below are being built and are not published yet. Until then, use [From source](#from-source).
+> Published since v0.1.0 (2026-10-24). Bundles exist for Apple Silicon macOS and Linux (x86_64, arm64); Intel Macs use Docker.
 
 **1. Homebrew** (Apple Silicon Macs and Linux)
 
@@ -49,7 +49,7 @@ Windows without Docker is not supported in the first release. Use Docker, or WSL
 
 ### From source
 
-For developers, and the only way to run it today. You need `uv` and Python 3.12 or newer, plus Node 20 or newer and `pnpm` to build the screen once. The full steps are in [docs/deploy.md](docs/deploy.md).
+For developers. You need `uv` and Python 3.12 or newer, plus Node 20 or newer and `pnpm` to build the screen once. The full steps are in [docs/deploy.md](docs/deploy.md).
 
 ```bash
 cd backend
@@ -82,7 +82,9 @@ We only claim what was run against the real thing. The dated record is in [docs/
 
 **Verified (macOS, SQLite, a local 7B model, 2026-10-24):** creating a company, hiring an employee, running a task end to end, saving results, recording usage and cost, blocking spend over budget, approvals for protected actions, pausing and retiring agents, recovering after a crash, and deploying from the written steps.
 
-**Not verified:** the Docker image, PostgreSQL, Linux, Windows, any cloud AI model, a real tunnel behind TLS, and the Homebrew and one-line installers (not built yet). The coding-tool support, Reflections and Command Center are built but still in progress. A small local model is a weak agent: it did not finish a project on its own in 30 minutes. A stronger model is the biggest improvement you can make.
+**Verified for v0.1.0 (2026-10-24):** `brew install` and the one-line installer on an Apple Silicon Mac; the Linux bundles and the Docker image are built, installed and health-checked in CI.
+
+**Not verified:** Docker Compose, PostgreSQL, Linux and Windows hosts outside CI, any cloud AI model, and a real tunnel behind TLS. The coding-tool support, Reflections and Command Center are built but still in progress. A small local model is a weak agent: it did not finish a project on its own in 30 minutes. A stronger model is the biggest improvement you can make.
 
 ## Safety boundaries
 

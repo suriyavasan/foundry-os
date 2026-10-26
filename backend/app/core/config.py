@@ -8,13 +8,14 @@ directory defaults to the per-user platform directory (``app.core.install.platfo
 
 from __future__ import annotations
 
+import json
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import AliasChoices, Field, SecretStr, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from app.core.install import (
     APP_VERSION,
@@ -105,6 +106,10 @@ class Settings(BaseSettings):
     # Set the Secure flag on cookies even when the request looks like plain http (a TLS-terminating
     # proxy / tunnel in front). Requests that arrive as https always get Secure.
     cookie_secure: bool | None = None
+    # Passkeys (WebAuthn): extra origins a passkey may be used from, besides localhost and the
+    # origins Foundry knows itself (running tunnel, custom domain, an https ``public_url``). Each is
+    # a full origin such as ``https://os.example.com``; comma separated or a JSON list in the env.
+    passkey_origins: Annotated[list[str], NoDecode] = []
 
     # --- Milestone 8: reachability & identity ------------------------------------------------
     # The port the server listens on (the launcher sets it; the tunnel forwards to it).
@@ -141,8 +146,23 @@ class Settings(BaseSettings):
     update_check: bool = True
 
     # --- Milestone 10: coding-CLI runtimes -------------------------------------------------------
-    # Extra directories searched (before PATH) for the claude / codex / opencode / npm binaries.
+    # Extra directories searched (before PATH) for the claude / codex / opencode / agy / npm
+    # binaries.
     cli_search_paths: list[str] = []
+
+    # --- Security: generic per-client-IP HTTP rate limit (app/core/ratelimit_http.py) -------------
+    # In-memory token buckets, one per client IP (the address uvicorn reports, which already honours
+    # --forwarded-allow-ips). Static UI files are exempt. Login back-off is separate and unchanged.
+    http_rate_limit_enabled: bool = True
+    http_rate_limit_per_minute: int = Field(default=300, ge=1)  # /api/*
+    # Stricter bucket: state-changing /api/auth/* requests, the login link, invitations, webhooks.
+    http_rate_limit_auth_per_minute: int = Field(default=30, ge=1)
+    # A request straight from this machine (no proxy headers: the CLI, the dev proxy, local agent
+    # runs) gets this many times the limits, or none when exempt is true.
+    http_rate_limit_loopback_multiplier: int = Field(default=10, ge=1)
+    http_rate_limit_loopback_exempt: bool = False
+    # Concurrent SSE (`/stream`) connections per client IP.
+    http_stream_max_per_ip: int = Field(default=10, ge=1)
 
     # Hermes runtime. These use the plain HERMES_* names (no COMPANY_OS_ prefix).
     hermes_api_url: str | None = Field(
@@ -151,6 +171,16 @@ class Settings(BaseSettings):
     hermes_api_key: SecretStr | None = Field(
         default=None, validation_alias=AliasChoices("HERMES_API_KEY", "COMPANY_OS_HERMES_API_KEY")
     )
+
+    @field_validator("passkey_origins", mode="before")
+    @classmethod
+    def _split_passkey_origins(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            text = value.strip()
+            if text.startswith("["):
+                return json.loads(text)
+            return [part.strip() for part in text.split(",") if part.strip()]
+        return value
 
     @model_validator(mode="before")
     @classmethod

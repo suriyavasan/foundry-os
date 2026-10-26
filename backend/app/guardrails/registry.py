@@ -217,6 +217,13 @@ _HUMAN_ONLY_ACTIONS = [
     _a("token.revoke", T.IDENTITY, "Revoke an API token", kind="human_only", human_only=True),
     _a("password.change", T.IDENTITY, "Change a password", kind="human_only", human_only=True),
     _a("twofa.manage", T.IDENTITY, "Manage two-factor login", kind="human_only", human_only=True),
+    _a(
+        "passkey.manage",
+        T.IDENTITY,
+        "Add, rename or remove a passkey (WebAuthn sign-in)",
+        kind="human_only",
+        human_only=True,
+    ),
     _a("invitation.create", T.IDENTITY, "Invite a person", kind="human_only", human_only=True),
     _a("invitation.revoke", T.IDENTITY, "Revoke an invitation", kind="human_only", human_only=True),
     _a("invitation.accept", T.IDENTITY, "Accept an invitation", kind="human_only", human_only=True),

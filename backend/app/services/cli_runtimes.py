@@ -8,7 +8,8 @@ process's environment.
 
 The install endpoint runs exactly the command it shows (``npm install -g <package>``), only with
 ``confirm: true``, never through a shell and never with sudo, as a supervised child whose redacted
-output is kept for ``GET .../install-log``."""
+output is kept for ``GET .../install-log``. A CLI without an npm package (Antigravity: Google's
+``curl | bash`` installer) is never installed by this endpoint: the status carries a ``manual`` hint."""
 
 from __future__ import annotations
 
@@ -111,6 +112,17 @@ def status_of(db: Session, cli_env: CliEnvironment, cli_id: str) -> dict[str, An
             "Codex support is coded from the official documentation and tested with a fake binary; it "
             "has not been run against the real CLI."
         )
+    if cli_id == "antigravity":
+        warnings.append(
+            "Antigravity CLI support is coded from Google's documentation and `agy --help`, and tested "
+            "with a fake binary; it was never started with a prompt. It runs only with a Gemini API key "
+            "(no own login: that would mean writing into your own ~/.gemini)."
+        )
+        if binary is None:
+            warnings.append(
+                "Foundry AI OS cannot install it (Google ships a shell installer, which is never run "
+                f"from here). In a terminal, run: {spec.manual_install}"
+            )
     if cli_id == "claude_code":
         warnings.append(
             "Claude Code's own sandbox is not verified by Foundry AI OS, so its shell (Bash) tool is never "
@@ -126,10 +138,11 @@ def status_of(db: Session, cli_env: CliEnvironment, cli_id: str) -> dict[str, An
         "auth": auth,
         "sandbox": sandbox_for(spec.id, binary is not None),
         "install": {
-            "available": npm is not None and binary is None,
-            "command": " ".join(spec.install_command),
-            "requires": ["npm"],
+            "available": spec.install_command is not None and npm is not None and binary is None,
+            "command": " ".join(spec.install_command) if spec.install_command else None,
+            "requires": ["npm"] if spec.install_command else [],
             "status": install_state.get("status", "none"),
+            "manual": spec.manual_install,
         },
         "login_hint": spec.login_hint,
         "warnings": warnings,
@@ -190,6 +203,13 @@ def set_auth(
     require_owner(db, principal)
     spec = _spec(cli_id)
     problems: list[dict[str, Any]] = []
+    if data.mode not in spec.auth_modes:
+        problems.append(
+            {
+                "loc": ["body", "mode"],
+                "msg": f"{spec.display_name} supports only: {', '.join(spec.auth_modes)}",
+            }
+        )
     if data.mode == "own_login" and data.credential_id:
         problems.append({"loc": ["body", "credential_id"], "msg": "own_login uses no stored key"})
     if data.model_provider_id and spec.id != "opencode":
@@ -326,10 +346,16 @@ def start_install(
     """Run ``npm install -g <package>`` as a supervised child. Needs ``confirm: true``."""
     require_owner(db, principal)
     spec = _spec(cli_id)
+    install_command = spec.install_command
+    if install_command is None:
+        raise Conflict(
+            f"{spec.display_name} cannot be installed from here (it is not an npm package). "
+            f"Run Google's installer yourself in a terminal: {spec.manual_install}"
+        )
     if confirm is not True:
         raise ValidationFailed(
             "Installing runs a command on this machine; send confirm: true to approve "
-            f"`{' '.join(spec.install_command)}`",
+            f"`{' '.join(install_command)}`",
             details=[{"loc": ["body", "confirm"], "msg": "must be true"}],
         )
     if cli_env.find_binary(spec) is not None:
@@ -341,13 +367,13 @@ def start_install(
         existing = _running.get(spec.id)
         if existing is not None and existing.is_alive():
             raise Conflict(f"{spec.display_name} is already being installed")
-        argv = [npm, *spec.install_command[1:]]
+        argv = [npm, *install_command[1:]]
         assert argv[0] != "sudo" and "sudo" not in argv  # never elevated
         logs_dir.mkdir(parents=True, exist_ok=True)
         path = _log_path(logs_dir, spec.id)
         path.write_text("", encoding="utf-8")
         started = format_ts(utcnow())
-        command = " ".join(["npm", *spec.install_command[1:]])
+        command = " ".join(["npm", *install_command[1:]])
         store.save(
             db,
             spec.id,

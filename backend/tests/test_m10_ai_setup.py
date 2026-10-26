@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 from sqlalchemy import select
@@ -34,7 +36,7 @@ def test_a_new_company_is_not_ready(client, company):
     assert s["ready"] is False and s["blocking_reason"] == "no_tested_provider"
     assert s["management"]["provider_id"] is None and s["management"]["last_test"] is None
     assert s["work_mode"] == "api" and s["work_runtime"] is None
-    assert {c["id"] for c in s["clis"]} == {"claude_code", "codex", "opencode"}
+    assert {c["id"] for c in s["clis"]} == {"claude_code", "codex", "opencode", "antigravity"}
 
 
 def test_creation_is_blocked_until_ready_but_settings_stay_available(app, client, company):
@@ -361,6 +363,31 @@ def test_anthropic_probe_uses_tool_use(app, client, company):
     p = cloud_provider(app, client, cid, handler, kind="anthropic")
     t = client.post(api(cid, f"/model-providers/{p['id']}/test")).json()["last_test"]
     assert t["ok"] is True and b"tool_choice" in bodies[0] and b"report_status" in bodies[0]
+    # Claude Sonnet 5.5 / Opus 5.5 / Fable 5.1 answer a forced tool_choice ("any"/"tool") with HTTP 400.
+    body = json.loads(bodies[0])
+    assert body["tool_choice"] == {"type": "auto"}
+
+
+def test_anthropic_probe_reads_max_input_tokens(app, client, company):
+    cid = company["id"]
+
+    def handler(req):
+        if req.method == "POST":
+            return httpx.Response(
+                200, json={"content": [{"type": "tool_use", "name": "report_status", "input": {}}]}
+            )
+        return httpx.Response(
+            200, json={"data": [{"id": "big-model", "max_input_tokens": 1000000}]}
+        )
+
+    p = cloud_provider(app, client, cid, handler, kind="anthropic")
+    t = client.post(api(cid, f"/model-providers/{p['id']}/test")).json()["last_test"]
+    ctx = next(c for c in t["checks"] if c["name"] == "context")
+    assert (
+        ctx["ok"] is True
+        and "1000000" in ctx["detail"]
+        and "declared by the provider" in ctx["detail"]
+    )
 
 
 def test_testing_another_model_and_the_model_list(app, client, company):

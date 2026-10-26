@@ -160,6 +160,7 @@ async def test_provider(
         provider_id,
         cipher,
         model=body.model if body else None,
+        allow_private_network=body.allow_private_network if body else False,
         transport=_transport(request),
     )
     return model_providers.serialize(db, ctx.company_id, [row])[0]

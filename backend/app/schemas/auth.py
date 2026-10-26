@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Literal
+import json
+from typing import Any, Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from app.schemas.common import ApiModel, RequestModel, Timestamp
 
@@ -30,6 +31,11 @@ class AuthSession(ApiModel):
     # login answered "password ok, now the authenticator code" (state stays unauthenticated).
     two_factor_required: bool = False
     expires_at: Timestamp | None = None
+    # Passkeys: how many the signed-in person has (0 when nobody is signed in) and whether the
+    # origin this request came from can use WebAuthn at all (localhost or a configured https
+    # origin).
+    passkeys_count: int = 0
+    passkey_supported_origin: bool = False
 
 
 class SetupRequest(RequestModel):
@@ -100,3 +106,71 @@ class TwoFactorDisable(RequestModel):
 class TwoFactorVerifyResult(ApiModel):
     enabled: bool
     recovery_codes: list[str] | None = None  # shown once, when this call enabled 2FA
+
+
+# ------------------------------------------------------------------ passkeys (WebAuthn)
+
+MAX_WEBAUTHN_JSON = 64 * 1024
+
+
+def _bounded_json(value: dict[str, Any]) -> dict[str, Any]:
+    if len(json.dumps(value, separators=(",", ":"))) > MAX_WEBAUTHN_JSON:
+        raise ValueError("credential is too large")
+    return value
+
+
+class PasskeyInfo(ApiModel):
+    id: str
+    name: str
+    created_at: Timestamp
+    last_used_at: Timestamp | None
+    transports: list[str]
+    backed_up: bool
+
+
+class PasskeyRegistrationOptionsRequest(RequestModel):
+    name: str | None = Field(default=None, max_length=80)
+
+
+class PasskeyRegistrationOptions(ApiModel):
+    """``public_key`` is the WebAuthn ``PublicKeyCredentialCreationOptions`` JSON (base64url
+    fields), as ``PublicKeyCredential.parseCreationOptionsFromJSON`` expects it."""
+
+    attempt_id: str
+    public_key: dict[str, Any]
+
+
+class PasskeyRegistrationVerify(RequestModel):
+    attempt_id: str = Field(min_length=1, max_length=64)
+    name: str | None = Field(default=None, max_length=80)
+    credential: dict[str, Any]  # the browser's RegistrationResponseJSON
+
+    check_size = field_validator("credential")(_bounded_json)
+
+
+class PasskeyRename(RequestModel):
+    name: str = Field(min_length=1, max_length=80)
+
+
+class PasskeyDelete(RequestModel):
+    password: str | None = Field(default=None, max_length=256)
+
+
+class PasskeyLoginOptionsRequest(RequestModel):
+    username: str | None = Field(default=None, max_length=64)
+
+
+class PasskeyLoginOptions(ApiModel):
+    """``public_key`` is the ``PublicKeyCredentialRequestOptions`` JSON for
+    ``navigator.credentials.get()``; ``allowCredentials`` is empty without a username
+    (discoverable credentials / conditional UI)."""
+
+    attempt_id: str
+    public_key: dict[str, Any]
+
+
+class PasskeyLoginVerify(RequestModel):
+    attempt_id: str = Field(min_length=1, max_length=64)
+    credential: dict[str, Any]  # the browser's AuthenticationResponseJSON
+
+    check_size = field_validator("credential")(_bounded_json)

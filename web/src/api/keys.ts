@@ -75,6 +75,7 @@ export const qk = {
   authSession: ['auth', 'session'] as const,
   authSessions: ['auth', 'sessions'] as const,
   authTokens: ['auth', 'tokens'] as const,
+  authPasskeys: ['auth', 'passkeys'] as const,
   notificationsAll: ['notifications'] as const,
   notifications: ['notifications', 'list'] as const,
   membersAll: (cid: string) => ['company', cid, 'members'] as const,

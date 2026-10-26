@@ -13,7 +13,7 @@ export function LoginPage() {
       <h1 className="text-[20px] leading-7 font-semibold text-fg">Sign in</h1>
       <p className="mt-1 mb-5 text-[13px] text-fg-3">Welcome back. Your company kept working while you were away.</p>
       {/* The session cookie is set by the server; the auth gate swaps to the app as soon as the session query updates. */}
-      <LoginForm onSuccess={() => undefined} />
+      <LoginForm onSuccess={() => undefined} passkeys />
 
       <div className="mt-5 border-t border-line pt-4">
         <button

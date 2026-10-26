@@ -3,6 +3,7 @@ import type { AiSetupStatus, CliRuntimeStatus, ProviderTest } from '@/api/types'
 import {
   aiGateState,
   aiSetupUpdate,
+  cliBrief,
   blockingReasonText,
   canTestProvider,
   cardFor,
@@ -200,6 +201,21 @@ describe('work-mode selection rules', () => {
     expect(aiSetupUpdate(ai, 'api', 'cli:codex')).toEqual({ management_provider_id: 'p1', management_model: 'm1', work_mode: 'api', work_runtime: 'company_agent' })
     expect(aiSetupUpdate(ai, 'hybrid', 'cli:codex')).toEqual({ management_provider_id: 'p1', management_model: 'm1', work_mode: 'hybrid', work_runtime: 'cli:codex' })
     expect(aiSetupUpdate({ management: { ...ai.management, provider_id: null } }, 'api', null)).toBeNull()
+  })
+
+  it('a just-tested management selection wins over the saved one, and makes a body even when none is saved', () => {
+    const ai = { management: { provider_id: 'p1', provider_name: 'OR', kind: 'openrouter', model: 'm1', last_test: null } }
+    expect(aiSetupUpdate(ai, 'api', null, { providerId: 'p2', model: 'm2' })).toEqual({ management_provider_id: 'p2', management_model: 'm2', work_mode: 'api', work_runtime: 'company_agent' })
+    const none = { management: { ...ai.management, provider_id: null, model: null } }
+    expect(aiSetupUpdate(none, 'hybrid', 'cli:codex', { providerId: 'p2', model: 'm2' })).toMatchObject({ management_provider_id: 'p2', work_runtime: 'cli:codex' })
+  })
+
+  it('briefs a CLI in one phrase for the summary line', () => {
+    const base = { id: 'codex', display_name: 'Codex', installed: true, version: null, auth: { mode: null, configured: false, credential_id: null, last_test: null } } as unknown as CliRuntimeStatus
+    expect(cliBrief({ ...base, installed: false })).toBe('not installed')
+    expect(cliBrief(base)).toBe('installed, not tested')
+    expect(cliBrief({ ...base, auth: { ...base.auth, last_test: { ok: true, detail: null, tested_at: null } } })).toBe('ready')
+    expect(cliBrief({ ...base, auth: { ...base.auth, last_test: { ok: false, detail: null, tested_at: null } } })).toBe('test failed')
   })
 
   it('maps a CLI id to its runtime id once', () => {

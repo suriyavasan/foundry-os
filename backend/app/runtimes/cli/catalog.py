@@ -16,28 +16,32 @@ FORBIDDEN_ARGV = (
     "--dangerously-bypass-approvals-and-sandbox",
     "--yolo",
     "--full-auto",
+    "always-proceed",  # Antigravity CLI ``toolPermission`` that auto-approves every tool call
 )
 
 
 @dataclass(frozen=True)
 class CliSpec:
-    id: str  # claude_code | codex | opencode
+    id: str  # claude_code | codex | opencode | antigravity
     display_name: str
     binaries: tuple[str, ...]  # executable names looked up on PATH and in extra locations
     known_dirs: tuple[str, ...]  # extra places a user-level install lands (relative to ~ if no /)
-    npm_package: str
+    npm_package: str | None  # None: not an npm package, never installed by Foundry AI OS
     login_hint: str
     auth_modes: tuple[str, ...] = ("own_login", "api_key")
     # Environment variable that carries an API key in api_key mode.
     key_env: str | None = None
+    # Shown instead of an install button when the CLI has no npm package (the person runs it themselves).
+    manual_install: str | None = None
 
     @property
     def runtime_id(self) -> str:
         return f"cli:{self.id}"
 
     @property
-    def install_command(self) -> list[str]:
-        return ["npm", "install", "-g", self.npm_package]
+    def install_command(self) -> list[str] | None:
+        """The one command the install endpoint may run; None when there is no automatic install."""
+        return ["npm", "install", "-g", self.npm_package] if self.npm_package else None
 
 
 CLIS: dict[str, CliSpec] = {
@@ -67,6 +71,20 @@ CLIS: dict[str, CliSpec] = {
         npm_package="opencode-ai",
         login_hint="Run `opencode auth login` in a terminal",
         key_env=None,  # provider-specific: see opencode.PROVIDER_KEY_ENV
+    ),
+    "antigravity": CliSpec(
+        id="antigravity",
+        display_name="Antigravity CLI",
+        binaries=("agy",),
+        known_dirs=(".local/bin",),
+        npm_package=None,  # Google ships a shell installer (curl | bash), which we never run
+        login_hint=(
+            "Create a Gemini API key in Google AI Studio and add it here (no own-login mode: "
+            "Foundry AI OS never writes into your own ~/.gemini)"
+        ),
+        auth_modes=("api_key",),
+        key_env="GEMINI_API_KEY",
+        manual_install="curl -fsSL https://antigravity.google/cli/install.sh | bash",
     ),
 }
 
@@ -115,6 +133,16 @@ def sandbox_for(cli_id: str, installed: bool) -> dict[str, object]:
             "detail": (
                 "Shell tools (Bash) are never enabled: Foundry AI OS cannot verify Claude Code's sandbox. "
                 "Only file tools are allowed, confined to the workspace (--restricted)."
+            ),
+        }
+    if cli_id == "antigravity":
+        return {
+            "available": False,
+            "kind": "none",
+            "detail": (
+                "Shell commands are denied by permission rules (command(*)), as are URL fetches; only "
+                "workspace files and the company tools are allowed. agy's own terminal sandbox flag is "
+                "on but was not exercised."
             ),
         }
     return {

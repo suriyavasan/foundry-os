@@ -41,7 +41,12 @@ def write_script(directory: Path, name: str, source: str) -> Path:
     return path
 
 
-VERSIONS = {"claude": "2.1.292 (Claude Code)", "codex": "codex-cli 0.164.0", "opencode": "1.18.3"}
+VERSIONS = {
+    "claude": "2.1.292 (Claude Code)",
+    "codex": "codex-cli 0.164.0",
+    "opencode": "1.18.3",
+    "agy": "1.3.3",
+}
 
 # What a fake CLI does is described by a JSON "script" next to it: lines to print, an exit code,
 # and a record of how it was called (argv + selected environment), so tests can assert on both.
@@ -61,6 +66,8 @@ record = {
     "token_files": {},
 }
 candidates = [a.split("=", 1)[-1] for a in sys.argv[1:]] + [os.environ.get("OPENCODE_CONFIG", "")]
+gem = os.path.join(os.environ.get("HOME", ""), ".gemini")
+candidates += [os.path.join(gem, "antigravity-cli", "settings.json"), os.path.join(gem, "config", "mcp_config.json")]
 blob = " ".join(sys.argv[1:])
 for c in candidates:
     if c and os.path.isfile(c):
@@ -220,14 +227,88 @@ OPENCODE_OK = [
     },
 ]
 
+# Antigravity CLI (``agy --output-format stream-json``): shapes from antigravity.google/docs/cli/headless.
+ANTIGRAVITY_OK = [
+    {
+        "event": "init",
+        "conversation_id": "c1",
+        "init": {"cwd": "/w", "tools": ["write_to_file"], "permission_mode": "strict"},
+    },
+    {
+        "event": "step_update",
+        "step_update": {
+            "conversation_id": "c1",
+            "step_index": 1,
+            "state": "ACTIVE",
+            "step_type": "tool",
+            "tool_name": "call_mcp_tool",
+            "tool_info": {
+                "name": "call_mcp_tool",
+                "parameters": {"ServerName": "company", "ToolName": "submit_artifact"},
+            },
+        },
+    },
+    {
+        "event": "step_update",
+        "step_update": {
+            "conversation_id": "c1",
+            "step_index": 1,
+            "state": "DONE",
+            "step_type": "tool",
+            "tool_name": "call_mcp_tool",
+            "tool_info": {
+                "name": "call_mcp_tool",
+                "parameters": {"ServerName": "company", "ToolName": "submit_artifact"},
+                "output": "ok",
+            },
+        },
+    },
+    {
+        "event": "step_update",
+        "step_update": {
+            "step_index": 2,
+            "state": "ACTIVE",
+            "step_type": "agent_response",
+            "text_delta": "All done, ",
+        },
+    },
+    {
+        "event": "step_update",
+        "step_update": {
+            "step_index": 2,
+            "state": "DONE",
+            "step_type": "agent_response",
+            "text_delta": "the brief is saved.",
+        },
+    },
+    {
+        "event": "result",
+        "result": {
+            "conversation_id": "c1",
+            "status": "SUCCESS",
+            "response": "All done, the brief is saved.",
+            "duration_seconds": 4.2,
+            "num_turns": 1,
+            "usage": {
+                "input_tokens": 800,
+                "output_tokens": 150,
+                "thinking_tokens": 60,
+                "cache_read_tokens": 100,
+                "total_tokens": 1110,
+            },
+        },
+    },
+]
+
 
 def register_cli_adapters(app) -> None:
-    """The test app's registry only holds the scripted runtime: add the three CLI adapters."""
+    """The test app's registry only holds the scripted runtime: add the four CLI adapters."""
+    from app.runtimes.cli.antigravity import AntigravityAdapter
     from app.runtimes.cli.claude_code import ClaudeCodeAdapter
     from app.runtimes.cli.codex import CodexAdapter
     from app.runtimes.cli.opencode import OpenCodeAdapter
 
-    for cls in (ClaudeCodeAdapter, CodexAdapter, OpenCodeAdapter):
+    for cls in (ClaudeCodeAdapter, CodexAdapter, OpenCodeAdapter, AntigravityAdapter):
         adapter = cls(
             app.state.settings, app.state.session_factory, app.state.keys, app.state.cli_env
         )

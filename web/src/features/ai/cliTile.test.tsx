@@ -181,16 +181,16 @@ describe('CLI tile: test and use for work', () => {
     expect(screen.getByText(/Choose how it signs in, then test it/)).toBeInTheDocument()
   })
 
-  it('"Use for the work" is disabled until the test has passed', () => {
+  it('"Use for hands-on work" is disabled until the test has passed', () => {
     renderTile(configured, {}, { onSelectForWork: vi.fn() })
-    expect(screen.getByRole('radio', { name: /Use Claude Code for the work/ })).toBeDisabled()
+    expect(screen.getByRole('radio', { name: /Use Claude Code for hands-on work/ })).toBeDisabled()
     expect(screen.getByText(/test it first/)).toBeInTheDocument()
   })
 
-  it('"Use for the work" is possible after a passing test', async () => {
+  it('"Use for hands-on work" is possible after a passing test', async () => {
     const onSelect = vi.fn()
     renderTile(makeCli({ auth: { mode: 'api_key', configured: true, credential_id: 'cr1', last_test: { ok: true, detail: 'OK', tested_at: null } } }), {}, { onSelectForWork: onSelect })
-    const radio = screen.getByRole('radio', { name: /Use Claude Code for the work/ })
+    const radio = screen.getByRole('radio', { name: /Use Claude Code for hands-on work/ })
     expect(radio).toBeEnabled()
     await userEvent.click(radio)
     expect(onSelect).toHaveBeenCalled()
