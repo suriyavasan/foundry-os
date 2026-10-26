@@ -130,6 +130,47 @@ class CompanyPolicy(Base):
         String(16), default="api", server_default="api", nullable=False
     )
     work_runtime: Mapped[str | None] = mapped_column(String(32))
+    # M12 (all human-only). Optional separate model for work runs (NULL = same routing as before);
+    # the management model (``default_model_*``) is never displaced by free_first.
+    work_model_provider_id: Mapped[str | None] = mapped_column(String(36))
+    work_model_name: Mapped[str | None] = mapped_column(String(160))
+    # Role families whose work tasks may run on the CLI (NULL = all; others stay on the company
+    # agent runtime, which has web tools). A list of RoleFamily values.
+    cli_role_families: Mapped[list[str] | None] = mapped_column(JSON)
+    # Reservation of a (non-free) CLI run; a CLI's own spend cap is derived from it ($1).
+    cli_run_reservation_micros: Mapped[int] = mapped_column(
+        BigInteger, default=1_000_000, server_default="1000000", nullable=False
+    )
+    # Run slots (of ``max_concurrent_runs``) that work runs may never use, so management stays live.
+    management_reserved_slots: Mapped[int] = mapped_column(
+        Integer, default=1, server_default="1", nullable=False
+    )
+    # Parallel runs of one agent (CLI work tasks in a project only; everything else stays 1).
+    max_parallel_runs_per_agent: Mapped[int] = mapped_column(
+        Integer, default=1, server_default="1", nullable=False
+    )
+    # Agent-created work tasks per project / child tasks per parent (decomposition caps).
+    max_work_tasks_per_project: Mapped[int] = mapped_column(
+        Integer, default=15, server_default="15", nullable=False
+    )
+    max_subtasks_per_task: Mapped[int] = mapped_column(
+        Integer, default=5, server_default="5", nullable=False
+    )
+    # A company paused by the circuit breaker resumes itself after this (0 = a human resumes).
+    circuit_breaker_cooldown_seconds: Mapped[int] = mapped_column(
+        Integer, default=1800, server_default="1800", nullable=False
+    )
+    # The Co-founder is woken to start new work when the company has been idle this long.
+    initiative_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true(), nullable=False
+    )
+    initiative_interval_seconds: Mapped[int] = mapped_column(
+        Integer, default=21_600, server_default="21600", nullable=False
+    )
+    # The system completes a project whose work tasks are all finished (>= 1 done).
+    project_auto_complete: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true(), nullable=False
+    )
     budget_lock_version: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)

@@ -5,7 +5,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.errors import NotFound
+from app.core.errors import NotFound, ValidationFailed
 from app.core.principal import CompanyContext, require_human_admin
 from app.core.time import utcnow
 from app.models.policy import DEFAULT_HUMAN_APPROVAL_KINDS, CompanyPolicy
@@ -47,6 +47,18 @@ UPDATABLE = (
     "max_tokens_per_run",
     "ai_disclosure_enabled",
     "ai_disclosure_text",
+    "work_model_provider_id",
+    "work_model_name",
+    "cli_role_families",
+    "cli_run_reservation_micros",
+    "management_reserved_slots",
+    "max_parallel_runs_per_agent",
+    "max_work_tasks_per_project",
+    "max_subtasks_per_task",
+    "circuit_breaker_cooldown_seconds",
+    "initiative_enabled",
+    "initiative_interval_seconds",
+    "project_auto_complete",
 )
 _BUDGET_FIELDS = {"daily_budget_micros", "monthly_budget_micros", "default_run_reservation_micros"}
 # Changing these re-evaluates tasks the dispatcher parked behind the paid-model approval.
@@ -69,6 +81,60 @@ def _check_default_model(
     )
     if found is None:
         raise NotFound("Model provider not found")
+
+
+def _check_work_model(
+    db: Session, company_id: str, current: CompanyPolicy, data: PolicyUpdate
+) -> None:
+    """The optional work model is an enabled provider of this company (404 otherwise) and always
+    comes as a pair: provider and model name are both set or both empty (422)."""
+    given = data.model_fields_set
+    if not ({"work_model_provider_id", "work_model_name"} & given):
+        return
+    provider = (
+        data.work_model_provider_id
+        if "work_model_provider_id" in given
+        else current.work_model_provider_id
+    )
+    name = data.work_model_name if "work_model_name" in given else current.work_model_name
+    if bool(provider) != bool(name):
+        raise ValidationFailed(
+            "work_model_provider_id and work_model_name must be set together (or both cleared)",
+            details=[{"loc": ["body", "work_model_name"], "msg": "set together with the provider"}],
+        )
+    if provider and "work_model_provider_id" in given:
+        found = db.scalar(
+            select(ModelProvider.id).where(
+                ModelProvider.id == provider,
+                ModelProvider.company_id == company_id,
+                ModelProvider.enabled.is_(True),
+            )
+        )
+        if found is None:
+            raise NotFound("Model provider not found")
+
+
+def _check_slots(current: CompanyPolicy, data: PolicyUpdate) -> None:
+    """Reserved management slots must leave room for work: ``management_reserved_slots <
+    max_concurrent_runs``. Checked when the request sets the slots (lowering ``max_concurrent_runs``
+    alone is never refused; the dispatcher clamps the effective reservation to ``max - 1``)."""
+    if "management_reserved_slots" not in data.model_fields_set:
+        return
+    max_runs = (
+        data.max_concurrent_runs
+        if "max_concurrent_runs" in data.model_fields_set
+        else current.max_concurrent_runs
+    )
+    if data.management_reserved_slots >= max_runs:
+        raise ValidationFailed(
+            "management_reserved_slots must be lower than max_concurrent_runs",
+            details=[
+                {
+                    "loc": ["body", "management_reserved_slots"],
+                    "msg": f"must be lower than max_concurrent_runs ({max_runs})",
+                }
+            ],
+        )
 
 
 def create_default_policy(db: Session, company_id: str) -> CompanyPolicy:
@@ -99,6 +165,8 @@ def update_policy(db: Session, ctx: CompanyContext, data: PolicyUpdate) -> Compa
     require_human_admin(ctx, "change company policy")
     policy = load_policy(db, ctx.company_id)
     _check_default_model(db, ctx.company_id, policy, data)
+    _check_work_model(db, ctx.company_id, policy, data)
+    _check_slots(policy, data)
     changed: list[str] = []
     for field in UPDATABLE:
         if field not in data.model_fields_set:

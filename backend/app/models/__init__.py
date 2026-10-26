@@ -4,7 +4,14 @@ from app.models.accounts import ApiToken, AuthSession, Invitation, LoginThrottle
 from app.models.agent import Agent
 from app.models.artifact import Artifact, ArtifactVersion
 from app.models.audit import AuditEvent
-from app.models.autonomy import Alert, FounderNote, MemoryEntry, NoteReply, WakeRequest
+from app.models.autonomy import (
+    Alert,
+    AutonomyIntervention,
+    FounderNote,
+    MemoryEntry,
+    NoteReply,
+    WakeRequest,
+)
 from app.models.commands import CommandExchange
 from app.models.company import Company, CompanyMember
 from app.models.department import Department
@@ -43,6 +50,7 @@ __all__ = [
     "AgentSkill",
     "ApiToken",
     "AuthSession",
+    "AutonomyIntervention",
     "Invitation",
     "LoginThrottle",
     "Notification",

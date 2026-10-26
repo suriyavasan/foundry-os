@@ -64,6 +64,7 @@ class Task(TimestampMixin, Base):
         Index("ix_tasks_assignee_member_id", "assignee_member_id"),
         Index("ix_tasks_project_id", "project_id"),
         Index("ix_tasks_parent_task_id", "parent_task_id"),
+        Index("ix_tasks_company_status_next_attempt", "company_id", "status", "next_attempt_at"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
@@ -103,6 +104,15 @@ class Task(TimestampMixin, Base):
     # M4: why a backlog task is parked, e.g. "waiting_for_hire" (no employee has its skills yet).
     blocked_reason: Mapped[str | None] = mapped_column(String(80))
     idempotency_key: Mapped[str | None] = mapped_column(String(200))
+    # M12 retry backoff: not dispatched before this; transient (rate limit / overload) failures are
+    # counted apart from attempts; agent_retry_count bounds an agent retrying its own task.
+    next_attempt_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    transient_failures: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    agent_retry_count: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
 
     @property
     def assignee_ref(self) -> str | None:

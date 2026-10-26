@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import Field, field_validator
 
-from app.schemas.agent import MAX_BUDGET_MICROS
+from app.schemas.agent import MAX_BUDGET_MICROS, RoleFamilyLiteral
 from app.schemas.common import ApiModel, RequestModel, Timestamp
 
 AutonomyModeLiteral = Literal["autonomous", "supervised"]
@@ -63,6 +63,19 @@ class Policy(ApiModel):
     # M10 (read-only here; set through PUT /ai-setup): api or hybrid, and the CLI for work tasks.
     work_mode: str = "api"
     work_runtime: str | None = None
+    # M12 (only humans can change them).
+    work_model_provider_id: str | None = None
+    work_model_name: str | None = None
+    cli_role_families: list[RoleFamilyLiteral] | None = None  # None = every role family
+    cli_run_reservation_micros: int = 1_000_000
+    management_reserved_slots: int = 1
+    max_parallel_runs_per_agent: int = 1
+    max_work_tasks_per_project: int = 15
+    max_subtasks_per_task: int = 5
+    circuit_breaker_cooldown_seconds: int = 1800  # 0 = only a human resumes
+    initiative_enabled: bool = True
+    initiative_interval_seconds: int = 21_600
+    project_auto_complete: bool = True
     created_at: Timestamp
     updated_at: Timestamp
 
@@ -101,6 +114,19 @@ class PolicyUpdate(RequestModel):
     max_tokens_per_run: int | None = Field(default=None, ge=1000, le=10**10)
     ai_disclosure_enabled: bool | None = None
     ai_disclosure_text: str | None = Field(default=None, max_length=500)
+    # M12. ``work_model_*`` and ``cli_role_families`` accept null (clear / every role family).
+    work_model_provider_id: str | None = Field(default=None, max_length=36)
+    work_model_name: str | None = Field(default=None, min_length=1, max_length=160)
+    cli_role_families: list[RoleFamilyLiteral] | None = Field(default=None, max_length=20)
+    cli_run_reservation_micros: int | None = Field(default=None, ge=0, le=MAX_BUDGET_MICROS)
+    management_reserved_slots: int | None = Field(default=None, ge=0, le=99)
+    max_parallel_runs_per_agent: int | None = Field(default=None, ge=1, le=10)
+    max_work_tasks_per_project: int | None = Field(default=None, ge=1, le=200)
+    max_subtasks_per_task: int | None = Field(default=None, ge=1, le=50)
+    circuit_breaker_cooldown_seconds: int | None = Field(default=None, ge=0, le=604_800)
+    initiative_enabled: bool | None = None
+    initiative_interval_seconds: int | None = Field(default=None, ge=600, le=2_592_000)
+    project_auto_complete: bool | None = None
 
     @field_validator(
         "autonomy_mode",
@@ -130,6 +156,15 @@ class PolicyUpdate(RequestModel):
         "max_artifacts_per_run",
         "max_tokens_per_run",
         "ai_disclosure_enabled",
+        "cli_run_reservation_micros",
+        "management_reserved_slots",
+        "max_parallel_runs_per_agent",
+        "max_work_tasks_per_project",
+        "max_subtasks_per_task",
+        "circuit_breaker_cooldown_seconds",
+        "initiative_enabled",
+        "initiative_interval_seconds",
+        "project_auto_complete",
     )
     @classmethod
     def _not_null(cls, v):  # only the two budget caps are nullable (null = no limit)
@@ -156,3 +191,8 @@ class PolicyUpdate(RequestModel):
         if any(not p or len(p) > 80 for p in cleaned) or len(cleaned) > 50:
             raise ValueError("providers must be 1-80 character strings (max 50)")
         return list(dict.fromkeys(cleaned))
+
+    @field_validator("cli_role_families")
+    @classmethod
+    def _families(cls, v):
+        return None if v is None else list(dict.fromkeys(v))

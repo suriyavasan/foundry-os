@@ -65,6 +65,9 @@ class TaskRun(TimestampMixin, Base):
     routing_reason: Mapped[str | None] = mapped_column(String(300))
     model_provider_id: Mapped[str | None] = mapped_column(String(36))
     model_used: Mapped[str | None] = mapped_column(String(160))
+    # M12: where the run's files lived and what became of them:
+    # {kind, base, commit, merged, conflict}.
+    workspace_ref: Mapped[dict | None] = mapped_column(JSON)
 
 
 class RunEvent(Base):

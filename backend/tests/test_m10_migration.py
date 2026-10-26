@@ -141,6 +141,8 @@ def test_0009_upgrades_an_existing_install_and_downgrades_cleanly(tmp_path):
         assert audit
 
     # the existing install is NOT ready: its provider was never run through the M10 checks
+    # (the ORM reads the current schema, so bring the database to head first)
+    command.upgrade(cfg, "head")
     with sessionmaker(engine)() as db:
         state = ai_setup.evaluate(db, ids["company"])
         assert state.ready is False and state.blocking_reason == "provider_test_failed"

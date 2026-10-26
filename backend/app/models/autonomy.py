@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, ForeignKey, Index, String, Text
+from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
 
@@ -122,4 +122,28 @@ class WakeRequest(Base):
     # [{trigger, text, ref_type?, ref_id?}] - why the agent is being woken, newest last.
     reasons: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     not_before: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)
+
+
+class AutonomyIntervention(Base):
+    """M12: how often the autonomy watchdog has nudged a subject (``kind`` + ``subject_id``), so
+    every automatic remediation is bounded. Also holds small watchdog state (e.g. the heartbeat
+    fingerprint in ``data``)."""
+
+    __tablename__ = "autonomy_interventions"
+    __table_args__ = (
+        UniqueConstraint(
+            "company_id", "kind", "subject_id", name="uq_autonomy_interventions_subject"
+        ),
+        Index("ix_autonomy_interventions_company_id", "company_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id"), nullable=False)
+    kind: Mapped[str] = mapped_column(String(48), nullable=False)
+    subject_type: Mapped[str] = mapped_column(String(24), nullable=False)
+    subject_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    count: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    last_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)
+    data: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)
