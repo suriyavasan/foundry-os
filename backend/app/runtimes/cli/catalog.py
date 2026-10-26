@@ -33,6 +33,11 @@ class CliSpec:
     key_env: str | None = None
     # Shown instead of an install button when the CLI has no npm package (the person runs it themselves).
     manual_install: str | None = None
+    # The command a person runs in a terminal to sign this CLI in with their own account, for
+    # ``foundryos setup`` (inherited stdio, so device codes and URLs reach the terminal). UNVERIFIED:
+    # taken from each CLI's documentation / ``--help``, never run by the test suite or on this machine
+    # by Foundry AI OS. ``None``: the CLI has no own-login mode.
+    headless_login_argv: tuple[str, ...] | None = None
 
     @property
     def runtime_id(self) -> str:
@@ -53,6 +58,9 @@ CLIS: dict[str, CliSpec] = {
         npm_package="@anthropic-ai/claude-code",
         login_hint="Run `claude` in a terminal and sign in with /login",
         key_env="ANTHROPIC_API_KEY",
+        # Unverified: Claude Code has no non-interactive login command; `claude` starts its UI and the
+        # person types /login (setup tells them to) and then /exit.
+        headless_login_argv=("claude",),
     ),
     "codex": CliSpec(
         id="codex",
@@ -62,6 +70,8 @@ CLIS: dict[str, CliSpec] = {
         npm_package="@openai/codex",
         login_hint="Run `codex login` in a terminal",
         key_env="CODEX_API_KEY",
+        # Unverified: `codex login --device-auth` is the device-code flow for machines without a browser.
+        headless_login_argv=("codex", "login", "--device-auth"),
     ),
     "opencode": CliSpec(
         id="opencode",
@@ -71,6 +81,8 @@ CLIS: dict[str, CliSpec] = {
         npm_package="opencode-ai",
         login_hint="Run `opencode auth login` in a terminal",
         key_env=None,  # provider-specific: see opencode.PROVIDER_KEY_ENV
+        # Unverified: `opencode auth login` is an interactive provider picker that stores its own login.
+        headless_login_argv=("opencode", "auth", "login"),
     ),
     "antigravity": CliSpec(
         id="antigravity",

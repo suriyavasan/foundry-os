@@ -190,3 +190,89 @@ def test_runtime_check_imports_from_the_runtime_dir(tmp_path, monkeypatch):
     s.runtime_dir = tmp_path  # an existing runtime checkout
     assert doctor.check_runtime(s).status == "ok"
     assert seen["cwd"] == tmp_path
+
+
+# ------------------------------------------------------------------ headless boxes
+
+
+@pytest.fixture
+def clean_env(monkeypatch, tmp_path):
+    from app.ops import headless
+
+    for name in ("SSH_CONNECTION", "SSH_TTY", "FOUNDRYOS_NO_BROWSER", "FOUNDRYOS_OPEN_BROWSER"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(headless, "DOCKERENV", tmp_path / "no-.dockerenv")
+
+
+def test_headless_check_is_informational_and_says_why(monkeypatch, clean_env):
+    monkeypatch.setattr(doctor.install, "current_os", lambda: "darwin")
+    no = doctor.check_headless()
+    assert no.status == "info" and no.detail.startswith("no")
+    monkeypatch.setenv("SSH_CONNECTION", "1 2 3 4")
+    yes = doctor.check_headless()
+    assert yes.status == "info" and "SSH session" in yes.detail and "ssh -N -L" in (yes.fix or "")
+    monkeypatch.delenv("SSH_CONNECTION")
+    monkeypatch.setattr(doctor.install, "current_os", lambda: "linux")
+    monkeypatch.delenv("DISPLAY", raising=False)
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+    assert "no display" in doctor.check_headless().detail
+
+
+def test_linger_check_warns_only_when_headless_and_off(monkeypatch, clean_env):
+    monkeypatch.setattr(doctor.install, "current_os", lambda: "darwin")
+    assert doctor.check_linger() is None  # not a Linux thing
+    monkeypatch.setattr(doctor.install, "current_os", lambda: "linux")
+    monkeypatch.setenv("SSH_TTY", "/dev/pts/1")
+    state = {"v": False}
+    monkeypatch.setattr(doctor.services, "linger_state", lambda user=None: state["v"])
+    off = doctor.check_linger()
+    assert off and off.status == "warn" and "enable-linger" in (off.fix or "")
+    state["v"] = True
+    assert doctor.check_linger().status == "ok"  # type: ignore[union-attr]
+    state["v"] = None
+    assert doctor.check_linger().status == "info"  # type: ignore[union-attr]
+    state["v"] = False
+    monkeypatch.delenv("SSH_TTY")
+    monkeypatch.setenv("DISPLAY", ":0")
+    assert doctor.check_linger().status == "info"  # type: ignore[union-attr]
+
+
+def test_service_lifetime_on_linux(monkeypatch, clean_env):
+    monkeypatch.setenv("SSH_CONNECTION", "1 2 3 4")
+    svc = doctor.services.SystemdService()
+    monkeypatch.setattr(doctor.services, "native_manager", lambda: svc)
+    monkeypatch.setattr(svc, "installed", lambda: False)
+    assert doctor.check_service_survives_logout() is None  # nothing installed: nothing to say
+    monkeypatch.setattr(svc, "installed", lambda: True)
+    monkeypatch.setattr(doctor.services, "linger_state", lambda user=None: False)
+    c = doctor.check_service_survives_logout()
+    assert c and c.status == "warn" and "stops at logout" in c.detail
+    monkeypatch.setattr(doctor.services, "linger_state", lambda user=None: True)
+    assert doctor.check_service_survives_logout().status == "ok"  # type: ignore[union-attr]
+
+
+def test_service_lifetime_on_macos_names_the_domain(monkeypatch, clean_env, tmp_path):
+    monkeypatch.setenv("SSH_CONNECTION", "1 2 3 4")
+    svc = doctor.services.LaunchdService()
+    monkeypatch.setattr(doctor.services, "native_manager", lambda: svc)
+    monkeypatch.setattr(svc, "installed", lambda: True)
+    monkeypatch.setattr(svc, "recorded_domain", lambda: svc.user_domain)
+    c = doctor.check_service_survives_logout()
+    assert (
+        c and c.status == "warn" and svc.user_domain in c.detail and "LaunchDaemon" in (c.fix or "")
+    )
+    monkeypatch.setattr(svc, "recorded_domain", lambda: svc.gui_domain)
+    gui = doctor.check_service_survives_logout()
+    assert gui and svc.gui_domain in gui.detail and "automatic login" in gui.detail
+    monkeypatch.delenv("SSH_CONNECTION")
+    monkeypatch.setattr(doctor.install, "current_os", lambda: "darwin")
+    monkeypatch.setenv("FOUNDRYOS_OPEN_BROWSER", "1")
+    assert doctor.check_service_survives_logout().status == "info"  # type: ignore[union-attr]
+
+
+def test_run_checks_includes_the_new_ones_and_skips_inapplicable_ones(tmp_path, monkeypatch):
+    s = settings_for(tmp_path)
+    monkeypatch.setattr(doctor.install, "current_os", lambda: "darwin")
+    monkeypatch.setattr(doctor.services, "native_manager", lambda: None)
+    names = [c.name for c in doctor.run_checks(s)]
+    assert "headless" in names and "linger" not in names and "service lifetime" not in names

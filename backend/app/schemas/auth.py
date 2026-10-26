@@ -36,6 +36,9 @@ class AuthSession(ApiModel):
     # origin).
     passkeys_count: int = 0
     passkey_supported_origin: bool = False
+    # Why passkeys are unavailable here, when known: "ephemeral_origin" is a quick-tunnel address
+    # (it changes on every restart, so a passkey bound to it would break). None otherwise.
+    passkey_unsupported_reason: Literal["ephemeral_origin"] | None = None
 
 
 class SetupRequest(RequestModel):

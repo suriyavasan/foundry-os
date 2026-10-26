@@ -17,9 +17,12 @@ tail. The exposure rules (password auth) are enforced by the caller before ``sta
 
 from __future__ import annotations
 
+import contextlib
+import json
 import logging
 import os
 import re
+import signal
 import subprocess
 import threading
 import time
@@ -27,9 +30,11 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from app.core.time import utcnow
+from app.ops import pidfile
 from app.services.secrets_scan import scrub
 
 logger = logging.getLogger("company_os.tunnel")
@@ -40,6 +45,8 @@ NAMED_READY = re.compile(r"registered tunnel connection|connection [0-9a-f-]+ re
 LONG_BLOB = re.compile(r"[A-Za-z0-9+/=_-]{60,}")
 LOG_LINES = 200
 UNHEALTHY_RESTART_AFTER = 3
+TUNNEL_ROLE = "tunnel"  # run-file role of the supervised child (``<data>/run/tunnel.<pid>.json``)
+STALE_TERM_WAIT = 5.0
 
 
 @dataclass
@@ -52,12 +59,93 @@ class TunnelSpec:
     secrets: tuple[str, ...] = ()
 
 
+def is_ephemeral_host(host: str | None) -> bool:
+    """A quick-tunnel host (``*.trycloudflare.com``): its name changes every time the tunnel
+    restarts, so nothing bound to the origin (a passkey) survives."""
+    name = (host or "").strip().lower().rstrip(".")
+    return name == "trycloudflare.com" or name.endswith(".trycloudflare.com")
+
+
 def redact_line(line: str, secrets: tuple[str, ...]) -> str:
     for secret in secrets:
         if secret and secret in line:
             line = line.replace(secret, "[redacted]")
     line = LONG_BLOB.sub("[redacted]", line)
     return (scrub(line) or "").rstrip()[:500]
+
+
+def process_command(pid: int) -> str | None:
+    """The command line of a process (``ps``; works on macOS and Linux), or None."""
+    try:
+        proc = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "command="], capture_output=True, text=True, timeout=5
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    out = proc.stdout.strip()
+    return out if proc.returncode == 0 and out else None
+
+
+def _command_is(command: str, binary: str) -> bool:
+    name = os.path.basename(binary)
+    return bool(name) and any(os.path.basename(part) == name for part in command.split())
+
+
+def _gone(pid: int) -> bool:
+    """Whether ``pid`` has exited. A child of this process is reaped here (a zombie still answers
+    ``kill(pid, 0)``)."""
+    with contextlib.suppress(ChildProcessError, OSError):
+        os.waitpid(pid, os.WNOHANG)
+    return not pidfile._alive(pid)
+
+
+def reap_stale_tunnels(
+    data_dir: Path, *, keep: frozenset[int] = frozenset(), term_wait: float = STALE_TERM_WAIT
+) -> list[int]:
+    """Stop a tunnel process left behind by an API process that died without cleaning up (SIGKILL,
+    power loss): cloudflared runs in its own session, so it outlives its parent and would keep
+    serving while a second one starts. Only a pid recorded in ``run/tunnel.<pid>.json`` whose live
+    command line still names the recorded binary is signalled (a recycled pid is not touched), and
+    never one whose recorded owner process is still alive. Returns the pids that were stopped."""
+    stopped: list[int] = []
+    try:
+        entries = sorted((data_dir / pidfile.RUN_DIR).glob(f"{TUNNEL_ROLE}.*.json"))
+    except OSError:
+        return stopped
+    for entry in entries:
+        try:
+            info = json.loads(entry.read_text(encoding="utf-8"))
+            pid = int(info["pid"])
+        except (OSError, ValueError, KeyError, TypeError):
+            with contextlib.suppress(OSError):
+                entry.unlink()
+            continue
+        parent = info.get("parent")
+        if pid in keep:
+            continue
+        if isinstance(parent, int) and parent != os.getpid() and pidfile._alive(parent):
+            continue  # another running Foundry process owns this tunnel
+        if pidfile._alive(pid):
+            command = process_command(pid)
+            binary = str(info.get("binary") or "")
+            if command is not None and binary and _command_is(command, binary):
+                logger.warning(
+                    "stopping a tunnel process left behind by an earlier run (pid %s)", pid
+                )
+                with contextlib.suppress(ProcessLookupError, PermissionError):
+                    os.kill(pid, signal.SIGTERM)
+                deadline = time.monotonic() + term_wait
+                while time.monotonic() < deadline and not _gone(pid):
+                    time.sleep(0.05)
+                if not _gone(pid):
+                    with contextlib.suppress(ProcessLookupError, PermissionError):
+                        os.kill(pid, signal.SIGKILL)
+                    time.sleep(0.1)
+                    _gone(pid)
+                stopped.append(pid)
+        with contextlib.suppress(OSError):
+            entry.unlink()
+    return stopped
 
 
 def default_health_check(url: str) -> bool:
@@ -85,6 +173,7 @@ class TunnelSupervisor:
         health_check: Callable[[str], bool] = default_health_check,
         popen: Callable[..., subprocess.Popen] = subprocess.Popen,
         on_change: Callable[[dict[str, Any]], None] | None = None,
+        data_dir: Path | None = None,
     ) -> None:
         self.health_interval = health_interval
         self.start_timeout = start_timeout
@@ -97,6 +186,8 @@ class TunnelSupervisor:
         self._health_check = health_check
         self._popen = popen
         self._on_change = on_change
+        self._data_dir = data_dir
+        self._runfiles: dict[int, Path] = {}
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -154,6 +245,8 @@ class TunnelSupervisor:
     # ------------------------------------------------------------------ control
 
     def start(self, spec: TunnelSpec) -> None:
+        if self._data_dir is not None and not self.active:
+            reap_stale_tunnels(self._data_dir, keep=frozenset(self._runfiles))
         with self._lock:
             if self.active:
                 raise RuntimeError("the tunnel is already running")
@@ -176,8 +269,8 @@ class TunnelSupervisor:
             thread.join(timeout=self.kill_grace + 5)
         with self._lock:
             self._thread = None
-            self.state, self.url, self.healthy, self.error = "stopped", None, None, None
-        self._set()
+        # through _set, so listeners hear that the URL is gone (a stopped tunnel serves nothing)
+        self._set(state="stopped", url=None, healthy=None, error=None)
 
     def _kill(self, proc: subprocess.Popen | None = None) -> None:
         if proc is None:
@@ -194,6 +287,30 @@ class TunnelSupervisor:
                 proc.wait(timeout=5)
         except OSError:
             pass
+        finally:
+            self._forget(proc)
+
+    def _remember(self, proc: subprocess.Popen, spec: TunnelSpec) -> None:
+        """Record the child in ``<data>/run`` so a later start can find it if this process dies."""
+        if self._data_dir is None:
+            return
+        path = pidfile.register(
+            self._data_dir,
+            TUNNEL_ROLE,
+            pid=proc.pid,
+            extra={
+                "provider": spec.provider,
+                "binary": os.path.basename(spec.argv[0]),
+                "parent": os.getpid(),
+            },
+        )
+        if path is not None:
+            self._runfiles[proc.pid] = path
+
+    def _forget(self, proc: subprocess.Popen) -> None:
+        """Drop the run file of a process that has ended (never of one that is still alive)."""
+        if proc.poll() is not None:
+            pidfile.unregister(self._runfiles.pop(proc.pid, None))
 
     # ------------------------------------------------------------------ the loop
 
@@ -215,6 +332,7 @@ class TunnelSupervisor:
         )
         with self._lock:
             self._proc = proc  # before the reader starts: it only observes the current process
+            self._remember(proc, spec)
         threading.Thread(target=self._read, args=(proc, spec), daemon=True).start()
         return proc
 
@@ -266,6 +384,7 @@ class TunnelSupervisor:
             if self._stop.is_set():
                 self._kill(proc)
                 return
+            self._forget(proc)
             code = proc.poll()
             lived = time.monotonic() - began
             if reached_running and lived >= self.stable_seconds:

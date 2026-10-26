@@ -88,8 +88,13 @@ class ApiClient:
         json_body: Any = None,
         params: dict | None = None,
         headers: dict[str, str] | None = None,
+        timeout: float | None = None,
     ) -> Any:
+        """``timeout`` (seconds) overrides the client's default for this one request (slow tests:
+        a model provider test, a coding-CLI test)."""
         kwargs: dict[str, Any] = {"headers": {**self._headers(), **(headers or {})}}
+        if timeout is not None:
+            kwargs["timeout"] = httpx.Timeout(timeout, connect=5.0)
         if params:
             kwargs["params"] = {k: v for k, v in params.items() if v is not None}
         if json_body is not None:
@@ -118,8 +123,11 @@ class ApiClient:
     def get(self, path: str, **params: Any) -> Any:
         return self.request("GET", path, params=params)
 
-    def post(self, path: str, body: Any | None = None) -> Any:
-        return self.request("POST", path, json_body={} if body is None else body)
+    def post(self, path: str, body: Any | None = None, *, timeout: float | None = None) -> Any:
+        return self.request("POST", path, json_body={} if body is None else body, timeout=timeout)
+
+    def put(self, path: str, body: Any, *, timeout: float | None = None) -> Any:
+        return self.request("PUT", path, json_body=body, timeout=timeout)
 
     def patch(self, path: str, body: Any) -> Any:
         return self.request("PATCH", path, json_body=body)

@@ -6,14 +6,15 @@ from typing import Annotated
 
 import typer
 
-from app.cli.commands import auth, company, lifecycle, org, setup, system, work
+from app.cli.commands import auth, company, lifecycle, onboard, org, setup, system, work
 from app.cli.context import CliState, guarded
 
 app = typer.Typer(
     name="foundryos",
     help=(
         "Foundry AI OS: run and operate your autonomous company of AI agents. "
-        "Run it with no arguments to start it in the background and open it in your browser."
+        "Run it with no arguments to start it in the background and open it in your browser. "
+        "On a server with no browser, `foundryos setup` does the whole first-run setup in the terminal."
     ),
     no_args_is_help=False,
     invoke_without_command=True,
@@ -59,7 +60,7 @@ def root(
         guarded(lambda ctx: lifecycle.launch())(ctx)
 
 
-for module in (auth, company, org, work, setup, system, lifecycle):
+for module in (auth, company, org, work, setup, onboard, system, lifecycle):
     module.register(app)
 
 

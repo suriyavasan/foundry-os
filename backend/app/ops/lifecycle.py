@@ -15,12 +15,12 @@ HTTP, signals, browser) is injectable, so the whole flow is tested without real 
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import signal
 import socket
 import subprocess
 import time
-import webbrowser
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -30,7 +30,7 @@ import httpx
 
 from app.core import install
 from app.core.config import Settings
-from app.ops import logs, pidfile, services
+from app.ops import headless, logs, pidfile, services
 
 START_TIMEOUT = 120.0
 STOP_TIMEOUT = 60.0
@@ -231,8 +231,13 @@ def start(
     probe: Callable[[int], dict | None] | None = None,
     sleep: Callable[[float], None] = time.sleep,
     clock: Callable[[], float] = time.monotonic,
+    use_service: bool = True,
 ) -> RunState:
-    """Start it in the background and wait until it answers. Returns the running state."""
+    """Start it in the background and wait until it answers. Returns the running state.
+
+    Goes through the installed background service; when that cannot start here (a LaunchAgent on a Mac
+    nobody is logged in to, a systemd user session with no bus) it runs as a plain background process
+    instead, so `foundryos` still works. ``use_service=False`` skips the service."""
     probe_fn = probe or probe_health
     timeout = START_TIMEOUT if timeout is None else timeout
     spawn = spawn or spawn_detached
@@ -245,15 +250,18 @@ def start(
             "Stop that program, or choose another port: FOUNDRYOS_PORT=8701 foundryos",
             code="port_in_use",
         )
-    svc = services.active_service()
+    svc = services.active_service() if use_service else None
+    proc: Any = None
     if svc is not None:
         say(f"Starting Foundry AI OS through its background service ({svc.name})...")
         try:
             svc.start()
+            proc = _ServiceProc()
         except services.ServiceError as exc:
-            raise LifecycleError(str(exc), code="service_error") from exc
-        proc: Any = _ServiceProc()
-    else:
+            if svc.name == "brew":
+                raise LifecycleError(str(exc), code="service_error") from exc
+            say(f"The background service could not be started here ({exc}).")
+    if proc is None:
         say("Starting Foundry AI OS in the background...")
         cmd, cwd = background_command(settings)
         env = {**os.environ, "FOUNDRYOS_RUN_MODE": "background", "PYTHONUNBUFFERED": "1"}
@@ -270,6 +278,104 @@ def start(
             code="start_failed",
         )
     return run_state(settings, probe=probe_fn)
+
+
+def install_service(
+    settings: Settings,
+    say: Callable[[str], None],
+    native: services.ServiceManager,
+    *,
+    linger: bool = False,
+    timeout: float = 90.0,
+    probe: Callable[[int], dict | None] | None = None,
+    sleep: Callable[[float], None] = time.sleep,
+    clock: Callable[[], float] = time.monotonic,
+) -> bool | None:
+    """Write and load the native service, handing over from a copy that runs outside it.
+
+    Returns True when it answers, False when it was loaded but does not answer yet, None when it was not
+    started (port busy with another program, or the manager would not load it). Raises ``ServiceError`` / ``LifecycleError``."""
+    spec = services.build_spec(settings)
+    load = True
+    now = run_state(settings, probe=probe)
+    if now.running and now.managed_by != "service":
+        say("Stopping the copy that runs outside the service so the service can take over...")
+        stop(settings, say)
+    elif now.port_busy_by_other:
+        load = False
+        say(
+            f"Port {settings.port} is busy with another program, so the service is installed but not started."
+        )
+    for note in native.install(spec, load=load, linger=linger):
+        say(note)
+    if not load:
+        return None
+    if not native.status().loaded:
+        return None  # e.g. launchd refused both domains: the notes above say what to do
+    return _wait_healthy(
+        settings,
+        _ServiceProc(),
+        timeout=timeout,
+        probe=probe or probe_health,
+        sleep=sleep,
+        clock=clock,
+    )
+
+
+def ensure_running(
+    settings: Settings,
+    say: Callable[[str], None] = print,
+    *,
+    service: bool,
+    linger: bool,
+    **kwargs: Any,
+) -> RunState:
+    """Make sure it is running; idempotent. ``service=True`` installs and starts the background service
+    (with linger when ``linger`` is set, Linux), falling back to a plain background process where the
+    service cannot be loaded; ``service=False`` just starts it in the background."""
+    start_kwargs = {
+        k: v for k, v in kwargs.items() if k in ("spawn", "probe", "sleep", "clock", "timeout")
+    }
+    state = run_state(settings, probe=start_kwargs.get("probe"))
+    kind = install.install_kind()
+    native = services.native_manager()
+    want_service = (
+        service
+        and native is not None
+        and kind not in (install.HOMEBREW, install.DOCKER)
+        and not services.brew_manager().installed()
+    )
+    if want_service and native is not None:
+        if not native.installed():
+            try:
+                healthy = install_service(
+                    settings,
+                    say,
+                    native,
+                    linger=linger,
+                    **{k: v for k, v in start_kwargs.items() if k != "spawn"},
+                )
+            except services.ServiceError as exc:
+                say(f"Could not set up the background service: {exc}")
+                healthy = None
+            else:
+                if healthy is False:
+                    raise LifecycleError(
+                        "Foundry AI OS did not answer after the service was loaded.\n"
+                        f"{log_tail_hint(settings)}\nRun `foundryos logs` for the full log.",
+                        code="start_failed",
+                    )
+            if healthy:
+                return run_state(settings, probe=start_kwargs.get("probe"))
+            say("Running it as a plain background process instead.")
+            return start(settings, say, use_service=False, **start_kwargs)
+        if linger and install.current_os() == "linux":
+            say(services.enable_linger()[1])
+    elif linger and install.current_os() == "linux":
+        say(services.enable_linger()[1])
+    if state.running:
+        return state
+    return start(settings, say, **start_kwargs)
 
 
 # ------------------------------------------------------------------------------ stop
@@ -395,12 +501,9 @@ def restart(settings: Settings, say: Callable[[str], None] = print, **kwargs: An
 
 
 def open_in_browser(url: str, opener: Callable[[str], bool] | None = None) -> bool:
-    if os.environ.get("FOUNDRYOS_NO_BROWSER", "").strip() not in ("", "0"):
-        return False
-    try:
-        return bool((opener or webbrowser.open)(url))
-    except webbrowser.Error:
-        return False
+    """Open ``url`` in a browser unless this is a headless box (SSH, container, server): then False and
+    the caller prints the address instead."""
+    return headless.open_browser(url, opener)
 
 
 def setup_pending(port: int, get: Callable[..., Any] = httpx.get) -> bool:
@@ -409,3 +512,29 @@ def setup_pending(port: int, get: Callable[..., Any] = httpx.get) -> bool:
     except (httpx.HTTPError, ValueError, OSError):
         return False
     return isinstance(body, dict) and body.get("state") == "setup_required"
+
+
+PUBLIC_URL_FILE = "public-url.json"
+
+
+def read_public_url(settings: Settings) -> dict | None:
+    """``<data dir>/public-url.json`` ({url, provider, state, changed_at, previous_url}) written by the
+    public-URL watcher; None when it is missing or not valid."""
+    try:
+        body = json.loads(
+            (settings.resolved_data_dir / PUBLIC_URL_FILE).read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError):
+        return None
+    if not isinstance(body, dict):
+        return None
+    url = body.get("url")
+    if not isinstance(url, str) or not url.startswith(("http://", "https://")):
+        return None
+    return {
+        "url": url,
+        "provider": body.get("provider"),
+        "state": body.get("state"),
+        "changed_at": body.get("changed_at"),
+        "previous_url": body.get("previous_url"),
+    }

@@ -5,13 +5,14 @@ from __future__ import annotations
 import contextlib
 import socket
 import sys
+from pathlib import Path
 from typing import Annotated
 
 import typer
 
 from app.cli import config, render
-from app.cli.client import CliError
-from app.cli.context import JsonOpt, command, state
+from app.cli.client import ApiClient, CliError
+from app.cli.context import CliState, JsonOpt, command, state
 
 auth_app = typer.Typer(help="Account tasks that need the server machine.", no_args_is_help=True)
 
@@ -29,6 +30,49 @@ def read_secret_line(prompt: str, *, from_stdin: bool, confirm: bool = False) ->
         if again != value:
             raise CliError("The two entries differ.")
     return value
+
+
+def csrf_headers(client: ApiClient) -> dict[str, str]:
+    """The double-submit CSRF header for a cookie session held by ``client``."""
+    return {"X-CSRF-Token": client.http.cookies.get("cos_csrf") or ""}
+
+
+def end_session(client: ApiClient) -> None:
+    """Sign the browser-style session out (idempotent; a failure here is never worth stopping for)."""
+    with contextlib.suppress(CliError):
+        client.request("POST", "/auth/logout", headers=csrf_headers(client))
+
+
+def mint_cli_token(
+    st: CliState,
+    session: ApiClient,
+    *,
+    scope: str = "admin",
+    name_prefix: str = "companyos-cli",
+    keep_session: bool = False,
+) -> tuple[dict, Path]:
+    """With a signed-in session (``session`` carries its cookies), create a personal API token named
+    ``<name_prefix>@<host>``, save it for this machine (mode 0600) and remember the server URL.
+
+    The session is signed out afterwards unless ``keep_session`` (``foundryos setup`` still needs it for
+    two-factor enrolment, which a personal token may not do). Returns the API's token record (its ``token``
+    is the secret: never print it) and the file it was saved to."""
+    host = socket.gethostname().split(".")[0] or "cli"
+    created = session.request(
+        "POST",
+        "/auth/tokens",
+        json_body={"name": f"{name_prefix}@{host}", "scope": scope},
+        headers=csrf_headers(session),
+    )
+    if not keep_session:
+        end_session(session)  # the browser-style session is not needed any more
+    path = config.write_token(created["token"])
+    updates: dict[str, str | None] = {"token_id": created.get("id")}
+    if st.api_url:
+        updates["api_url"] = st.api_url.rstrip("/")
+    config.save_config(**updates)
+    st._client = None  # new credential
+    return created, path
 
 
 def register(app: typer.Typer) -> None:
@@ -70,23 +114,8 @@ def register(app: typer.Typer) -> None:
             result = anon.request("POST", "/auth/login", json_body={**body, "totp_code": code})
         if not isinstance(result, dict) or result.get("state") != "authenticated":
             raise CliError("Sign-in did not complete.", exit_code=3, code="unauthenticated")
-        csrf = {"X-CSRF-Token": anon.http.cookies.get("cos_csrf") or ""}
-        host = socket.gethostname().split(".")[0] or "cli"
-        created = anon.request(
-            "POST",
-            "/auth/tokens",
-            json_body={"name": f"companyos-cli@{host}", "scope": scope},
-            headers=csrf,
-        )
-        token = created["token"]
-        with contextlib.suppress(CliError):  # the browser-style session is not needed any more
-            anon.request("POST", "/auth/logout", headers=csrf)
-        path = config.write_token(token)
-        updates: dict[str, str | None] = {"token_id": created.get("id")}
-        if st.api_url:
-            updates["api_url"] = st.api_url.rstrip("/")
-        config.save_config(**updates)
-        st._client = None  # new credential
+        created, path = mint_cli_token(st, anon, scope=scope)
+        token_id = created.get("id")
         if company_ref:
             st.company = company_ref
             config.save_config(company_id=st.company_id())
@@ -97,7 +126,7 @@ def register(app: typer.Typer) -> None:
                     "user": user,
                     "scope": scope,
                     "token_file": str(path),
-                    "token_id": created.get("id"),
+                    "token_id": token_id,
                 }
             )
         else:

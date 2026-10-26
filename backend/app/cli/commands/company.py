@@ -4,15 +4,17 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 from collections import Counter
 from decimal import Decimal, InvalidOperation
+from types import SimpleNamespace
 from typing import Annotated
 
 import typer
 
-from app.cli import render
-from app.cli.client import CliError
-from app.cli.context import CliState, JsonOpt, command, state
+from app.cli import render, tunnel_flow
+from app.cli.client import EXIT_UNREACHABLE, CliError
+from app.cli.context import CliState, JsonOpt, command, guarded, state
 from app.cli.render import short, usd
 from app.cli.resolve import resolve
 
@@ -23,6 +25,19 @@ goal_app = typer.Typer(help="Company goals.", no_args_is_help=True)
 company_app = typer.Typer(help="Companies on this install.", no_args_is_help=True)
 budget_app = typer.Typer(help="Spending limits.", no_args_is_help=True)
 policy_app = typer.Typer(help="Company policy.", no_args_is_help=True)
+reach_app = typer.Typer(
+    help="How to reach this install: local, local network, public URL.",
+    invoke_without_command=True,
+    no_args_is_help=False,
+)
+public_app = typer.Typer(
+    help="A public URL: a free Cloudflare quick tunnel, a named tunnel, or Tailscale.",
+    no_args_is_help=True,
+)
+reach_app.add_typer(public_app, name="public")
+
+# `reach --watch` timing; tests shorten it and bound the loop.
+watch_hooks = SimpleNamespace(interval=5.0, sleep=time.sleep, max_iterations=None)
 
 INACTIVE = {"retired", "rejected"}
 
@@ -65,6 +80,7 @@ def register(app: typer.Typer) -> None:
     app.add_typer(goal_app, name="goal")
     app.add_typer(budget_app, name="budget")
     app.add_typer(policy_app, name="policy")
+    app.add_typer(reach_app, name="reach")
 
     # ------------------------------------------------------------------ status
 
@@ -120,6 +136,9 @@ def register(app: typer.Typer) -> None:
             "reachability": {
                 "mode": (reach or {}).get("mode"),
                 "active_url": (reach or {}).get("active_url"),
+                "public_url": _public_url(reach),
+                "public_url_ephemeral": bool(((reach or {}).get("tunnel") or {}).get("ephemeral")),
+                "tunnel_state": ((reach or {}).get("tunnel") or {}).get("state"),
             }
             if reach
             else None,
@@ -156,6 +175,15 @@ def register(app: typer.Typer) -> None:
                 f"(you have {update['current_version']}). To update: {update['update_command']}",
                 style="yellow",
             )
+        r = data["reachability"]
+        if r and r["public_url"]:
+            render.say(
+                f"Public URL: {r['public_url']}"
+                + ("  (changes on restart)" if r["public_url_ephemeral"] else ""),
+                style="bold",
+            )
+        elif r:
+            render.say("Public URL: none  (turn one on: foundryos reach public start)", style="dim")
         cf = data["cofounder"]
         render.say(
             f"AI Co-founder: {cf['name'] or '-'} ({cf['status'] or '-'}, {cf['state'] or '-'})"
@@ -194,9 +222,8 @@ def register(app: typer.Typer) -> None:
         render.say(f"Open alerts: {data['alerts_open']}")
         if data["reachability"]:
             r = data["reachability"]
-            render.say(
-                f"Reachability: {r['mode']}" + (f"  {r['active_url']}" if r["active_url"] else "")
-            )
+            shown = r["active_url"] if r["active_url"] != r["public_url"] else None
+            render.say(f"Reachability: {r['mode']}" + (f"  {shown}" if shown else ""))
 
     @command(company_app, "ls")
     def company_ls(ctx: typer.Context, json_out: JsonOpt = False) -> None:
@@ -222,16 +249,50 @@ def register(app: typer.Typer) -> None:
         ctx: typer.Context,
         name: Annotated[str, typer.Argument()],
         mission: Annotated[str | None, typer.Option(help="What the company is for")] = None,
+        idea: Annotated[
+            str | None,
+            typer.Option(
+                help="One line (at most 280 characters); becomes the first Founder's note."
+            ),
+        ] = None,
+        timezone: Annotated[
+            str | None, typer.Option(help="IANA name, e.g. Europe/Berlin (default UTC).")
+        ] = None,
         json_out: JsonOpt = False,
     ) -> None:
         """Create a company (with its AI Co-founder and HR agent)."""
+        from app.cli import onboarding
+
         st = state(ctx, json_out)
-        body = {"name": name, **({"mission": mission} if mission else {})}
-        created = st.client().post("/companies", body)
+        if idea is not None:
+            onboarding.idea_error(idea)
+        if timezone is not None:
+            onboarding.timezone_error(timezone)
+        body = {
+            "name": name,
+            **({"mission": mission} if mission else {}),
+            **({"timezone": timezone} if timezone else {}),
+        }
+        client = st.client()
+        created = client.post("/companies", body)
+        idea_state = None
+        if idea and idea.strip():
+            try:
+                idea_state = onboarding.seed_idea(client, created["id"], idea)
+            except CliError as exc:
+                idea_state = "failed"
+                render.say(f"The idea could not be saved as a note: {exc.message}", err=True)
         if st.json:
-            render.print_json(created)
+            render.print_json({**created, "idea": idea_state} if idea else created)
         else:
             render.say(f"Company {created['name']} created ({created['id']}).")
+            if idea_state == "waiting":
+                render.say(
+                    "Your idea becomes the first note once the model API is ready: "
+                    'run `foundryos setup --only ai`, then `foundryos note "..."`.'
+                )
+            elif idea_state == "note":
+                render.say("Saved your idea as the first Founder's note.")
 
     # ------------------------------------------------------------------ notes
 
@@ -557,16 +618,30 @@ def register(app: typer.Typer) -> None:
 
     # ------------------------------------------------------------------ reachability
 
-    @command(app, "reach")
+    @reach_app.callback(invoke_without_command=True)
+    @guarded
     def reach(
         ctx: typer.Context,
         qr: Annotated[
             bool, typer.Option("--qr/--no-qr", help="Draw a QR code for the LAN address.")
         ] = True,
+        watch: Annotated[
+            bool,
+            typer.Option(
+                "--watch",
+                help="Keep running and print the public URL each time it changes (Ctrl-C ends).",
+            ),
+        ] = False,
         json_out: JsonOpt = False,
     ) -> None:
         """How to reach this install: local, local network, public URL."""
+        if ctx.invoked_subcommand is not None:
+            state(ctx, json_out)
+            return
         st = state(ctx, json_out)
+        if watch:
+            _watch_public_url(st)
+            return
         r = st.client().get("/reachability")
         if st.json:
             render.print_json(r)
@@ -590,9 +665,12 @@ def register(app: typer.Typer) -> None:
             render.say("  network: off (enable it in the web app: Reachability)", style="dim")
         t = r.get("tunnel") or {}
         if t.get("url"):
-            render.say(f"  public  {t['url']}  ({t['state']})")
+            note = "  changes on restart" if t.get("ephemeral") else ""
+            render.say(f"  public  {t['url']}  ({t['state']}{note})")
         else:
             render.say(f"  public: no tunnel ({t.get('state', 'stopped')})", style="dim")
+            if t.get("last_url"):
+                render.say(f"          last URL was {t['last_url']}", style="dim")
         if r.get("public_exposure_blocked_reason"):
             render.say(f"  exposure blocked: {r['public_exposure_blocked_reason']}", style="yellow")
         if qr and lan.get("enabled") and lan_urls:
@@ -602,3 +680,133 @@ def register(app: typer.Typer) -> None:
                 segno.make(lan_urls[0]).terminal(compact=True)
             except Exception:  # a missing QR must never fail the command
                 pass
+
+    @command(public_app, "start")
+    def public_start(
+        ctx: typer.Context,
+        kind: Annotated[
+            str,
+            typer.Argument(
+                metavar="[quick|named|tailscale]",
+                help="quick: free random *.trycloudflare.com address, no account (default). "
+                "named: your own hostname on a connected Cloudflare account (--hostname). "
+                "tailscale: Tailscale Funnel.",
+            ),
+        ] = "quick",
+        hostname: Annotated[
+            str | None, typer.Option("--hostname", help="For `named`: e.g. app.example.com.")
+        ] = None,
+        yes: Annotated[
+            bool,
+            typer.Option("--yes", "-y", help="Download cloudflared without asking (it is shown)."),
+        ] = False,
+        timeout: Annotated[float, typer.Option(help="Seconds to wait for the URL.")] = 60.0,
+        json_out: JsonOpt = False,
+    ) -> None:
+        """Turn on a public URL (and download cloudflared first, if you agree)."""
+        st = state(ctx, json_out)
+        provider = tunnel_flow.provider_kind(kind)
+        if provider is None:
+            raise CliError(
+                f"Unknown provider {kind!r}: use quick, named or tailscale.", code="usage"
+            )
+        if provider == "cloudflare_named" and not hostname:
+            raise CliError(
+                "`named` needs --hostname, e.g. --hostname app.example.com", code="usage"
+            )
+
+        def say(text: str) -> None:
+            render.say(text, err=st.json)
+
+        def confirm(plan: dict) -> bool:
+            size = plan.get("size_bytes")
+            say("cloudflared is not installed. The official release would be downloaded:")
+            say(f"  version  {plan.get('version')}")
+            say(f"  from     {plan.get('url')}")
+            say(f"  sha256   {plan.get('sha256')}  (checked after the download)")
+            if size:
+                say(f"  size     {size / 1_000_000:.1f} MB")
+            if yes:
+                return True
+            return typer.confirm("Download and install it?", default=False, err=st.json)
+
+        url = tunnel_flow.enable_public_url(
+            st, provider=provider, hostname=hostname, confirm=confirm, say=say, timeout=timeout
+        )
+        if st.json:
+            render.print_json({"url": url, "running": url is not None})
+        elif url:
+            render.say(f"Public URL: {url}", style="bold green")
+            if provider == "cloudflare_quick":
+                render.say(
+                    "It changes every time the tunnel restarts. Follow it with: "
+                    "foundryos reach --watch   (also saved in <data>/public-url.json)",
+                    style="dim",
+                )
+        if url is None:
+            raise typer.Exit(1)
+
+    @command(public_app, "stop")
+    def public_stop(ctx: typer.Context, json_out: JsonOpt = False) -> None:
+        """Turn the public URL off (it stays off after a restart)."""
+        st = state(ctx, json_out)
+        result = st.client().post("/reachability/tunnel/stop")
+        if st.json:
+            render.print_json(result)
+        else:
+            render.say("The public URL is off.")
+
+
+def _public_url(reach: dict | None) -> str | None:
+    tunnel = (reach or {}).get("tunnel") or {}
+    return tunnel.get("url") if tunnel.get("state") == "running" else None
+
+
+def _watch_public_url(st: CliState) -> None:
+    """Print the public URL now and every time it changes, until Ctrl-C. A restart of the server
+    (which is when a quick-tunnel URL changes) is waited out, not an error."""
+    hooks = watch_hooks
+    last: tuple | None = None
+    last_url: str | None = None
+    waiting = False
+    polls = 0
+    try:
+        while True:
+            try:
+                tunnel = st.client().get("/reachability").get("tunnel") or {}
+                waiting = False
+            except CliError as exc:
+                if exc.exit_code != EXIT_UNREACHABLE:
+                    raise
+                if not waiting:
+                    render.say(
+                        "The server is not answering; waiting for it...", style="dim", err=True
+                    )
+                waiting = True
+                tunnel = None
+            if tunnel is not None:
+                url = _public_url({"tunnel": tunnel})
+                key = (tunnel.get("state"), url)
+                if key != last:
+                    last = key
+                    _print_watch(st, tunnel, url, last_url)
+                    last_url = url or last_url
+            polls += 1
+            if hooks.max_iterations is not None and polls >= hooks.max_iterations:
+                return
+            hooks.sleep(hooks.interval)
+    except KeyboardInterrupt:
+        render.say("", err=True)
+
+
+def _print_watch(st: CliState, tunnel: dict, url: str | None, previous: str | None) -> None:
+    state_name = tunnel.get("state")
+    if st.json:
+        render.print_json({"state": state_name, "url": url, "previous_url": previous})
+    elif url and previous and url != previous:
+        render.say(f"Public URL changed: {url}   (was {previous})", style="bold")
+    elif url:
+        render.say(f"Public URL: {url}", style="bold")
+    else:
+        extra = f"  ({tunnel['error']})" if tunnel.get("error") else ""
+        render.say(f"Public URL: none ({state_name}){extra}", style="dim")

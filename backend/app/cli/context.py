@@ -86,7 +86,10 @@ class CliState:
             return self._company_id
         if not companies:
             raise CliError(
-                "You have no company yet. Create one in the web app.", exit_code=5, code="not_found"
+                "You have no company yet. Run `foundryos setup` to create one "
+                '(or `foundryos company create "Name"`).',
+                exit_code=5,
+                code="not_found",
             )
         names = ", ".join(f"{c['name']} ({c['id'][:8]})" for c in companies)
         raise CliError(

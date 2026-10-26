@@ -24,6 +24,8 @@
 #   --bin-dir DIR                 FOUNDRYOS_BIN_DIR        where the foundryos link goes (default ~/.local/bin)
 #   --no-start                    FOUNDRYOS_NO_START=1     install only
 #   --no-service                  FOUNDRYOS_NO_SERVICE=1   do not install the login service
+#   --linger                      FOUNDRYOS_LINGER=1       Linux: keep the service running after you log out
+#                                                          (loginctl enable-linger; recommended over SSH)
 #   --no-modify-path              FOUNDRYOS_NO_MODIFY_PATH=1   never touch your shell startup file
 #   --no-brew                     FOUNDRYOS_NO_BREW=1      do not use Homebrew
 #   -y, --yes                     answer the Homebrew question with "yes"
@@ -32,6 +34,9 @@
 #                                 FOUNDRYOS_DOWNLOAD_BASE  where the tarball and SHA256SUMS are downloaded
 #                                                          from (default: the GitHub release; file:// works)
 #                                 FOUNDRYOS_REPO           GitHub repository (default suriyavasan/foundry-os)
+#
+# Over SSH (or on any machine without a screen) no browser is opened: it prints the address and how to
+# forward the port, and offers to finish setup in the terminal when one is attached.
 #
 # Windows: use Docker or WSL (docs/install.md).
 
@@ -284,15 +289,54 @@ install_bundle() {
     FOUNDRYOS=$BIN_DIR/foundryos
 }
 
+# Is there no screen to open a browser on? (SSH, a container, a Linux server.) Mirrors app/ops/headless.py.
+headless() {
+    case ${FOUNDRYOS_OPEN_BROWSER:-} in "" | 0) ;; *) return 1 ;; esac
+    case ${FOUNDRYOS_NO_BROWSER:-} in "" | 0) ;; *) return 0 ;; esac
+    [ -z "${SSH_CONNECTION:-}" ] || return 0
+    [ -z "${SSH_TTY:-}" ] || return 0
+    if [ "$(uname -s)" = Linux ] && [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
+        return 0
+    fi
+    [ ! -e /.dockerenv ] || return 0
+    return 1
+}
+
+# Has the server just started and still waits for its first account? (needs curl or wget; unknown = no)
+setup_pending() {
+    url=http://127.0.0.1:${FOUNDRYOS_PORT:-8700}/api/auth/session
+    if have curl; then
+        body=$(curl -fsS --max-time 3 "$url" 2>/dev/null </dev/null) || return 1
+    elif have wget; then
+        body=$(wget -q -T 3 -O - "$url" 2>/dev/null </dev/null) || return 1
+    else
+        return 1
+    fi
+    case $body in *setup_required*) return 0 ;; esac
+    return 1
+}
+
 start_it() {
     # `foundryos service ...` and a backgrounding `foundryos` arrive with the installed-mode CLI; an older
     # bundle would run in the foreground and block this script, so ask before using them.
     if "$FOUNDRYOS" service --help >/dev/null 2>&1 </dev/null; then
         if [ "$VIA_BREW" != 1 ] && [ -z "$NO_SERVICE" ]; then
-            "$FOUNDRYOS" service install </dev/null || warn "could not install the login service (continuing)"
+            if [ -n "$LINGER" ]; then
+                "$FOUNDRYOS" service install --linger </dev/null || warn "could not install the login service (continuing)"
+            else
+                "$FOUNDRYOS" service install </dev/null || warn "could not install the login service (continuing)"
+            fi
         fi
         say "Starting Foundry AI OS..."
         "$FOUNDRYOS" </dev/null || warn "could not start Foundry AI OS; run: foundryos"
+        # Over SSH there is no browser to create the account in: finish setup here, if somebody can answer.
+        if headless && interactive && setup_pending; then
+            say ""
+            "$FOUNDRYOS" setup </dev/tty || warn "setup did not finish; run: foundryos setup"
+        else
+            say ""
+            say "Next: foundryos setup"
+        fi
     else
         note "Start it with: foundryos   (it opens your browser; keep that terminal open)"
     fi
@@ -346,6 +390,8 @@ main() {
     BIN_DIR=${FOUNDRYOS_BIN_DIR:-}
     NO_START=${FOUNDRYOS_NO_START:-}
     NO_SERVICE=${FOUNDRYOS_NO_SERVICE:-}
+    LINGER=${FOUNDRYOS_LINGER:-}
+    [ "$LINGER" != 0 ] || LINGER=
     NO_BREW=${FOUNDRYOS_NO_BREW:-}
     MODIFY_PATH=1
     [ -z "${FOUNDRYOS_NO_MODIFY_PATH:-}" ] || MODIFY_PATH=0
@@ -364,6 +410,7 @@ main() {
             --bin-dir=*) BIN_DIR=${1#--bin-dir=}; shift ;;
             --no-start) NO_START=1; shift ;;
             --no-service) NO_SERVICE=1; shift ;;
+            --linger) LINGER=1; shift ;;
             --no-modify-path) MODIFY_PATH=0; shift ;;
             --no-brew) NO_BREW=1; shift ;;
             -y | --yes) ASSUME_YES=1; shift ;;

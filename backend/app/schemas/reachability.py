@@ -71,6 +71,11 @@ class TunnelStatus(ApiModel):
     error: str | None
     binary: TunnelBinary | None
     providers: list[TunnelProviderOption]
+    # Added: a quick tunnel gets a new URL on every start; the last URL seen and when it appeared
+    # (kept across restarts, so a stopped tunnel still shows what the address was).
+    ephemeral: bool = False
+    last_url: str | None = None
+    url_changed_at: Timestamp | None = None
 
 
 class TunnelConfig(RequestModel):

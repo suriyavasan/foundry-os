@@ -9,15 +9,22 @@ status the UI polls.
 
 from __future__ import annotations
 
+import contextlib
 import ipaddress
 import json
 import logging
+import os
 import platform
 import re
 import shutil
 import socket
 import subprocess
+import tempfile
+import threading
+from datetime import datetime
+from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -30,8 +37,9 @@ from app.integrations import cloudflared, tailscale
 from app.integrations.cloudflare import CloudflareClient, apply_dns_plan, plan_dns
 from app.integrations.context import IntegrationContext
 from app.integrations.registries import valid_hostname
-from app.integrations.tunnel import TunnelSpec
+from app.integrations.tunnel import TunnelSpec, is_ephemeral_host
 from app.models.accounts import Passkey
+from app.models.audit import AuditEvent
 from app.models.company import CompanyMember
 from app.models.enums import MemberRole, MemberStatus
 from app.models.guardrails import SystemState
@@ -46,6 +54,9 @@ SKIP_INTERFACES = (
     "veth", "br-", "virbr", "vmnet", "tun", "tap",
 )  # fmt: skip
 TUNNEL_KINDS = ("cloudflare_quick", "cloudflare_named", "tailscale_funnel")
+URL_STATE_KEY = "tunnel_url"  # SystemState row: last_url, previous_url, url_changed_at, history
+URL_HISTORY = 5
+PUBLIC_URL_FILE = "public-url.json"  # in the data dir, NOT in run/ (that is globbed for pid files)
 
 
 # ------------------------------------------------------------------ owner & persisted state
@@ -113,9 +124,30 @@ def audit_device(
 def owner_has_strong_auth(db: Session, owner: User) -> bool:
     """Two-factor sign-in or at least one passkey: either makes up for a password that was not set
     under the policy (a passkey is phishing-resistant and needs the device)."""
-    return bool(owner.totp_enabled) or bool(
-        db.scalar(select(Passkey.id).where(Passkey.user_id == owner.id).limit(1))
+    if owner.totp_enabled:
+        return True
+    ids = list(db.scalars(select(Passkey.id).where(Passkey.user_id == owner.id)))
+    if not ids:
+        return False
+    stale = _ephemeral_passkey_ids(db, owner.id)
+    return any(pid not in stale for pid in ids)
+
+
+def _ephemeral_passkey_ids(db: Session, user_id: str) -> set[str]:
+    """Passkeys registered on a quick-tunnel origin. They stop working when the URL changes, so
+    they are not strong authentication. The origin is read from the ``auth.passkey_added`` audit
+    event (registration there is refused now; an event from before this was recorded carries no
+    origin and counts as an ordinary passkey)."""
+    found: set[str] = set()
+    rows = db.scalars(
+        select(AuditEvent.data).where(
+            AuditEvent.action == "auth.passkey_added", AuditEvent.target_id == user_id
+        )
     )
+    for data in rows:
+        if isinstance(data, dict) and is_ephemeral_host(str(data.get("rp_id") or "")):
+            found.add(str(data.get("passkey_id")))
+    return found
 
 
 def exposure_block(db: Session, settings) -> dict[str, str] | None:
@@ -339,8 +371,16 @@ def provider_options(db: Session, ic: IntegrationContext, user_id: str) -> list[
 
 def tunnel_model(db: Session, ic: IntegrationContext, user_id: str) -> dict[str, Any]:
     status = ic.supervisor.status()
+    saved = load_url_state(db)
+    provider = status["provider"] or (load_state(db).get("tunnel") or {}).get("provider")
+    host = urlsplit(status["url"] or saved.get("last_url") or "").hostname
+    changed_at = saved.get("url_changed_at")
     return {
         **status,
+        # a quick tunnel's URL is new every time it starts
+        "ephemeral": provider == "cloudflare_quick" or is_ephemeral_host(host),
+        "last_url": saved.get("last_url"),
+        "url_changed_at": datetime.fromisoformat(changed_at) if changed_at else None,
         "binary": binary_model(ic),
         "providers": provider_options(db, ic, user_id),
     }
@@ -549,6 +589,7 @@ def build_spec(
             return TunnelSpec(
                 provider=provider,
                 argv=[binary, "tunnel", "--no-autoupdate", "--url", settings.local_url],
+                env={"HOME": str(cloudflared.quick_tunnel_home(settings))},
             )
         host = (hostname or "").strip().lower()
         if not valid_hostname(host):
@@ -664,3 +705,154 @@ def resume_tunnel(session_factory, ic: IntegrationContext) -> bool:
 def public_url(ic: IntegrationContext) -> str | None:
     st = ic.supervisor.status()
     return st["url"] if st["state"] == "running" else None
+
+
+def tunnel_is_ephemeral(ic: IntegrationContext) -> bool:
+    """Whether the running tunnel's URL changes on every restart (a quick tunnel)."""
+    st = ic.supervisor.status()
+    return st["state"] == "running" and (
+        st["provider"] == "cloudflare_quick"
+        or is_ephemeral_host(urlsplit(st["url"] or "").hostname)
+    )
+
+
+# ------------------------------------------------------------------ recording the public URL
+
+_url_lock = threading.Lock()
+
+
+def load_url_state(db: Session) -> dict[str, Any]:
+    row = db.get(SystemState, URL_STATE_KEY)
+    return dict(row.value or {}) if row else {}
+
+
+def _save_url_state(db: Session, value: dict[str, Any]) -> None:
+    row = db.get(SystemState, URL_STATE_KEY)
+    if row is None:
+        db.add(SystemState(key=URL_STATE_KEY, value=value, updated_at=utcnow()))
+    else:
+        row.value = value
+        row.updated_at = utcnow()
+
+
+def public_url_path(settings) -> Path:
+    return settings.resolved_data_dir / PUBLIC_URL_FILE
+
+
+def _announce(url: str) -> None:
+    """INFO ``Public URL: ...``. The API process only shows INFO from uvicorn's own loggers, so when
+    ours is not enabled for INFO the line goes there: a headless user finds it in the server log."""
+    target = logger if logger.isEnabledFor(logging.INFO) else logging.getLogger("uvicorn.error")
+    target.info("Public URL: %s", url)
+
+
+def _read_public_url_file(path: Path) -> dict[str, Any] | None:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _write_public_url_file(path: Path, payload: dict[str, Any]) -> None:
+    """Atomic (temp file + rename), 0600, next to the database: never half-written, never world
+    readable."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=".public-url-", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, indent=2)
+            fh.write("\n")
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
+
+
+def on_tunnel_change(session_factory, ic: IntegrationContext, status: dict[str, Any]) -> None:
+    """The tunnel supervisor's change listener (never raises). A quick-tunnel URL is new on every
+    start, so a URL the saved one does not match is remembered (last, previous, when, last five),
+    audited for the owner's companies in the same transaction, logged, and written to
+    ``<data>/public-url.json`` for a user with no browser. An unchanged URL records nothing; the
+    file follows the tunnel (running / starting / stopped / error)."""
+    try:
+        with _url_lock:
+            _record_tunnel_change(session_factory, ic, status)
+    except Exception as exc:
+        logger.warning("could not record the tunnel state: %s", type(exc).__name__)
+
+
+def _record_tunnel_change(session_factory, ic: IntegrationContext, status: dict[str, Any]) -> None:
+    state = str(status.get("state") or "stopped")
+    url = status.get("url") if state == "running" else None
+    provider = status.get("provider")
+    now = utcnow()
+    path = public_url_path(ic.settings)
+    with session_factory() as db:
+        saved = load_url_state(db)
+        new_url = bool(url) and url != saved.get("last_url")
+        if new_url:
+            stamp = now.isoformat()
+            saved = {
+                "last_url": url,
+                "previous_url": saved.get("last_url"),
+                "url_changed_at": stamp,
+                "provider": provider,
+                "history": [{"url": url, "at": stamp}, *(saved.get("history") or [])][:URL_HISTORY],
+            }
+            _save_url_state(db, saved)
+            owner = db.scalar(
+                select(User).where(User.is_local_owner.is_(True)).order_by(User.created_at, User.id)
+            )
+            for company_id in owner_company_ids(db, owner.id) if owner else []:
+                audit.record(
+                    db,
+                    company_id=company_id,
+                    principal=None,
+                    action="reachability.tunnel_url_changed",
+                    target_type="reachability",
+                    target_id=None,
+                    summary=f"The public URL is now {url}",
+                    data={
+                        "url": url,
+                        "previous_url": saved["previous_url"],
+                        "provider": provider,
+                    },
+                )
+                events.emit(db, company_id, "reachability.updated", {})
+            db.commit()
+    if new_url:
+        _announce(str(url))
+    current = _read_public_url_file(path)
+    if state == "running" and url:
+        payload = {
+            "url": url,
+            "provider": provider,
+            "state": "running",
+            "changed_at": saved.get("url_changed_at"),
+            "previous_url": saved.get("previous_url"),
+        }
+    elif current is None and state in ("stopped", "starting"):
+        return  # nothing was ever published and nothing is up: there is nothing to retract
+    else:
+        payload = {
+            "url": None,
+            "provider": provider or saved.get("provider"),
+            "state": state,
+            "changed_at": now.isoformat(),
+            "previous_url": saved.get("last_url"),
+        }
+    if (
+        current
+        and current.get("state") == payload["state"]
+        and current.get("url") == payload["url"]
+    ):
+        return
+    try:
+        _write_public_url_file(path, payload)
+    except OSError as exc:
+        logger.warning("could not write %s: %s", path.name, type(exc).__name__)

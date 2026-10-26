@@ -29,18 +29,25 @@ def _alive(pid: int) -> bool:
 
 
 def register(
-    data_dir: Path, role: str, *, port: int | None = None, extra: dict | None = None
+    data_dir: Path,
+    role: str,
+    *,
+    port: int | None = None,
+    extra: dict | None = None,
+    pid: int | None = None,
 ) -> Path | None:
-    """Create this process's run file. Best effort: a read-only data dir must not stop the server."""
+    """Create a run file. Best effort: a read-only data dir must not stop the server. ``pid`` names
+    a child process this one supervises (the tunnel); the default is this process."""
+    pid = os.getpid() if pid is None else pid
     try:
         run = data_dir / RUN_DIR
         run.mkdir(parents=True, exist_ok=True)
-        path = run / f"{role}.{os.getpid()}.json"
+        path = run / f"{role}.{pid}.json"
         path.write_text(
             json.dumps(
                 {
                     "role": role,
-                    "pid": os.getpid(),
+                    "pid": pid,
                     "port": port,
                     "started_at": int(time.time()),
                     **(extra or {}),

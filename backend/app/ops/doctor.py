@@ -17,7 +17,7 @@ import httpx
 from app.core import install
 from app.core.config import Settings, sqlite_file_path
 from app.core.owner_token import OWNER_TOKEN_FILENAME
-from app.ops import pidfile
+from app.ops import headless, pidfile, services
 
 OK, WARN, FAIL, INFO = "ok", "warn", "fail", "info"
 MIN_CONTEXT = 32768
@@ -360,6 +360,85 @@ def check_install(settings: Settings) -> Check:
     )
 
 
+def _why_headless() -> str:
+    env = os.environ
+    if env.get("FOUNDRYOS_NO_BROWSER", "").strip() not in ("", "0"):
+        return "FOUNDRYOS_NO_BROWSER is set"
+    if env.get("SSH_CONNECTION") or env.get("SSH_TTY"):
+        return "this is an SSH session"
+    if install.current_os() == "linux" and not (env.get("DISPLAY") or env.get("WAYLAND_DISPLAY")):
+        return "no display (DISPLAY / WAYLAND_DISPLAY unset)"
+    return "this looks like a container"
+
+
+def check_headless() -> Check:
+    if headless.is_headless():
+        return Check(
+            "headless",
+            INFO,
+            f"yes ({_why_headless()}): the browser is not opened; addresses are printed instead",
+            "Reach it from your computer with: ssh -N -L 8700:127.0.0.1:8700 user@host "
+            "(set FOUNDRYOS_OPEN_BROWSER=1 to force opening a browser here).",
+        )
+    return Check("headless", INFO, "no: there is a screen, so a browser can be opened")
+
+
+def check_linger() -> Check | None:
+    """Linux only: without linger, systemd stops this user's services at the last logout."""
+    if install.current_os() != "linux":
+        return None
+    state = services.linger_state()
+    if state is None:
+        return Check("linger", INFO, "unknown (loginctl is not available or did not answer)")
+    if state:
+        return Check("linger", OK, "on: the background service keeps running after you log out")
+    if headless.is_headless():
+        return Check(
+            "linger",
+            WARN,
+            "off: the background service stops when you log out of this session",
+            "foundryos service install --linger   (or: sudo loginctl enable-linger $USER)",
+        )
+    return Check("linger", INFO, "off: user services stop at your last logout")
+
+
+def check_service_survives_logout() -> Check | None:
+    native = services.native_manager()
+    if native is None or not native.installed():
+        return None
+    remote = headless.is_headless()
+    if isinstance(native, services.SystemdService):
+        lingering = services.linger_state()
+        if lingering:
+            return Check("service lifetime", OK, "survives logout (linger is on)")
+        return Check(
+            "service lifetime",
+            WARN if remote else INFO,
+            "stops at logout" if lingering is False else "unknown (linger state unavailable)",
+            "foundryos service install --linger   (or: sudo loginctl enable-linger $USER)",
+        )
+    if isinstance(native, services.LaunchdService):
+        domain = native.recorded_domain()
+        if domain == native.user_domain:
+            return Check(
+                "service lifetime",
+                WARN if remote else INFO,
+                f"loaded in {domain} (no graphical login): runs now, but does not start after a "
+                "reboot until someone logs in",
+                "Turn on automatic login, or use a LaunchDaemon: `foundryos service install` "
+                "prints the exact sudo commands.",
+            )
+        return Check(
+            "service lifetime",
+            WARN if remote else INFO,
+            f"loaded in {domain or native.gui_domain}: runs while you are logged in to the Mac; starts "
+            "at boot only with automatic login",
+            "For a Mac that is only reached over SSH, use a LaunchDaemon: "
+            "`foundryos service install` prints the exact sudo commands.",
+        )
+    return None
+
+
 def check_updates(settings: Settings) -> Check:
     """What the last (cached, at most daily) look at GitHub found. Never touches the network."""
     from app.ops import updatecheck
@@ -411,12 +490,17 @@ def run_checks(settings: Settings | None = None) -> list[Check]:
         lambda: check_auth_gate(settings),
         lambda: check_running(settings),
         lambda: check_install(settings),
+        check_headless,
+        check_linger,
+        check_service_survives_logout,
         lambda: check_updates(settings),
     ]
     out: list[Check] = []
     for step in steps:
         try:
-            out.append(step())
+            result = step()
+            if result is not None:  # a check that does not apply to this system returns None
+                out.append(result)
         except Exception as exc:  # a broken check must not hide the others
             out.append(
                 Check(

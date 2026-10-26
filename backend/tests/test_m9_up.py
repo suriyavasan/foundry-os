@@ -483,3 +483,52 @@ def test_up_passes_a_decide_host_warning_through(seq):
     seq["warn"] = "Not binding to 0.0.0.0: sign-in is not set up. Serving on 127.0.0.1 only."
     run(seq, UpOptions(port=8710), after=lambda n, s: s.set())
     assert seq["warn"] in seq["said"]
+
+
+def test_up_on_a_headless_box_prints_the_ssh_forward_and_the_public_url():
+    setup = {"state": "setup_required"}
+    text = "\n".join(
+        describe_access(
+            8710,
+            "127.0.0.1",
+            None,
+            setup,
+            "T" * 43,
+            tty=True,
+            remote=True,
+            public_url="https://demo.trycloudflare.com",
+        )
+    )
+    assert "ssh -N -L 8710:127.0.0.1:8710 user@host" in text and "http://localhost:8710" in text
+    assert "Public:   https://demo.trycloudflare.com" in text
+    assert "foundryos setup" in text and "T" * 43 not in text
+
+
+def test_up_does_not_repeat_a_public_url_it_already_shows():
+    tunnel = {"lan": {"addresses": []}, "tunnel": {"url": "https://x.trycloudflare.com"}}
+    lines = describe_access(
+        8710, "127.0.0.1", tunnel, None, None, tty=False, public_url="https://x.trycloudflare.com"
+    )
+    assert sum("https://x.trycloudflare.com" in line for line in lines) == 1
+
+
+def test_up_open_never_calls_the_browser_on_a_headless_box(seq, monkeypatch):
+    import webbrowser
+
+    opened: list[str] = []
+    monkeypatch.setattr(webbrowser, "open", lambda url, *a, **k: opened.append(url) or True)
+    monkeypatch.delenv("FOUNDRYOS_OPEN_BROWSER", raising=False)
+    monkeypatch.setenv("SSH_CONNECTION", "1 2 3 4")
+    run(seq, UpOptions(port=8710, open_browser=True), after=lambda n, s: s.set())
+    assert opened == []
+    assert any("Not opening a browser" in line and "8710" in line for line in seq["said"])
+
+
+def test_up_open_opens_the_browser_when_there_is_a_screen(seq, monkeypatch):
+    import webbrowser
+
+    opened: list[str] = []
+    monkeypatch.setattr(webbrowser, "open", lambda url, *a, **k: opened.append(url) or True)
+    monkeypatch.setenv("FOUNDRYOS_OPEN_BROWSER", "1")
+    run(seq, UpOptions(port=8710, open_browser=True), after=lambda n, s: s.set())
+    assert opened == ["http://127.0.0.1:8710"]

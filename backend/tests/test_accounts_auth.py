@@ -53,6 +53,7 @@ def test_fresh_install_reports_setup_required_and_who_needs_the_token(app):
         "expires_at": None,
         "passkeys_count": 0,
         "passkey_supported_origin": False,  # http://testserver is neither localhost nor https
+        "passkey_unsupported_reason": None,  # ... which is not a quick tunnel either
     }
     here = browser(app, loopback=True).get("/api/auth/session").json()
     assert here["state"] == "setup_required" and here["setup_token_required"] is False

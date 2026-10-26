@@ -29,11 +29,13 @@ PLATFORM = "darwin-arm64"
 # ------------------------------------------------------------------ bundles and installs
 
 
-def bundle_files(version: str, *, revisions: tuple[str, ...] = ("0001",)) -> dict[str, bytes]:
+def bundle_files(
+    version: str, *, revisions: tuple[str, ...] = ("0001",), launcher: bytes | None = None
+) -> dict[str, bytes]:
     files = {
         "VERSION": f"{version}\n".encode(),
         "BUILD_INFO": f"version: {version}\nplatform: {PLATFORM}\n".encode(),
-        "bin/foundryos": b"#!/bin/sh\necho foundryos\n",
+        "bin/foundryos": launcher or b"#!/bin/sh\necho foundryos\n",
         "web/dist/index.html": b"<!doctype html><div id=root></div>",
     }
     for rev in revisions:
@@ -264,6 +266,11 @@ def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Env:
         "HOMEBREW_CELLAR",
         "HOMEBREW_PREFIX",
         "FOUNDRYOS_PROG",
+        "FOUNDRYOS_OPEN_BROWSER",
+        "SSH_CONNECTION",
+        "SSH_TTY",
+        "XDG_RUNTIME_DIR",
+        "DBUS_SESSION_BUS_ADDRESS",
     ):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(install, "in_container", lambda: False)
@@ -277,6 +284,33 @@ def installer_layout(env: Env, monkeypatch: pytest.MonkeyPatch, version: str = "
     monkeypatch.setattr(install, "bundle_root", lambda: root)
     monkeypatch.setattr(install, "APP_VERSION", version)
     return root
+
+
+class NoBrowser:
+    """Stands in for ``webbrowser.open``: records every call (headless tests assert there are none)."""
+
+    def __init__(self) -> None:
+        self.urls: list[str] = []
+
+    def __call__(self, url: str, *a, **k) -> bool:
+        self.urls.append(url)
+        return True
+
+
+def write_public_url(data: Path, url: str = "https://demo.trycloudflare.com", **extra) -> Path:
+    """The file the public-URL watcher writes: ``<data dir>/public-url.json``."""
+    data.mkdir(parents=True, exist_ok=True)
+    body = {
+        "url": url,
+        "provider": "cloudflare-quick",
+        "state": "up",
+        "changed_at": "2026-10-26T10:00:00+00:00",
+        "previous_url": None,
+        **extra,
+    }
+    path = data / "public-url.json"
+    path.write_text(json.dumps(body))
+    return path
 
 
 def invoke(*args: str, input: str | None = None):

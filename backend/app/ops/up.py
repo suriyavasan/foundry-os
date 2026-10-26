@@ -15,7 +15,6 @@ import subprocess
 import sys
 import threading
 import time
-import webbrowser
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -27,7 +26,7 @@ from app.core import install
 from app.core.config import BACKEND_DIR, REPO_DIR, Settings
 from app.core.netinfo import is_loopback_bind
 from app.core.owner_token import OWNER_TOKEN_FILENAME
-from app.ops import logs, pidfile, upgrade
+from app.ops import headless, logs, pidfile, upgrade
 
 HEALTH_TIMEOUT = 90.0
 WEB_INPUTS = (
@@ -297,8 +296,12 @@ def describe_access(
     session: dict | None,
     token: str | None,
     tty: bool,
+    *,
+    remote: bool = False,
+    public_url: str | None = None,
 ) -> list[str]:
-    """The lines `up` prints once everything is running."""
+    """The lines `up` prints once everything is running. ``remote``: there is no screen on this box
+    (SSH, container, server), so say how to reach it from the user's own computer."""
     lines = ["", "Foundry AI OS is running.", f"  Local:    http://127.0.0.1:{port}"]
     if reach:
         for addr in (reach.get("lan") or {}).get("addresses", []):
@@ -310,18 +313,30 @@ def describe_access(
         url = (reach.get("tunnel") or {}).get("url")
         if url:
             lines.append(f"  Public:   {url}")
+            public_url = None if public_url == url else public_url
     elif not is_loopback_bind(bind_host):
         lines.append(f"  Network:  bound to {bind_host}:{port}")
+    if public_url:
+        lines.append(f"  Public:   {public_url}")
     if is_loopback_bind(bind_host):
         lines.append(
             "  (this machine only; switch on network access in the web app under Reachability)"
         )
+    if remote:
+        lines += ["", *headless.remote_hints(port)]
     if session and session.get("state") == "setup_required":
-        lines += [
-            "",
-            "First run: open the app and create your account.",
-            f"  Setup:    http://127.0.0.1:{port}",
-        ]
+        if remote:
+            lines += [
+                "",
+                "First run: finish setup in a terminal with `foundryos setup`, or open the app through the SSH forward above.",
+                f"  Setup:    http://127.0.0.1:{port}",
+            ]
+        else:
+            lines += [
+                "",
+                "First run: open the app and create your account (or run `foundryos setup`).",
+                f"  Setup:    http://127.0.0.1:{port}",
+            ]
         remote = not is_loopback_bind(bind_host) or bool((reach or {}).get("tunnel", {}).get("url"))
         if remote:
             if tty and token:
@@ -440,7 +455,9 @@ def run_up(
             sup.start(child)
         _print_ready(settings, opts, host, say)
         if opts.open_browser:
-            webbrowser.open(f"http://127.0.0.1:{5173 if opts.dev else opts.port}")
+            target = f"http://127.0.0.1:{5173 if opts.dev else opts.port}"
+            if not headless.open_browser(target):
+                say(f"Not opening a browser here (no screen detected). Address: {target}")
         reason = sup.run(stop)
         if reason:
             say(f"Stopping: {reason}.")
@@ -470,7 +487,20 @@ def _print_ready(
         reach = resp.json() if resp.status_code == 200 else None
     except (httpx.HTTPError, ValueError):
         pass
-    for line in describe_access(opts.port, host, reach, session, token, sys.stdout.isatty()):
+    from app.ops import lifecycle
+
+    public = lifecycle.read_public_url(settings)
+    lines = describe_access(
+        opts.port,
+        host,
+        reach,
+        session,
+        token,
+        sys.stdout.isatty(),
+        remote=headless.is_headless(),
+        public_url=public["url"] if public else None,
+    )
+    for line in lines:
         say(line)
     if opts.dev:
         say("  Web dev server: http://localhost:5173 (Vite prints the port it actually used)")

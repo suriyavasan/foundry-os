@@ -196,6 +196,12 @@ def create_app(
     )
     app.state.storage = LocalFileStorage(settings.artifacts_dir)
     app.state.skills = skills_env or build_skills_env(settings)
+
+    def _on_tunnel_change(status: dict) -> None:
+        # record the public URL (state, audit, log, public-url.json) before the UI is told
+        reachability_service.on_tunnel_change(session_factory, app.state.integrations, status)
+        _broadcast(session_factory, "tunnel.updated")
+
     # Control-plane provider executors (M8): connected accounts, DNS, tunnels, domains, e-mail.
     app.state.provider_executors = ProviderRegistry()
     app.state.integrations = IntegrationContext(
@@ -207,7 +213,8 @@ def create_app(
             start_timeout=settings.tunnel_start_timeout_seconds,
             max_backoff=settings.tunnel_max_backoff_seconds,
             max_failures=settings.tunnel_max_consecutive_failures,
-            on_change=lambda _status: _broadcast(session_factory, "tunnel.updated"),
+            on_change=_on_tunnel_change,
+            data_dir=settings.resolved_data_dir,
         ),
     )
     session_factory.configure(info={"integrations": app.state.integrations})

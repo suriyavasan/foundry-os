@@ -30,6 +30,7 @@ from app.core.time import utcnow
 from app.models.user import User
 from app.schemas import auth as schemas
 from app.schemas.common import Page
+from app.services import passkeys as passkeys_service
 from app.services import reachability
 from app.services.auth import CSRF_COOKIE, CSRF_HEADER, SESSION_COOKIE
 from app.services.passkeys import PasskeyService, RpContext
@@ -101,7 +102,18 @@ def _rp_context(request: Request, db: DbSession, passkeys: PasskeyService) -> Rp
     """Where WebAuthn may be used from: derived from this request's Host, never from the client."""
     ic = getattr(request.app.state, "integrations", None)
     tunnel = reachability.public_url(ic) if ic is not None else None
-    return passkeys.resolve_rp(db, request.headers.get("host", ""), tunnel)
+    ephemeral = reachability.tunnel_is_ephemeral(ic) if ic is not None else False
+    return passkeys.resolve_rp(db, request.headers.get("host", ""), tunnel, ephemeral)
+
+
+def passkey_unsupported_reason(request: Request) -> str | None:
+    """Why WebAuthn is off here: ``ephemeral_origin`` for a quick-tunnel address, else None."""
+    ic = getattr(request.app.state, "integrations", None)
+    return passkeys_service.unsupported_reason(
+        request.headers.get("host", ""),
+        reachability.public_url(ic) if ic is not None else None,
+        reachability.tunnel_is_ephemeral(ic) if ic is not None else False,
+    )
 
 
 def _session_extras(
@@ -111,6 +123,7 @@ def _session_extras(
     return {
         "passkeys_count": passkeys.count_for(db, user.id) if user is not None else 0,
         "passkey_supported_origin": _rp_context(request, db, passkeys) is not None,
+        "passkey_unsupported_reason": passkey_unsupported_reason(request),
     }
 
 

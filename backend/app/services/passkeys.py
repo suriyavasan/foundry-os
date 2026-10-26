@@ -14,6 +14,9 @@ Design notes:
   origin the browser reports inside ``clientDataJSON`` must then be in that set. A request from any
   other host (for example ``http://192.168.1.20:8700``) gets no WebAuthn at all: browsers refuse
   it there, and so do we.
+* A quick tunnel (``*.trycloudflare.com``) is the exception to "a running tunnel": its address
+  changes on every restart, which would orphan the passkey while it still counted as strong
+  authentication. It gets no WebAuthn (reason ``ephemeral_origin``); a named tunnel does.
 * A passkey login is rate limited like a password login (per IP and per credential) and every
   failure is the same generic ``401 invalid_credentials``. ``login_options`` answers a stable decoy
   allow-list for usernames that do not exist (or have no passkey), so the response never says
@@ -64,6 +67,7 @@ from app.core.errors import (
 )
 from app.core.netinfo import is_loopback_address
 from app.core.time import utcnow
+from app.integrations.tunnel import is_ephemeral_host
 from app.models.accounts import AuthSession, Passkey, PasskeyChallenge
 from app.models.reachability import CompanyDomain
 from app.models.user import User
@@ -156,13 +160,43 @@ def configured_origins(db: Session, settings: Settings, tunnel_url: str | None =
     return out
 
 
-def resolve_rp(
-    db: Session, settings: Settings, host_header: str, tunnel_url: str | None = None
-) -> RpContext | None:
-    """The RP context for a request with this Host header, or None when WebAuthn cannot be used
-    from there (LAN http, an unknown host name)."""
+def ephemeral_origin(
+    host_header: str, tunnel_url: str | None = None, tunnel_ephemeral: bool = False
+) -> bool:
+    """Whether this Host is a quick-tunnel address (its name changes when the tunnel restarts):
+    any ``*.trycloudflare.com`` host, or the running tunnel's host when it is a quick tunnel."""
     host, port = _split_host(host_header)
     if not host:
+        return False
+    if is_ephemeral_host(host):
+        return True
+    if tunnel_ephemeral and tunnel_url:
+        origin = normalize_origin(tunnel_url)
+        return bool(origin and _origin_host(origin) == f"{host}{port}")
+    return False
+
+
+def unsupported_reason(
+    host_header: str, tunnel_url: str | None = None, tunnel_ephemeral: bool = False
+) -> str | None:
+    return (
+        "ephemeral_origin" if ephemeral_origin(host_header, tunnel_url, tunnel_ephemeral) else None
+    )
+
+
+def resolve_rp(
+    db: Session,
+    settings: Settings,
+    host_header: str,
+    tunnel_url: str | None = None,
+    tunnel_ephemeral: bool = False,
+) -> RpContext | None:
+    """The RP context for a request with this Host header, or None when WebAuthn cannot be used
+    from there (LAN http, an unknown host name, a quick-tunnel address)."""
+    host, port = _split_host(host_header)
+    if not host:
+        return None
+    if ephemeral_origin(host_header, tunnel_url, tunnel_ephemeral):
         return None
     if host in LOOPBACK_HOSTS:
         origins = {f"{scheme}://{host}{port}" for scheme in ("http", "https")}
@@ -196,9 +230,13 @@ class PasskeyService:
     # ------------------------------------------------------------ helpers
 
     def resolve_rp(
-        self, db: Session, host_header: str, tunnel_url: str | None = None
+        self,
+        db: Session,
+        host_header: str,
+        tunnel_url: str | None = None,
+        tunnel_ephemeral: bool = False,
     ) -> RpContext | None:
-        return resolve_rp(db, self.settings, host_header, tunnel_url)
+        return resolve_rp(db, self.settings, host_header, tunnel_url, tunnel_ephemeral)
 
     @staticmethod
     def require_rp(ctx: RpContext | None) -> RpContext:
@@ -433,7 +471,8 @@ class PasskeyService:
             user,
             "auth.passkey_added",
             f"Passkey '{passkey.name}' added",
-            {"passkey_id": passkey.id},
+            # the relying party the passkey is bound to: the exposure gate ignores quick-tunnel ones
+            {"passkey_id": passkey.id, "rp_id": ctx.rp_id},
         )
         db.commit()
         return passkey

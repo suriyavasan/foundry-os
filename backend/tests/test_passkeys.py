@@ -751,13 +751,53 @@ def test_a_configured_https_origin_works_end_to_end(https_app):
     assert other.post(LOGIN_OPTIONS, json={}).status_code == 400
 
 
-def test_a_running_tunnel_url_becomes_an_allowed_origin(app, monkeypatch):
+def test_a_running_named_tunnel_url_becomes_an_allowed_origin(app, monkeypatch):
     loopback_setup(app)
-    tunnel = browser(app, base_url="https://abc-def.trycloudflare.com", client=("127.0.0.1", 9))
+    tunnel = browser(app, base_url="https://os.acme.example", client=("127.0.0.1", 9))
     assert tunnel.post(LOGIN_OPTIONS, json={}).status_code == 400  # no tunnel yet
-    monkeypatch.setattr(reachability, "public_url", lambda ic: "https://abc-def.trycloudflare.com")
+    monkeypatch.setattr(reachability, "public_url", lambda ic: "https://os.acme.example")
     r = tunnel.post(LOGIN_OPTIONS, json={})
-    assert r.status_code == 200 and r.json()["public_key"]["rpId"] == "abc-def.trycloudflare.com"
+    assert r.status_code == 200 and r.json()["public_key"]["rpId"] == "os.acme.example"
+    s = tunnel.get("/api/auth/session").json()
+    assert s["passkey_supported_origin"] is True and s["passkey_unsupported_reason"] is None
+
+
+def test_a_quick_tunnel_address_gets_no_passkeys(app, monkeypatch):
+    """A trycloudflare.com name changes on every restart: a passkey bound to it would break."""
+    loopback_setup(app)
+    url = "https://abc-def.trycloudflare.com"
+    tunnel = browser(app, base_url=url, client=("127.0.0.1", 9))
+    for running in (False, True):  # the host alone decides, running tunnel or not
+        if running:
+            monkeypatch.setattr(reachability, "public_url", lambda ic: url)
+            monkeypatch.setattr(reachability, "tunnel_is_ephemeral", lambda ic: True)
+        s = tunnel.get("/api/auth/session").json()
+        assert s["passkey_supported_origin"] is False
+        assert s["passkey_unsupported_reason"] == "ephemeral_origin"
+        r = tunnel.post(LOGIN_OPTIONS, json={})
+        assert r.status_code == 400 and r.json()["error"]["code"] == "passkey_origin_unsupported"
+    # even an operator-configured origin cannot make a quick-tunnel host a relying party
+    app.state.settings.passkey_origins = [url]
+    assert tunnel.post(LOGIN_OPTIONS, json={}).status_code == 400
+
+
+def test_a_passkey_cannot_be_added_through_a_quick_tunnel(app, alice):
+    host = {"Host": "abc-def.trycloudflare.com"}
+    r = alice.post(OPTIONS, json={"name": "Laptop"}, headers=host)
+    assert r.status_code == 400 and r.json()["error"]["code"] == "passkey_origin_unsupported"
+    assert alice.get("/api/auth/passkeys").json()["items"] == []
+    # on localhost it still works, and the session says why/where passkeys are fine
+    assert alice.get("/api/auth/session").json()["passkey_unsupported_reason"] is None
+    assert alice.post(OPTIONS, json={"name": "Laptop"}).status_code == 200
+
+
+def test_the_session_reports_the_reason_only_for_quick_tunnel_hosts(app, alice):
+    s = alice.get("/api/auth/session", headers={"Host": "abc.trycloudflare.com"}).json()
+    assert s["passkey_supported_origin"] is False and s["passkey_unsupported_reason"] == (
+        "ephemeral_origin"
+    )
+    s = alice.get("/api/auth/session", headers={"Host": "192.168.1.20:8700"}).json()
+    assert s["passkey_supported_origin"] is False and s["passkey_unsupported_reason"] is None
 
 
 def test_a_custom_domain_becomes_an_allowed_origin(app):
@@ -809,6 +849,45 @@ def test_a_passkey_counts_as_strong_authentication_for_the_exposure_gate(app, al
     pid = alice.get("/api/auth/passkeys").json()["items"][0]["id"]
     assert alice.delete(f"/api/auth/passkeys/{pid}").status_code == 204
     assert alice.get("/api/reachability").json()["public_exposure_blocked_code"] == "weak_password"
+
+
+def test_a_passkey_from_a_quick_tunnel_origin_is_not_strong_authentication(app, alice):
+    """Passkeys added there (before registration was refused) break when the URL changes."""
+    with app.state.session_factory() as db:
+        owner = db.scalar(select(User).where(User.username == "alice"))
+        owner.password_changed_at = None
+        db.add(
+            Passkey(
+                id="pk-ephemeral",
+                user_id=owner.id,
+                credential_id="cred-ephemeral",
+                public_key=b"x",
+                name="Quick",
+            )
+        )
+        db.commit()
+        company_id = db.scalar(select(AuditEvent.company_id).limit(1))
+        from app.services import audit  # noqa: PLC0415
+
+        audit.record(
+            db,
+            company_id=company_id,
+            principal=None,
+            action="auth.passkey_added",
+            target_type="user",
+            target_id=owner.id,
+            summary="Passkey 'Quick' added",
+            data={"passkey_id": "pk-ephemeral", "rp_id": "abc-def.trycloudflare.com"},
+        )
+        db.commit()
+    status = alice.get("/api/reachability").json()
+    assert status["public_exposure_blocked_code"] == "weak_password"  # it does not count
+    register(alice, SoftwareAuthenticator())  # a localhost passkey does
+    assert alice.get("/api/reachability").json()["public_exposure_blocked_code"] is None
+    added = [
+        e.data for e in events(app, "auth.passkey_added") if e.data.get("rp_id") == "localhost"
+    ]
+    assert len(added) == 1  # the relying party is recorded with every new passkey
 
 
 # ------------------------------------------------------------------ migration

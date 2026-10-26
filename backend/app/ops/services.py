@@ -24,8 +24,10 @@ from pathlib import Path
 
 from app.core import install
 from app.core.config import Settings
-from app.ops import logs
+from app.ops import headless, logs
 
+RUNTIME_ROOT = Path("/run/user")  # per-user runtime dirs on Linux (a constant so tests can move it)
+BUS_FAILURE_MARKERS = ("failed to connect to bus", "dbus_session_bus_address", "xdg_runtime_dir")
 PATH_EXTRAS = ("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin")
 PASS_THROUGH_ENV = ("FOUNDRYOS_DATA_DIR", "FOUNDRYOS_PORT", "FOUNDRYOS_UPDATE_CHECK")
 
@@ -51,6 +53,7 @@ class ServiceStatus:
     path: Path | None = None
     pid: int | None = None
     detail: str = ""
+    domain: str = ""  # launchd only: the domain it is loaded in (gui/<uid> or user/<uid>)
 
     def as_dict(self) -> dict:
         return {
@@ -61,16 +64,24 @@ class ServiceStatus:
             "path": str(self.path) if self.path else None,
             "pid": self.pid,
             "detail": self.detail,
+            "domain": self.domain or None,
         }
 
 
-def run_tool(args: list[str], *, timeout: float = 60.0) -> subprocess.CompletedProcess:
+def run_tool(
+    args: list[str], *, timeout: float = 60.0, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess:
     exe = shutil.which(args[0])
     if exe is None:
         raise ServiceError(f"`{args[0]}` was not found on your PATH.")
     try:
         return subprocess.run(
-            [exe, *args[1:]], capture_output=True, text=True, timeout=timeout, check=False
+            [exe, *args[1:]],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+            env=None if env is None else {**os.environ, **env},
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise ServiceError(f"`{' '.join(args)}` failed: {exc}") from exc
@@ -119,14 +130,59 @@ def _atomic_write(path: Path, data: bytes, mode: int = 0o644) -> None:
             tmp.unlink()
 
 
+# ------------------------------------------------------------------------------ linger (Linux)
+
+
+def _login_user(user: str | None) -> str:
+    return user or getpass.getuser()
+
+
+def linger_state(user: str | None = None) -> bool | None:
+    """Does systemd keep ``user``'s services running after the last logout? None = unknown (not Linux,
+    no ``loginctl``, or it failed)."""
+    if install.current_os() != "linux":
+        return None
+    try:
+        proc = run_tool(["loginctl", "show-user", _login_user(user), "-p", "Linger"], timeout=10)
+    except ServiceError:
+        return None
+    if proc.returncode != 0:
+        return None
+    for line in proc.stdout.splitlines():
+        key, _, value = line.strip().partition("=")
+        if key == "Linger":
+            return {"yes": True, "no": False}.get(value.strip().lower())
+    return None
+
+
+def enable_linger(user: str | None = None) -> tuple[bool, str]:
+    """Run ``loginctl enable-linger`` for ``user`` (never with sudo). Returns (done, message); on
+    failure the message says what to run with sudo instead."""
+    name = _login_user(user)
+    hint = f"Run this yourself with administrator rights:  sudo loginctl enable-linger {name}"
+    try:
+        proc = run_tool(["loginctl", "enable-linger", name], timeout=30)
+    except ServiceError as exc:
+        return False, f"Could not enable linger ({exc}). {hint}"
+    if proc.returncode == 0:
+        return True, f"Linger is on for {name}: it also runs while you are logged out."
+    why = (proc.stderr or proc.stdout).strip().splitlines()
+    return False, f"Could not enable linger{': ' + why[-1] if why else ''}. {hint}"
+
+
 # ------------------------------------------------------------------------------ rendering
 
 
-def render_plist(spec: ServiceSpec) -> bytes:
+def render_plist(spec: ServiceSpec, *, user_name: str | None = None) -> bytes:
+    """The launchd job. With ``user_name`` it is the system-wide LaunchDaemon variant (runs at boot as
+    that user; ``HOME`` is set because launchd does not do it for daemons)."""
+    env = dict(spec.env)
+    if user_name:
+        env.setdefault("HOME", str(install.home_dir()))
     body: dict = {
         "Label": install.LAUNCHD_LABEL,
         "ProgramArguments": list(spec.command),
-        "EnvironmentVariables": dict(spec.env),
+        "EnvironmentVariables": env,
         "RunAtLoad": True,
         "KeepAlive": True,
         "ThrottleInterval": 10,
@@ -136,6 +192,8 @@ def render_plist(spec: ServiceSpec) -> bytes:
     }
     if spec.working_dir is not None:
         body["WorkingDirectory"] = str(spec.working_dir)
+    if user_name:
+        body["UserName"] = user_name
     return plistlib.dumps(body, sort_keys=False)
 
 
@@ -212,30 +270,71 @@ class ServiceManager:
 
 
 class LaunchdService(ServiceManager):
+    """A LaunchAgent. It is bootstrapped into ``gui/<uid>`` (needs a graphical login); when that is
+    refused (a Mac reached only over SSH) into ``user/<uid>``. The domain that worked is recorded in
+    ``ai.foundry-os.domain`` next to the plist, and status / stop / uninstall look in both."""
+
     name = "launchd"
     label = install.LAUNCHD_LABEL
 
     def path(self) -> Path:
         return install.home_dir() / "Library" / "LaunchAgents" / f"{self.label}.plist"
 
+    def domain_file(self) -> Path:
+        return self.path().with_suffix(".domain")
+
+    @property
+    def gui_domain(self) -> str:
+        return f"gui/{os.getuid()}"
+
+    @property
+    def user_domain(self) -> str:
+        return f"user/{os.getuid()}"
+
+    def recorded_domain(self) -> str | None:
+        try:
+            value = self.domain_file().read_text(encoding="utf-8").strip()
+        except OSError:
+            return None
+        return value if value in (self.gui_domain, self.user_domain) else None
+
+    def candidate_domains(self) -> list[str]:
+        out: list[str] = []
+        for d in (self.recorded_domain(), self.gui_domain, self.user_domain):
+            if d and d not in out:
+                out.append(d)
+        return out
+
     @property
     def domain(self) -> str:
-        return f"gui/{os.getuid()}"
+        return self.recorded_domain() or self.gui_domain
 
     @property
     def target(self) -> str:
         return f"{self.domain}/{self.label}"
 
+    def _print(self, domain: str) -> subprocess.CompletedProcess | None:
+        proc = run_tool(["launchctl", "print", f"{domain}/{self.label}"])
+        return proc if proc.returncode == 0 else None
+
+    def _loaded(self) -> tuple[str, subprocess.CompletedProcess] | None:
+        for domain in self.candidate_domains():
+            proc = self._print(domain)
+            if proc is not None:
+                return domain, proc
+        return None
+
     def status(self) -> ServiceStatus:
         path = self.path()
         if not path.is_file():
             return ServiceStatus(self.name, False, detail="not installed")
-        proc = run_tool(["launchctl", "print", self.target])
-        loaded = proc.returncode == 0
+        found = self._loaded()
+        loaded = found is not None
         pid = None
         running = False
-        if loaded:
-            for raw in proc.stdout.splitlines():
+        domain = found[0] if found else ""
+        if found:
+            for raw in found[1].stdout.splitlines():
                 line = raw.strip()
                 if line.startswith("state =") and "running" in line:
                     running = True
@@ -245,13 +344,50 @@ class LaunchdService(ServiceManager):
         detail = (
             "running" if running else "loaded, not running" if loaded else "installed, not loaded"
         )
-        return ServiceStatus(self.name, True, loaded, running, path, pid, detail)
+        if loaded and domain != self.gui_domain:
+            detail += f" (in {domain}: no graphical login needed, but it does not start at boot)"
+        return ServiceStatus(self.name, True, loaded, running, path, pid, detail, domain)
 
-    def _bootstrap(self) -> bool:
-        return run_tool(["launchctl", "bootstrap", self.domain, str(self.path())]).returncode == 0
+    def _bootstrap(self) -> str | None:
+        """Load the agent: ``gui/<uid>`` first, ``user/<uid>`` when that is refused. Returns the domain
+        it was loaded into (and records it), or None."""
+        for domain in (self.gui_domain, self.user_domain):
+            if run_tool(["launchctl", "bootstrap", domain, str(self.path())]).returncode == 0:
+                with contextlib.suppress(OSError):
+                    self.domain_file().write_text(domain + "\n", encoding="utf-8")
+                return domain
+        return None
 
     def _bootout(self) -> None:
-        run_tool(["launchctl", "bootout", self.target])  # "not loaded" is not an error here
+        """Unload it from every domain it is loaded in ("not loaded" is not an error)."""
+        loaded = [d for d in self.candidate_domains() if self._print(d) is not None]
+        for domain in loaded:
+            run_tool(["launchctl", "bootout", f"{domain}/{self.label}"])
+
+    def boot_notes(self, spec: ServiceSpec) -> list[str]:
+        """Starting at boot, with nobody logged in, needs auto-login or a LaunchDaemon (root-owned)."""
+        user = getpass.getuser()
+        daemon_src = spec.log_file.parent.parent / f"{self.label}.daemon.plist"
+        dest = f"/Library/LaunchDaemons/{self.label}.plist"
+        notes = [
+            "Starting at boot with nobody logged in needs automatic login (System Settings > Users & "
+            "Groups) or a LaunchDaemon."
+        ]
+        try:
+            _atomic_write(daemon_src, render_plist(spec, user_name=user))
+        except OSError:
+            return notes
+        notes += [
+            f"To use a LaunchDaemon that runs as {user}, run these yourself (they need administrator "
+            "rights; Foundry AI OS never runs sudo):",
+            "  foundryos service uninstall      # first remove the per-user agent so two copies do not "
+            "fight over the port",
+            f"  sudo cp '{daemon_src}' {dest}",
+            f"  sudo chown root:wheel {dest}",
+            f"  sudo chmod 644 {dest}",
+            f"  sudo launchctl bootstrap system {dest}",
+        ]
+        return notes
 
     def install(self, spec: ServiceSpec, *, load: bool = True, linger: bool = False) -> list[str]:
         spec.log_file.parent.mkdir(parents=True, exist_ok=True)
@@ -260,18 +396,29 @@ class LaunchdService(ServiceManager):
         notes = [f"Wrote {self.path()}"]
         if was_loaded:
             self._bootout()
+        with contextlib.suppress(OSError):
+            self.domain_file().unlink()
         if load:
-            if self._bootstrap():
+            domain = self._bootstrap()
+            if domain == self.gui_domain:
                 notes.append(
                     "Loaded it: Foundry AI OS now starts at login and restarts if it stops."
                 )
+            elif domain is not None:
+                notes.append(
+                    f"There is no graphical login on this Mac, so it was loaded into {domain} instead: "
+                    "it runs now and restarts if it stops, but it does not start by itself after a reboot."
+                )
+                notes += self.boot_notes(spec)
             else:
                 notes.append(
-                    "It is installed but could not be loaded right now (no graphical login session?). "
-                    "It will start at your next login."
+                    "It is installed but launchctl would not load it (neither gui/ nor user/ domain). "
+                    "It starts at your next graphical login; on a Mac you only reach over SSH that may "
+                    "be never. Use `foundryos start` to run it now."
                 )
+                notes += self.boot_notes(spec)
         else:
-            notes.append("Not loaded yet; it will start at your next login.")
+            notes.append("Not loaded yet; it will start at your next graphical login.")
         return notes
 
     def uninstall(self) -> list[str]:
@@ -283,6 +430,8 @@ class LaunchdService(ServiceManager):
             notes.append(f"Removed {self.path()}")
         else:
             notes.append("The background service was not installed.")
+        with contextlib.suppress(OSError):
+            self.domain_file().unlink()
         return notes
 
     def start(self) -> None:
@@ -290,21 +439,44 @@ class LaunchdService(ServiceManager):
             raise ServiceError(
                 "The background service is not installed (foundryos service install)."
             )
-        if self.status().loaded:
-            run_tool(["launchctl", "kickstart", self.target])
-        elif not self._bootstrap():
+        found = self._loaded()
+        if found:
+            run_tool(["launchctl", "kickstart", f"{found[0]}/{self.label}"])
+        elif self._bootstrap() is None:
             raise ServiceError(
-                "launchctl could not load the service. See `foundryos service status`."
+                "launchctl could not load the service (neither gui/ nor user/ domain). "
+                "See `foundryos service status`."
             )
 
     def stop(self) -> None:
         self._bootout()  # unloading is what really stops a KeepAlive job
 
     def restart(self) -> None:
-        if self.status().loaded:
-            run_tool(["launchctl", "kickstart", "-k", self.target])
+        found = self._loaded()
+        if found:
+            run_tool(["launchctl", "kickstart", "-k", f"{found[0]}/{self.label}"])
         else:
             self.start()
+
+
+def _bus_missing(proc: subprocess.CompletedProcess) -> bool:
+    text = (proc.stderr or "").lower()
+    return any(marker in text for marker in BUS_FAILURE_MARKERS)
+
+
+def user_bus_env() -> dict[str, str] | None:
+    """The environment that reaches this user's systemd bus, when /run/user/<uid> exists and the current
+    environment does not already point there."""
+    runtime = RUNTIME_ROOT / str(os.getuid())
+    if not runtime.is_dir():
+        return None
+    env = {
+        "XDG_RUNTIME_DIR": str(runtime),
+        "DBUS_SESSION_BUS_ADDRESS": f"unix:path={runtime}/bus",
+    }
+    if all(os.environ.get(k) == v for k, v in env.items()):
+        return None
+    return env
 
 
 class SystemdService(ServiceManager):
@@ -317,7 +489,15 @@ class SystemdService(ServiceManager):
         return base / "systemd" / "user" / self.label
 
     def _ctl(self, *args: str) -> subprocess.CompletedProcess:
-        return run_tool(["systemctl", "--user", *args])
+        """``systemctl --user``. In a shell with no user bus (su, sudo, some SSH setups) it fails with
+        "Failed to connect to bus"; when /run/user/<uid> exists, retry pointing at that bus."""
+        cmd = ["systemctl", "--user", *args]
+        proc = run_tool(cmd)
+        if proc.returncode != 0 and _bus_missing(proc):
+            bus_env = user_bus_env()
+            if bus_env is not None:
+                return run_tool(cmd, env=bus_env)
+        return proc
 
     def available(self) -> bool:
         try:
@@ -343,7 +523,9 @@ class SystemdService(ServiceManager):
         if not self.available():
             raise ServiceError(
                 "systemd's user session is not available here (is this a container or an SSH session "
-                "without a user bus?). Use `foundryos start` instead, or run it under your own supervisor."
+                "without a user bus?). Log in directly as this user rather than through su/sudo, or "
+                "export XDG_RUNTIME_DIR=/run/user/$(id -u) first. Or use `foundryos start`, or run "
+                "it under your own supervisor."
             )
         spec.log_file.parent.mkdir(parents=True, exist_ok=True)
         _atomic_write(self.path(), render_unit(spec).encode("utf-8"))
@@ -356,12 +538,16 @@ class SystemdService(ServiceManager):
             )
         notes.append("Enabled it: Foundry AI OS starts when you log in and restarts if it fails.")
         if linger:
-            user = getpass.getuser()
-            lingered = run_tool(["loginctl", "enable-linger", user])
-            if lingered.returncode == 0:
-                notes.append(f"Linger is on for {user}: it also runs while you are logged out.")
+            notes.append(enable_linger()[1])
+        elif headless.is_headless():
+            if linger_state() is True:
+                notes.append("Linger is already on: it keeps running after you log out.")
             else:
-                notes.append(f"Could not enable linger: {lingered.stderr.strip()}")
+                notes.append(
+                    "Warning: this looks like a remote or headless session. Without linger the service "
+                    "stops when you log out of it and does not start at boot. Keep it running with "
+                    "`foundryos service install --linger` (or `sudo loginctl enable-linger $USER`)."
+                )
         else:
             notes.append(
                 "It runs while you are logged in. To keep it running when you log out, run "

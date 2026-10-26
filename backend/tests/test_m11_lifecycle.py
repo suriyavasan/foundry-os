@@ -7,6 +7,7 @@ import contextlib
 import os
 import signal
 import time
+import webbrowser
 
 import pytest
 
@@ -34,8 +35,11 @@ class Opener:
 @pytest.fixture
 def opener(monkeypatch, env):
     monkeypatch.delenv("FOUNDRYOS_NO_BROWSER")
+    monkeypatch.setenv(
+        "FOUNDRYOS_OPEN_BROWSER", "1"
+    )  # a screen is assumed, whatever box runs the tests
     op = Opener()
-    monkeypatch.setattr(lifecycle.webbrowser, "open", op)
+    monkeypatch.setattr(webbrowser, "open", op)
     return op
 
 
@@ -86,6 +90,23 @@ def test_when_it_is_already_running_it_only_opens(world, opener):
     r = invoke()
     assert r.exit_code == 0 and not world["spawned"]
     assert opener.urls and "is running" in r.stdout
+
+
+def test_a_text_browser_is_never_launched_on_a_desktop(env, monkeypatch):
+    """`webbrowser` can pick w3m/lynx when no graphical browser exists; that would take over the terminal."""
+    monkeypatch.delenv("FOUNDRYOS_NO_BROWSER")
+    monkeypatch.setenv("FOUNDRYOS_OPEN_BROWSER", "1")
+    launched: list[str] = []
+
+    class Console:
+        name = "/usr/bin/w3m"
+
+        def open(self, url, *a, **k):
+            launched.append(url)
+            return True
+
+    monkeypatch.setattr(webbrowser, "get", lambda *a, **k: Console())
+    assert lifecycle.open_in_browser("http://127.0.0.1:1") is False and launched == []
 
 
 def test_companyos_alias_without_arguments_still_prints_help(world, monkeypatch):

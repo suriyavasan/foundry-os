@@ -79,6 +79,16 @@ def find_cloudflared(
     return which("cloudflared")
 
 
+def quick_tunnel_home(settings: Settings) -> Path:
+    """An empty HOME for a quick tunnel (``<data>/run/cloudflared-home``, 0700): cloudflared reads
+    ``~/.cloudflared/config.yml`` and certificates from HOME, and a user's own named-tunnel setup
+    there must not change what a quick tunnel does."""
+    home = settings.resolved_data_dir / "run" / "cloudflared-home"
+    home.mkdir(parents=True, exist_ok=True, mode=0o700)
+    home.chmod(0o700)  # mkdir's mode is masked by the umask and ignored for an existing directory
+    return home
+
+
 def binary_version(path: str, timeout: float = 10.0) -> str | None:
     try:
         proc = subprocess.run([path, "--version"], capture_output=True, text=True, timeout=timeout)
