@@ -4,7 +4,7 @@
 #
 #   scripts/build_bundle.sh <platform> [options]
 #
-#   platform           darwin-arm64 | darwin-x86_64 | linux-x86_64 | linux-arm64 (must be this machine's)
+#   platform           darwin-arm64 | linux-x86_64 | linux-arm64 (must be this machine's; darwin-x86_64 is kept but unsupported: no Intel macOS wheels)
 #   --out DIR          where the tarball and its .sha256 go (default: <repo>/dist)
 #   --web-dist DIR     prebuilt web UI (default: <repo>/web/dist if it exists, else `pnpm build` it)
 #   --web-licenses F   `pnpm licenses list --prod --json` output, for THIRD_PARTY_NOTICES

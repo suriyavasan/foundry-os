@@ -1,6 +1,20 @@
-// Copy buttons for the install commands. Everything else on the page works without JavaScript.
+// Copy buttons for the install commands and the latest release number. Everything else on the page works
+// without JavaScript.
 (function () {
   document.documentElement.classList.add('js');
+  // Latest published release from the GitHub API (one anonymous request per page view). On any failure the
+  // static text stays. Only a plain version tag is ever shown.
+  var latest = document.getElementById('latest-release');
+  if (latest && window.fetch) {
+    fetch('https://api.github.com/repos/suriyavasan/foundry-os/releases/latest', { headers: { Accept: 'application/vnd.github+json' } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (rel) {
+        if (rel && typeof rel.tag_name === 'string' && /^v\d+\.\d+\.\d+$/.test(rel.tag_name)) {
+          latest.textContent = 'Early software. Latest release: ' + rel.tag_name;
+        }
+      })
+      .catch(function () {});
+  }
   var live = document.getElementById('copy-status');
   function fallback(text) {
     var ta = document.createElement('textarea');

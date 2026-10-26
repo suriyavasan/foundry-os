@@ -66,6 +66,26 @@ def is_newer(candidate: str, current: str) -> bool:
     return a is not None and b is not None and a > b
 
 
+def is_newer_minor(candidate: str, current: str) -> bool:
+    """Is ``candidate`` a newer major.minor than ``current``? Patch releases do not count."""
+    a, b = parse_version(candidate), parse_version(current)
+    return a is not None and b is not None and a[0][:2] > b[0][:2]
+
+
+def update_is_available(candidate: str | None, current: str, kind: str) -> bool:
+    """Is a release worth telling this installation about?
+
+    Every green push to main is released as a new patch version, so a source checkout (which is usually
+    at some commit of main, not at a tag) would be told about an update daily. It hears about a release
+    only when the major.minor is newer; the other kinds are told about every newer version.
+    """
+    if not candidate:
+        return False
+    if kind == install.SOURCE:
+        return is_newer_minor(candidate, current)
+    return is_newer(candidate, current)
+
+
 # ------------------------------------------------------------------------------ cache
 
 
@@ -204,9 +224,7 @@ def status(
         "current_version": current,
         "latest_version": latest_version,
         "update_available": bool(
-            (enabled or refresh == "always")
-            and latest_version
-            and is_newer(latest_version, current)
+            (enabled or refresh == "always") and update_is_available(latest_version, current, kind)
         ),
         "checked_at": cache.get("checked_at"),
         "release_url": cache.get("release_url"),

@@ -15,6 +15,7 @@
 #   docker build -t foundry-os .
 #   docker build --build-arg WITH_RUNTIME=0 -t foundry-os-lite .     # without the agent runtime venv (~180 MB less)
 #   docker build --build-arg WITH_POSTGRES=1 -t foundry-os-pg .      # adds the psycopg driver
+#   docker build --build-arg FOUNDRYOS_VERSION=0.1.1 -t foundry-os .  # the version it reports (default: VERSION)
 #
 # STATUS: the build is exercised in CI (ci.yml "docker" job); it was NOT built on the machine where this
 # file was written (no Docker daemon there).
@@ -69,6 +70,12 @@ RUN useradd --system --uid 10001 --create-home --home-dir /home/foundry foundry 
 COPY --from=build --chown=foundry:foundry /app /app
 COPY --from=web --chown=foundry:foundry /src/web/dist /app/web/dist
 COPY packaging/docker/entrypoint.sh /usr/local/bin/foundry-entrypoint
+# The version the image reports (`foundryos --version`, the update check): /app/VERSION is what
+# app.core.install.read_version() reads (REPO_DIR = /app). Not /VERSION: that would make bundle_root() match.
+# The repo's VERSION is only a floor, so the release workflow passes the real one as a build argument.
+ARG FOUNDRYOS_VERSION=
+COPY VERSION /app/VERSION
+RUN if [ -n "$FOUNDRYOS_VERSION" ]; then printf '%s\n' "$FOUNDRYOS_VERSION" > /app/VERSION; fi
 # `foundryos` (and its alias `companyos`) come from the backend venv, which is first on PATH
 RUN chmod 0755 /usr/local/bin/foundry-entrypoint
 
@@ -90,7 +97,8 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
 LABEL org.opencontainers.image.title="Foundry AI OS" \
       org.opencontainers.image.description="Self-hosted operating system for an autonomous company of AI agents" \
       org.opencontainers.image.source="https://github.com/suriyavasan/foundry-os" \
-      org.opencontainers.image.licenses="MIT"
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.version="${FOUNDRYOS_VERSION}"
 # serve = migrate + API (+ embedded worker); api = API only; anything else runs as given
 # (compose: `alembic upgrade head`, `companyos-worker`). The worker is `companyos-worker`.
 ENTRYPOINT ["foundry-entrypoint"]

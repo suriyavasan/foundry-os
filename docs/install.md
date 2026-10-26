@@ -162,11 +162,11 @@ browser from an installed copy.
 
 | Path | Purpose |
 |---|---|
-| `VERSION`, `CHANGELOG.md` | the version of record; `scripts/release.sh` moves "Unreleased" under the new version |
+| `VERSION`, `CHANGELOG.md` | `VERSION` is the version floor (releases are the highest tag + 1 patch); `CHANGELOG.md` notes, used when a `## [X.Y.Z]` section exists |
 | `packaging/versions.env` | pinned inputs: python-build-standalone release + SHA-256 per platform, uv version, runtime extras |
 | `scripts/build_bundle.sh <platform>` | builds `foundry-os-<version>-<platform>.tar.gz` (+ `.sha256`); the same script CI runs |
 | `scripts/smoke_bundle.sh <tarball> [--installer]` | the smoke test CI runs on every bundle |
-| `scripts/release.sh <version>` | bump, tag, push (asks first); `--notes <version>` prints the release notes |
+| `scripts/release.sh <version>` | raise the minor/major floor (edits `VERSION` + `CHANGELOG.md`, no tag, no push); `--notes <version>` prints the release notes. `scripts/next_version.sh` computes the next automatic version |
 | `packaging/bin/foundryos` | the launcher shipped in every bundle |
 | `packaging/homebrew/` | `foundry-os.rb.tmpl` and `render_formula.sh <release-dir>` |
 | `packaging/gen_notices.py` | generates `THIRD_PARTY_NOTICES` for a bundle |
@@ -192,23 +192,48 @@ the lock's own override installs `13.0.0`), which is the lockfile's decision and
 
 ### Cut a release
 
-1. Write the changes under `## [Unreleased]` in `CHANGELOG.md`.
-2. `scripts/release.sh 0.2.0` (the very first release can be `0.1.0`: `VERSION` already says so).
-3. The tag push runs `release.yml`: web build, four bundles (macos-14 arm64, macos-15-intel x86_64, ubuntu-22.04
-   x86_64, ubuntu-22.04-arm arm64) each installed through `install.sh` and smoke-tested, `SHA256SUMS`, the GitHub
-   Release with the changelog notes (`install.sh` is attached too), the multi-arch image on GHCR, and the tap.
-   `macos-13`, named in the original plan, no longer exists on GitHub Actions; `macos-15-intel` replaces it.
-4. Running the workflow by hand (`workflow_dispatch`) builds and tests everything and publishes nothing.
+Releases are automatic: **every green push to `main` is published.** Do nothing special for a normal change.
+
+* **What happens.** When CI finishes green for a push to `main`, `release.yml` picks the version
+  (`scripts/next_version.sh`), builds the web UI, one bundle per platform in `PLATFORMS`
+  (`packaging/versions.env`: macos-14 arm64, ubuntu-22.04 x86_64, ubuntu-22.04-arm arm64), each installed through
+  `install.sh` and smoke-tested, and the Docker image for amd64 and arm64 (its `foundryos --version` must match).
+  Only if all of that passed does it publish: `SHA256SUMS`, a draft GitHub Release with every asset (checked
+  against what was built), the multi-arch image tag, then the release goes public and is marked latest. Then
+  Docker `:latest` / `:X.Y` move and the Homebrew tap is updated. Published assets are never replaced.
+* **Version numbers.** `VERSION` is a floor. The release is the highest `vA.B.C` tag with the patch + 1, or
+  `VERSION` itself when that is higher (or when there is no tag yet). Nothing is committed back; the tag is created
+  when the release is published. `VERSION` must be plain `X.Y.Z` (a `-rc.1` suffix is refused).
+* **A new minor or major.** Write the changes under `## [Unreleased]` in `CHANGELOG.md`, run
+  `scripts/release.sh 0.2.0`, review `git diff`, then commit and push. It edits `VERSION` and `CHANGELOG.md` only
+  (no commit, tag or push) and refuses a version that is not newer than the highest tag. CI then publishes `0.2.0`.
+* **Release notes** are the `## [x.y.z]` section of `CHANGELOG.md` when there is one; otherwise one line per
+  commit since the previous release, plus a compare link. Preview with `scripts/release.sh --notes 0.2.0`.
+* **Skipped (the run stays green and says why):** a commit already contained in the latest tag; a commit message
+  with `[skip release]`; a push that only changes `docs/`, `site/` or `*.md` files.
+* **By hand.** Run the *Release* workflow from main (Actions tab). `sha` picks a commit, `publish` (default off)
+  decides whether it publishes; without it everything is built and tested and nothing is published. A failed
+  publish leaves at most a draft release, which the next run deletes and recreates.
+* **Preview the decision locally:** `scripts/next_version.sh --sha HEAD` (its tests: `sh scripts/tests/next_version_test.sh`).
 
 ### Things only the owner can do
 
-* Create the repository `suriyavasan/homebrew-tap` (empty is fine), and a **fine-grained personal access token**
-  with *Contents: read and write* on that repository only; save it as the secret `HOMEBREW_TAP_TOKEN` of
-  `suriyavasan/foundry-os`. Without it the `tap` job prints the formula and the exact diff, uploads it as the
-  `foundry-os-formula` artifact and fails (the release itself is still published); commit it to the tap by hand.
+* Create the repository `suriyavasan/homebrew-tap` (empty is fine) and let the workflow push to it, with one of:
+  * **a deploy key (preferred):** `ssh-keygen -t ed25519 -N '' -f tap_key`, add `tap_key.pub` as a deploy key with
+    *write access* on `suriyavasan/homebrew-tap`, and save the private `tap_key` as the secret
+    `HOMEBREW_TAP_DEPLOY_KEY` in the `release` environment of `suriyavasan/foundry-os` (Settings > Environments),
+    then delete the local key files;
+  * **or a fine-grained personal access token** with *Contents: read and write* on that repository only, saved as
+    `HOMEBREW_TAP_TOKEN` (same place; a repository secret works too).
+
+  With neither, the `tap` job prints the formula and the exact diff, uploads it as the `foundry-os-formula-tap`
+  artifact and fails (the release itself is already published); commit the formula to the tap by hand.
+* Optionally protect the `release` environment (required reviewers) if you want a human to approve tap pushes.
 * After the first image push, open the package `foundry-os` under the account's Packages on GitHub and set its
   visibility to **public** (GHCR creates new packages private), so `docker pull` works without logging in.
-* Make the repository public before the first release (the installer downloads from it without credentials).
+* Keep the repository public (the installer downloads from it without credentials).
+* If `main` ever gets branch protection, a release needs no push to it (nothing is committed back), so no bypass
+  is required.
 
 ### Updating the pins
 

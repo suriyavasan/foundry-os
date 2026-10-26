@@ -420,6 +420,36 @@ def test_check_asks_github_once_a_day_and_caches(env, monkeypatch, tmp_path):
     assert set(cache) >= {"checked_at", "latest_version", "release_url"}  # nothing identifying
 
 
+def test_a_source_install_hears_only_about_a_newer_minor(env, monkeypatch, tmp_path):
+    """Every green push to main is a patch release; a checkout would otherwise be nagged on each one."""
+    monkeypatch.setattr(install, "install_kind", lambda: install.SOURCE)
+    monkeypatch.setattr(install, "APP_VERSION", "0.1.0")
+    t0 = datetime(2026, 10, 24, 9, 0, tzinfo=UTC)
+
+    def check(latest: str) -> dict:
+        monkeypatch.setattr(
+            updatecheck,
+            "http_client_factory",
+            fake_github({latest: make_release(tmp_path / "dl", latest)}, latest=latest, calls=[]),
+        )
+        return updatecheck.status(settings_for(env), refresh="always", now=t0)
+
+    patch = check("0.1.7")
+    assert patch["latest_version"] == "0.1.7" and patch["update_available"] is False
+    minor = check("0.2.0")
+    assert minor["update_available"] is True
+    assert check("1.0.0")["update_available"] is True
+    # other install kinds are told about every newer version, patches included
+    monkeypatch.setattr(install, "install_kind", lambda: install.INSTALLER)
+    assert check("0.1.7")["update_available"] is True
+    assert updatecheck.is_newer_minor("0.2.0", "0.1.9") and not updatecheck.is_newer_minor(
+        "0.1.9", "0.1.0"
+    )
+    assert not updatecheck.is_newer_minor("0.1.0", "0.2.0") and not updatecheck.is_newer_minor(
+        "garbage", "0.1.0"
+    )
+
+
 def test_the_check_sends_only_a_versioned_user_agent(env, monkeypatch):
     headers: dict = {}
 

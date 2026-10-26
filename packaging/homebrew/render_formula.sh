@@ -48,9 +48,16 @@ sha_for() { # file name -> hash on stdout, or nothing
     fi
 }
 
+# PLATFORMS (packaging/versions.env) is the one list of bundle platforms; the template's variables use _ for -
+PLATFORMS=
+# shellcheck disable=SC1091
+. "$ROOT/packaging/versions.env"
+[ -n "$PLATFORMS" ] || die "PLATFORMS is empty in packaging/versions.env"
+
 SEDARGS="-e s|@VERSION@|$VERSION|g"
-for plat in darwin_arm64 linux_arm64 linux_x86_64; do  # no Intel macOS bundle (see release.yml)
-    file=foundry-os-$VERSION-$(printf '%s' "$plat" | sed 's/^\([a-z]*\)_/\1-/').tar.gz
+for platform in $PLATFORMS; do
+    plat=$(printf '%s' "$platform" | tr - _)
+    file=foundry-os-$VERSION-$platform.tar.gz
     sha=$(sha_for "$file")
     if [ -z "$sha" ]; then
         [ "$ALLOW_MISSING" = 1 ] || die "no checksum for $file in $DIR"

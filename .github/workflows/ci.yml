@@ -105,9 +105,12 @@ jobs:
         run: |
           shellcheck -x \
             install.sh \
-            scripts/build_bundle.sh scripts/smoke_bundle.sh scripts/release.sh \
+            scripts/build_bundle.sh scripts/smoke_bundle.sh scripts/release.sh scripts/next_version.sh \
+            scripts/tests/next_version_test.sh \
             packaging/bin/foundryos packaging/sums.sh \
             packaging/homebrew/render_formula.sh packaging/docker/entrypoint.sh
+      - name: next_version.sh tests (versioning and skip rules of the release pipeline)
+        run: sh scripts/tests/next_version_test.sh
       - name: actionlint
         run: docker run --rm -v "$PWD:/repo" --workdir /repo rhysd/actionlint:1.7.7 -color
       - name: docker compose files are valid
@@ -151,7 +154,8 @@ jobs:
       - name: Render the formula with placeholder checksums
         run: |
           mkdir release
-          for plat in darwin-arm64 linux-arm64 linux-x86_64; do
+          . packaging/versions.env
+          for plat in $PLATFORMS; do
             printf '%064d  foundry-os-%s-%s.tar.gz\n' 1 "$(cat VERSION)" "$plat" >> release/SHA256SUMS
           done
           packaging/homebrew/render_formula.sh release -o foundry-os.rb
@@ -177,6 +181,7 @@ jobs:
           context: .
           load: true
           tags: foundry-os:ci
+          build-args: FOUNDRYOS_VERSION=0.0.0-ci
           cache-from: type=gha,scope=docker-amd64
           cache-to: type=gha,scope=docker-amd64,mode=max
       - name: Run it and wait for the health check
@@ -194,4 +199,5 @@ jobs:
           curl -fsS http://127.0.0.1:8712/ | grep -qi '<div id="root"'
           test "$(docker exec fos id -u)" = 10001
           docker exec fos foundryos --help > /dev/null
+          test "$(docker exec fos foundryos --version)" = "foundryos 0.0.0-ci"
           docker stop fos

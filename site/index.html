@@ -53,7 +53,7 @@
 <div class="hero" id="top">
   <div class="wrap">
     <div>
-      <p class="status"><i aria-hidden="true"></i> Early software. First release (v0.1.0) is coming.</p>
+      <p class="status"><i aria-hidden="true"></i> <span id="latest-release">Early software. Every change that passes the tests is released.</span></p>
       <h1><span>Foundry AI OS</span><span class="dim">a company that <em>runs itself</em>, on your machine</span></h1>
       <p class="lede">You write down what you want. An AI Co-founder turns it into goals, hires AI specialists, hands out the work and tells you what happened. It runs on your own computer, with your own AI. You approve anything that costs real money.</p>
       <div class="cta">
@@ -126,23 +126,23 @@
     <div class="head">
       <p class="eyebrow">Install</p>
       <h2>Pick one. Then run <code style="font:inherit;color:var(--accent-fg)">foundryos</code>.</h2>
-      <p class="lede">These install options are available from the first release, v0.1.0. They are not published yet.</p>
+      <p class="lede">These install options install the latest release. Every change that passes the tests is released automatically.</p>
     </div>
     <div class="install">
       <div class="opt-card">
-        <span class="tag">From v0.1.0</span>
+        <span class="tag">Latest release</span>
         <h3>Homebrew</h3>
         <p class="meta">macOS and Linux. Updates with <code>brew upgrade foundry-os</code>.</p>
         <div class="code"><pre id="c1">brew install suriyavasan/tap/foundry-os</pre><button class="copy" type="button" data-target="c1" aria-label="Copy the Homebrew command">Copy</button></div>
       </div>
       <div class="opt-card">
-        <span class="tag">From v0.1.0</span>
+        <span class="tag">Latest release</span>
         <h3>One-line installer</h3>
         <p class="meta">macOS and Linux, no Homebrew needed. Updates with <code>foundryos update</code>.</p>
         <div class="code"><pre id="c2">curl -fsSL https://raw.githubusercontent.com/suriyavasan/foundry-os/main/install.sh | sh</pre><button class="copy" type="button" data-target="c2" aria-label="Copy the installer command">Copy</button></div>
       </div>
       <div class="opt-card">
-        <span class="tag">From v0.1.0</span>
+        <span class="tag">Latest release</span>
         <h3>Docker</h3>
         <p class="meta">Any system, including Windows. Then open localhost:8700.</p>
         <div class="code"><pre id="c3">docker run -d --name foundry-os -p 8700:8700 -v foundry-os:/data ghcr.io/suriyavasan/foundry-os:latest</pre><button class="copy" type="button" data-target="c3" aria-label="Copy the Docker command">Copy</button></div>

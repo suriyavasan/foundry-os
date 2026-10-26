@@ -1,9 +1,10 @@
 # Changelog
 
 All notable changes to Foundry AI OS. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
-versions follow [Semantic Versioning](https://semver.org/). `scripts/release.sh` moves the "Unreleased"
-section under the new version when a release is cut, and the release workflow publishes that section as the
-GitHub Release notes.
+versions follow [Semantic Versioning](https://semver.org/). Every green push to `main` is released
+automatically with the next patch version (see `docs/install.md`, "Cut a release"). A release's notes are its
+`## [x.y.z]` section here when there is one, else the commit subjects since the previous release.
+`scripts/release.sh <version>` is for a new minor or major: it moves the "Unreleased" section under that version.
 
 ## [Unreleased]
 

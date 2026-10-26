@@ -1,5 +1,5 @@
-# actionlint's built-in runner list predates GitHub's `macos-15-intel` hosted runner
-# (Intel macOS image used by release.yml); declare it so the label check passes.
+# actionlint configuration. release.yml no longer uses the Intel macOS runner (`macos-15-intel`) that this file
+# used to declare, and actionlint 1.7.7 knows every runner label the workflows use, so nothing needs declaring.
+# Add a label here only if a workflow starts using a runner that actionlint's built-in list does not know.
 self-hosted-runner:
-  labels:
-    - macos-15-intel
+  labels: []

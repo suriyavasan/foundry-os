@@ -119,17 +119,47 @@ adapted), non-root, `/data` volume, `HEALTHCHECK`, published to
 (not locally: the dev machine has little disk).
 
 ## 7. Release automation (`.github/workflows/`)
+**A release on every green push to `main`.** Nobody tags or runs a workflow by hand.
 - `ci.yml` on PR/push: backend tests (ruff + pytest with `tmp_path_retention_policy =
   "failed"` so test runs don't leave ~1 GB of temp files), web (typecheck/lint/test/build),
-  runtime tests, shellcheck `install.sh`.
-- `release.yml` on tag `v*`: build 4 bundles → smoke test each → `SHA256SUMS` → GitHub
-  Release (notes from `CHANGELOG.md`) → Docker multi-arch push → update the tap formula
-  (version, URLs, sha256) and push to `suriyavasan/homebrew-tap` **if** secret
-  `HOMEBREW_TAP_TOKEN` exists (fine-grained PAT with contents:write on the tap repo — the
-  owner creates it); otherwise the workflow prints the exact formula diff and fails the
-  "tap" job with instructions (release still published).
-- `scripts/release.sh <version>`: bump `VERSION`, move the Unreleased changelog section,
-  commit, tag, push (prints what it will do and asks for confirmation).
+  runtime tests, shellcheck + actionlint, `scripts/tests/next_version_test.sh`, a Linux bundle
+  build + smoke test, the Homebrew formula render/style check, the Docker image build + smoke test.
+- `release.yml` on `workflow_run` of `CI` (completed, branch `main`) + `workflow_dispatch`
+  (`sha`, `publish`). It runs only when CI concluded `success` for a `push` to `main` of this
+  repository. Tests are not repeated (CI already passed on that commit); it builds and smoke-tests
+  the artifacts. One run at a time (`concurrency: release`, no cancelling).
+- **Versioning is tag-only; there are no bot commits.** `VERSION` is a floor `X.Y.Z`. `last` = the
+  highest stable `vA.B.C` tag. No tag, or floor > `last` -> the version is the floor; otherwise
+  `last` with the patch + 1 (`scripts/next_version.sh`). A `VERSION` with a `-` suffix is rejected in
+  this path. The tag is created only when the release is published (by the workflow's
+  `GITHUB_TOKEN`, so it starts no further workflow). `scripts/release.sh 0.2.0` raises the floor
+  (edits `VERSION` + `CHANGELOG.md`, commits/tags/pushes nothing); the next push publishes it.
+- **Skipped with a green run and the reason printed:** the commit is already contained in the
+  latest tag; its message contains `[skip release]`; every file changed since the latest tag is
+  under `docs/` or `site/` or is `*.md` (`SKIP_DOCS_ONLY=0` turns that last rule off).
+- **Jobs:** `prepare` (version, skip rules, release notes, the bundle matrix from `PLATFORMS` in
+  `packaging/versions.env`) -> `web` (build only) -> `bundle` per platform (build with `--version`,
+  `install.sh` smoke test, plain tarball smoke test) and `docker-build` per architecture (smoke
+  test, `foundryos --version` must equal the release version; pushed by digest only when
+  publishing) -> `publish` -> `docker-latest` and `tap`.
+- **`publish`** (only when everything above passed): `SHA256SUMS`; the number of bundles must
+  equal the number of `PLATFORMS`; render the formula and `ruby -c` it; delete a leftover *draft*
+  of the same tag (a published release is never touched); create the release as a **draft** at the
+  built commit with all assets (`--target SHA`); verify the uploaded names and sizes and that
+  `SHA256SUMS` downloads back identical; create the Docker manifest `:<version>` from the two
+  digests and inspect it; only then make the release public and mark it latest. Published assets
+  are never replaced (no `--clobber`).
+- **`docker-latest`:** moves `:latest` and `:X.Y` to the new image only if this release is still
+  GitHub's latest. **`tap`** (`environment: release`): renders the formula from the *published*
+  `SHA256SUMS`, installs it from a scratch local tap and checks `foundryos --version` and
+  `brew test`, then pushes to `suriyavasan/homebrew-tap` with a deploy key
+  (`HOMEBREW_TAP_DEPLOY_KEY`, preferred) or a token (`HOMEBREW_TAP_TOKEN`), only if the version is
+  newer than the tap's. With neither secret it prints the formula and the diff and fails the job
+  (the release itself is already published).
+- Release notes: the `## [x.y.z]` section of `CHANGELOG.md` if present, else one line per
+  non-merge commit since the previous release, then a compare link (`scripts/release.sh --notes`).
+- The Docker image reports the release version (`--build-arg FOUNDRYOS_VERSION`, written to
+  `/app/VERSION`).
 - `scripts/build_bundle.sh <platform>`: the same build CI runs, usable locally.
 
 ## 8. Local verification before the first release (dev machine: macOS arm64, ~2.6 GB free)
