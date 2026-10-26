@@ -75,6 +75,21 @@ export function TunnelCard({ companyId, status, canManage }: { companyId: string
           </p>
         ) : null}
 
+        {t.ephemeral && (
+          <div data-testid="ephemeral-note" className="space-y-1 rounded-md border border-line bg-raised px-3 py-2 text-[12.5px] text-fg-2">
+            <p className="font-medium text-fg">This address changes when Foundry restarts</p>
+            <p>
+              {t.url_changed_at ? `Address changed ${formatRelative(t.url_changed_at)}. ` : ''}
+              Bookmarks and shared links stop working after a restart, and passkeys need a stable address. For a lasting address use a named tunnel or Tailscale Funnel.
+            </p>
+            {!url && t.last_url && (
+              <p>
+                Last address: <code className="font-mono text-[11.5px] break-all text-fg">{t.last_url}</code>
+              </p>
+            )}
+          </div>
+        )}
+
         {!running && (
           <div className="space-y-3">
             <Field label="Tunnel provider" hint={TUNNEL_PROVIDER_HELP[provider]}>

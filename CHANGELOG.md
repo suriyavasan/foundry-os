@@ -16,6 +16,44 @@ automatically with the next patch version (see `docs/install.md`, "Cut a release
   company tools allowed. It is coded from `agy --help` and Google's documentation and tested with a fake binary;
   it has not been run against a real prompt. Google's installer is a `curl | bash` script, so Foundry AI OS shows
   the command for you to run yourself instead of installing it.
+- `foundryos setup`: the whole onboarding in a terminal, for servers and Macs you reach over SSH. Account (hidden
+  password prompt), optional two-factor sign-in with a terminal QR code, company and idea, the model API with the same
+  five live checks as the web app, API-only or API plus a coding CLI (install, sign-in, test), the background
+  service and an optional free public URL. It can be run again (finished steps are skipped), `--only <step>` runs
+  one, and `--non-interactive` with `--secrets-stdin` and `--json` makes it scriptable. Secrets are never command-line
+  options.
+- Free public URL from the terminal: `foundryos reach public start|stop` (Cloudflare quick tunnel by default, or
+  `named` / `tailscale`; one confirmed, checksum-verified `cloudflared` download) and `foundryos reach --watch`.
+  A quick tunnel's address changes on every start, so each change is now remembered (last five), audited, logged,
+  shown in the web app (`TunnelCard`: "This address changes when Foundry restarts") and written to
+  `<data>/public-url.json`. `foundryos status` shows the public URL first. `GET /api/reachability` reports
+  `tunnel.ephemeral`, `tunnel.last_url` and `tunnel.url_changed_at`.
+- Linux: `foundryos service install --linger` and `install.sh --linger` keep the service running after you log out
+  (`loginctl enable-linger`, never `sudo`); `foundryos doctor` checks headless, linger and service lifetime.
+  macOS: when there is no graphical login the LaunchAgent is loaded into `user/<uid>`, and `service install` prints
+  the `sudo` steps for a LaunchDaemon.
+- `company create` takes `--idea` and `--timezone`.
+
+### Changed
+
+- On a machine with no screen (SSH session, container, Linux without a display) `foundryos`, `start`, `open` and `up`
+  no longer try to open a browser. They print the local address, an SSH port-forward hint and the public URL, and
+  offer `foundryos setup`. `FOUNDRYOS_OPEN_BROWSER=1` forces a browser, `FOUNDRYOS_NO_BROWSER=1` never opens one.
+  `install.sh` hands over to `foundryos setup` on a headless terminal.
+- `systemctl --user` is retried with `XDG_RUNTIME_DIR=/run/user/<uid>` when the shell has no user bus.
+- Passkeys are refused on quick-tunnel (`*.trycloudflare.com`) addresses, because the address changes and a passkey
+  made there would stop working; they no longer count toward the public-exposure gate. The session reports
+  `passkey_unsupported_reason: "ephemeral_origin"` and the web app says passkeys need a stable address.
+- A `cloudflared` process left behind by a crashed server is stopped before a new tunnel starts, and a quick tunnel
+  runs with an isolated `HOME`.
+
+### Known limits
+
+- All of the above was tested with fakes (fake `cloudflared`, `launchctl`, `systemctl`, `loginctl`, coding tools and
+  providers). No real tunnel, service manager, provider login or SSH hand-off was run. Cloudflare says quick tunnels
+  do not support server-sent events; the web app falls back to polling, which we have not seen on a real tunnel.
+  Security notes on the new exposure (a username lockout by strangers, claiming an unclaimed install on a shared
+  machine, Docker's `--forwarded-allow-ips '*'`) are in `docs/security.md` section 6.
 
 ## [0.1.0] - 2026-10-24
 

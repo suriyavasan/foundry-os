@@ -104,12 +104,16 @@ export async function getCredential(options: Json, opts: { conditional?: boolean
 
 export const INSECURE_ORIGIN_MESSAGE =
   'Passkeys work on this computer (localhost) or over HTTPS — not on a plain http:// network address. Use your password here, or open Foundry AI OS through its secure public address.'
+export const EPHEMERAL_ORIGIN_MESSAGE =
+  'Passkeys need a stable address. This free public address changes when Foundry restarts, so a passkey made here would stop working. Use your password here, or add a passkey from http://localhost (an SSH port-forward works) or from a stable address (a named tunnel or Tailscale Funnel).'
 export const UNSUPPORTED_BROWSER_MESSAGE = 'This browser does not support passkeys. Use your password, or try a current version of Safari, Chrome, Edge or Firefox.'
 
 export type PasskeyEnvironment =
   /** The backend has no passkey endpoints (the session carries no passkey fields): show nothing. */
   | 'backend_unavailable'
   | 'insecure_origin'
+  /** A free quick-tunnel address: it changes on restart, so passkeys are refused there. */
+  | 'ephemeral_origin'
   | 'unsupported_browser'
   | 'ready'
 
@@ -118,8 +122,9 @@ export function browserSupportsPasskeys(): boolean {
 }
 
 /** Whether passkeys can be used here: the backend's word on the origin first, then the browser's. */
-export function passkeyEnvironment(session: Pick<AuthSession, 'passkey_supported_origin'> | null | undefined): PasskeyEnvironment {
+export function passkeyEnvironment(session: Pick<AuthSession, 'passkey_supported_origin' | 'passkey_unsupported_reason'> | null | undefined): PasskeyEnvironment {
   if (typeof session?.passkey_supported_origin !== 'boolean') return 'backend_unavailable'
+  if (session.passkey_supported_origin === false && session.passkey_unsupported_reason === 'ephemeral_origin') return 'ephemeral_origin'
   if (session.passkey_supported_origin === false || (typeof window !== 'undefined' && window.isSecureContext === false)) return 'insecure_origin'
   return browserSupportsPasskeys() ? 'ready' : 'unsupported_browser'
 }
@@ -137,6 +142,7 @@ export async function conditionalMediationAvailable(): Promise<boolean> {
 /** The message that replaces a passkey button that cannot work here, or null when it can. */
 export function passkeyEnvironmentMessage(env: PasskeyEnvironment): string | null {
   if (env === 'insecure_origin') return INSECURE_ORIGIN_MESSAGE
+  if (env === 'ephemeral_origin') return EPHEMERAL_ORIGIN_MESSAGE
   if (env === 'unsupported_browser') return UNSUPPORTED_BROWSER_MESSAGE
   return null
 }

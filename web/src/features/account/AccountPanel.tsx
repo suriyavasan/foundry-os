@@ -71,7 +71,7 @@ export function AccountPanel() {
             <ProfileCard user={status.session.user!} passkeysCount={status.session.passkeys_count} />
             <PasswordCard username={status.session.user!.username} displayName={status.session.user!.display_name} />
             <TwoFactorCard enabled={status.session.user!.two_factor_enabled === true} />
-            <PasskeysCard supportedOrigin={status.session.passkey_supported_origin} />
+            <PasskeysCard supportedOrigin={status.session.passkey_supported_origin} unsupportedReason={status.session.passkey_unsupported_reason} />
           </div>
           <div className="space-y-4">
             <SessionsCard />

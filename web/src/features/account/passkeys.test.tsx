@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { INSECURE_ORIGIN_MESSAGE } from '@/lib/webauthn'
+import { EPHEMERAL_ORIGIN_MESSAGE, INSECURE_ORIGIN_MESSAGE } from '@/lib/webauthn'
 import { jsonResponse, mockApi, page } from '@/test/factories'
 import { baseRoutes, renderCanvas } from '@/test/m5'
 import { creationJson, domError, installWebAuthn, uninstallWebAuthn } from '@/test/webauthn'
@@ -136,6 +136,17 @@ describe('passkeys in the account panel', () => {
     expect(await within(d).findByText('iCloud Keychain')).toBeInTheDocument()
     expect(within(d).getByRole('button', { name: 'Add a passkey' })).toBeDisabled()
     expect(within(d).getByText(INSECURE_ORIGIN_MESSAGE)).toBeInTheDocument()
+  })
+
+  it('on a quick-tunnel address it disables Add and says passkeys need a stable address', async () => {
+    installWebAuthn()
+    vi.stubGlobal('fetch', mockApi(routes({}, { passkey_supported_origin: false, passkey_unsupported_reason: 'ephemeral_origin', passkeys_count: 2 })).impl)
+    renderCanvas('/c/c1?panel=account')
+    const d = await open()
+    expect(await within(d).findByText('iCloud Keychain')).toBeInTheDocument()
+    expect(within(d).getByRole('button', { name: 'Add a passkey' })).toBeDisabled()
+    expect(within(d).getByText(EPHEMERAL_ORIGIN_MESSAGE)).toBeInTheDocument()
+    expect(within(d).queryByText(INSECURE_ORIGIN_MESSAGE)).not.toBeInTheDocument()
   })
 
   it('renames a passkey', async () => {

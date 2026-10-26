@@ -41,6 +41,7 @@ export function normalizeAuthSession(raw: unknown): AuthSession {
     ...(str(o.expires_at) ? { expires_at: str(o.expires_at) } : null),
     ...(typeof o.passkeys_count === 'number' ? { passkeys_count: o.passkeys_count } : null),
     ...(typeof o.passkey_supported_origin === 'boolean' ? { passkey_supported_origin: o.passkey_supported_origin } : null),
+    ...(o.passkey_unsupported_reason === 'ephemeral_origin' ? { passkey_unsupported_reason: 'ephemeral_origin' as const } : null),
   }
 }
 

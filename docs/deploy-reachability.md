@@ -57,6 +57,35 @@ Needs `cloudflared`. If it is missing the status shows install instructions and,
 
 Start it: you get a random `https://<words>.trycloudflare.com` URL that changes every time and is not for anything you want to keep.
 
+**From a terminal (M13).** `foundryos reach public start [quick|named|tailscale] [--hostname H] [--yes]`, `foundryos reach public stop`, and the last
+step of `foundryos setup` do the same through the API (so the gate and the checksum-verified download are the server's). `quick` is the default; if
+`cloudflared` is missing the command prints the plan from `GET /api/reachability/tunnel/install-plan` (version, URL, SHA-256, size) and asks before
+`POST /api/reachability/tunnel/install`. `foundryos reach --watch` polls `GET /api/reachability` and prints the URL when it changes; it waits out a server
+restart.
+
+**URL changes.** A quick-tunnel URL is new on every start, including every API restart. The supervisor's change listener
+(`services/reachability.on_tunnel_change`) remembers it: `system_state` key `tunnel_url` holds `last_url`, `previous_url`, `url_changed_at`, the provider and
+the last five URLs; each change writes an audit event `reachability.tunnel_url_changed` (`data`: `url`, `previous_url`, `provider`) for the owner's companies in
+the same transaction, emits `reachability.updated`, and logs `Public URL: <url>` at INFO. `<data dir>/public-url.json` (0600, written atomically, next to the
+database and not in `run/`) is the headless user's way to read it: `{url, provider, state, changed_at, previous_url}`; while the tunnel is stopped, starting or in
+error, `url` is `null` and `state` says which. `GET /api/reachability` exposes `tunnel.ephemeral` (true for `cloudflare_quick` or a `*.trycloudflare.com` host),
+`tunnel.last_url` and `tunnel.url_changed_at`, and they survive a stop. The foundryos start/status commands print the URL from this file or the API.
+
+**Process hygiene.** The `cloudflared` child's pid is registered in `<data dir>/run/tunnel.<pid>.json`. If the API died without cleaning up, the next start
+stops a recorded tunnel whose live command line still names the recorded binary (SIGTERM, then SIGKILL after 5 s) and whose recorded parent is gone; a recycled pid
+is never signalled. A quick tunnel runs with an empty `HOME` (`<data dir>/run/cloudflared-home`, 0700) so your own `~/.cloudflared/config.yml` and certificates cannot
+change what it does.
+
+**Passkeys.** A passkey is bound to its host name, so none is created on an ephemeral origin: `*.trycloudflare.com`, or the running tunnel's host when that
+tunnel is a quick tunnel. The passkey options routes answer `400 passkey_origin_unsupported`; `GET /api/auth/session` reports `passkey_supported_origin: false` and
+`passkey_unsupported_reason: "ephemeral_origin"`; a passkey registered on such an origin (the `rp_id` is in its `auth.passkey_added` audit event) does not count as
+strong authentication for the exposure gate. A named tunnel and Funnel keep passkeys. Details: `docs/api.md`, "Passkeys".
+
+**Server-sent events.** Cloudflare's documentation says quick tunnels do not support SSE (and limit in-flight requests). The company stream
+(`GET /api/companies/{cid}/stream`) may therefore not work through a `trycloudflare.com` address. The web app falls back to polling every 10 s after two failed
+attempts (`web/src/api/stream.tsx`); `foundryos runs tail -f` uses the stream and has no such fallback, so run it on the server itself or over the SSH forward, not through a quick tunnel. **Not observed by us on a real tunnel.** For live updates use the SSH port-forward
+(`ssh -N -L 8700:127.0.0.1:8700 user@host`, then `http://localhost:8700`), a named tunnel or Tailscale Funnel.
+
 ### Cloudflare named tunnel (stable, on your own domain)
 
 Needs: `cloudflared`, a domain whose DNS is on your Cloudflare account, and a connected Cloudflare account. Create an API token with
@@ -159,7 +188,8 @@ e-mails are sent by the API process (and the embedded worker), not by a separate
 ## 7. Checking it yourself (manual, not automated)
 
 - From another device on the same network: open the LAN URL or `<name>.local` URL and sign in.
-- Start a quick tunnel and open the `trycloudflare.com` URL from a phone on mobile data.
+- Start a quick tunnel and open the `trycloudflare.com` URL from a phone on mobile data. Restart Foundry and check that the URL in `foundryos reach --watch`,
+  `public-url.json` and the Reachability screen changed together, and that the live feed still updates (by polling if the stream is blocked).
 - After approving a registry PR, look at it on GitHub; after a purchase, look at the registrar's order page and at *Finance > Expenses*.
 - Kill the `cloudflared` process: the status shows `restarts` going up and a new URL for a quick tunnel.
 

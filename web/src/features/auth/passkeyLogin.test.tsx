@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { jsonResponse, mockApi } from '@/test/factories'
 import { renderWithProviders } from '@/test/render'
 import { creationJson, domError, installWebAuthn, requestJson, setSecureContext, uninstallWebAuthn } from '@/test/webauthn'
-import { INSECURE_ORIGIN_MESSAGE, UNSUPPORTED_BROWSER_MESSAGE } from '@/lib/webauthn'
+import { EPHEMERAL_ORIGIN_MESSAGE, INSECURE_ORIGIN_MESSAGE, UNSUPPORTED_BROWSER_MESSAGE } from '@/lib/webauthn'
 import { AuthGate } from './AuthGate'
 
 afterEach(() => uninstallWebAuthn())
@@ -117,6 +117,14 @@ describe('sign in with a passkey', () => {
     setup({ session: { passkey_supported_origin: false, passkeys_count: 0 } })
     expect(await screen.findByText(INSECURE_ORIGIN_MESSAGE)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Sign in with a passkey' })).not.toBeInTheDocument()
+  })
+
+  it('on a quick-tunnel address it hides the passkey button and says passkeys need a stable address', async () => {
+    installWebAuthn()
+    setup({ session: { passkey_supported_origin: false, passkey_unsupported_reason: 'ephemeral_origin', passkeys_count: 0 } })
+    expect(await screen.findByText(EPHEMERAL_ORIGIN_MESSAGE)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Sign in with a passkey' })).not.toBeInTheDocument()
+    expect(screen.queryByText(INSECURE_ORIGIN_MESSAGE)).not.toBeInTheDocument()
   })
 
   it('shows the insecure-origin message on a non-secure page even if the server did not object', async () => {

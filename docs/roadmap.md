@@ -37,6 +37,7 @@ reachable from anywhere — without approving each step.*
 | M10 | AI setup, coding-CLI workforce, Reflections, Command Center | Mandatory working-API onboarding gate (OpenRouter / Anthropic / OpenAI / OpenAI-compatible); optional Claude Code / Codex / OpenCode work runtimes (API manages the company, CLIs do the work) with isolation + MCP company tools; animated single-screen onboarding; Reflections + human-set company standards; Command Center where every input gets an output | done (live: OpenCode + local model; Claude Code/Codex not run live) |
 | M11 | Foundry AI OS: easy install | Rename to Foundry AI OS (`foundryos`); self-contained release bundles (own Python, prebuilt UI); Homebrew tap `suriyavasan/tap/foundry-os`; one-line `install.sh`; Docker image on GHCR; background service; `foundryos update`/rollback with automatic pre-migration backups; release CI | released v0.1.0 (2026-10-24) |
 | M12 | Full autonomy | The company runs end to end without the human: autonomy watchdog and closure loops (reviews, blocks, hires, project/goal completion, initiative), transient-failure backoff and breaker auto-resume, per-role models and CLI role-family scope, shared per-project git repository for hybrid work, decomposition caps; spec `specs/m12-full-autonomy.md` | in progress (WP0 schema, policy fields and docs done 2026-10-26; WP1-WP5 pending) |
+| M13 | Headless setup and a free public URL | `foundryos setup` (the whole onboarding in a terminal, resumable, scriptable with `--non-interactive` and `--secrets-stdin`); no browser on SSH or display-less boxes; Linux linger and macOS `user/` launchd fallback with LaunchDaemon hints; the Cloudflare quick tunnel as the free public URL with stored, audited, announced URL changes (`reach --watch`, `reach public start\|stop`, `public-url.json`); no passkeys on ephemeral origins; spec `specs/m13-headless-setup-and-public-url.md` | done (verified with fakes only) |
 
 Order: M3b ∥ M4-UI → M5 → M6 → M7 → M8 → M9. UI for each milestone ships with it.
 
@@ -67,6 +68,13 @@ detection, circuit breaker and emergency stop. Agents can never change their own
   require the Founder's approval by default (configurable).
 
 ## Status notes
+
+- **M13 status (2026-10-26):** code in `099092d`, docs and web changes after it. Verified with fakes only: a fake `cloudflared`,
+  `launchctl`, `systemctl` and `loginctl`, fake coding CLIs and fake providers. Backend suite 1,685 passed on `099092d`; web 1,217
+  passed. **Not run for real:** a quick tunnel (no real URL opened from a phone; nothing observed about how long a URL lives or about
+  server-sent events through it), a systemd user session with linger, a LaunchAgent in `user/<uid>` or a LaunchDaemon, a real
+  provider or coding-CLI login through the wizard, the `install.sh` hand-off over a real SSH session. Details:
+  `specs/m13-headless-setup-and-public-url.md` section 6.
 
 - **v0.1.0 released (2026-10-24):** https://github.com/suriyavasan/foundry-os/releases/tag/v0.1.0 — bundles for
   Apple Silicon macOS, Linux x86_64 and Linux arm64 (each built and install-tested in CI), multi-arch Docker image

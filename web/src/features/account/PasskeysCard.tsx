@@ -14,7 +14,7 @@ export const LAST_METHOD_MESSAGE = 'This is the only way to sign in to your acco
  * Passkeys of the signed-in account: what they are, the list, add / rename / remove. Renders nothing when the backend has
  * no passkey endpoints (a 404), so an older server shows no passkey UI at all.
  */
-export function PasskeysCard({ supportedOrigin }: { supportedOrigin: boolean | undefined }) {
+export function PasskeysCard({ supportedOrigin, unsupportedReason }: { supportedOrigin: boolean | undefined; unsupportedReason?: 'ephemeral_origin' | null }) {
   const q = usePasskeys()
   const [adding, setAdding] = useState(false)
   const [renaming, setRenaming] = useState<PasskeyInfo | null>(null)
@@ -23,7 +23,7 @@ export function PasskeysCard({ supportedOrigin }: { supportedOrigin: boolean | u
   if (isMissingEndpoint(q.error)) return null
 
   // The list endpoint answered, so the backend has passkeys even if the session omitted the origin flag.
-  const env = passkeyEnvironment({ passkey_supported_origin: supportedOrigin ?? true })
+  const env = passkeyEnvironment({ passkey_supported_origin: supportedOrigin ?? true, passkey_unsupported_reason: unsupportedReason })
   const envMessage = passkeyEnvironmentMessage(env)
 
   return (

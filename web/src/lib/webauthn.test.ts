@@ -10,6 +10,7 @@ import {
   parseCreationOptions,
   parseRequestOptions,
   passkeyEnvironment,
+  passkeyEnvironmentMessage,
   passkeyFailureText,
   serializeCredential,
   validatePasskeyName,
@@ -73,6 +74,12 @@ describe('environment', () => {
     expect(passkeyEnvironment({ passkey_supported_origin: false })).toBe('insecure_origin')
     setSecureContext(false)
     expect(passkeyEnvironment({ passkey_supported_origin: true })).toBe('insecure_origin')
+  })
+  it('names a quick-tunnel address when the server gives that reason, and says passkeys need a stable address', () => {
+    installWebAuthn()
+    expect(passkeyEnvironment({ passkey_supported_origin: false, passkey_unsupported_reason: 'ephemeral_origin' })).toBe('ephemeral_origin')
+    expect(passkeyEnvironment({ passkey_supported_origin: false, passkey_unsupported_reason: null })).toBe('insecure_origin')
+    expect(passkeyEnvironmentMessage('ephemeral_origin')).toMatch(/need a stable address/)
   })
   it('is unsupported without WebAuthn and ready with it', () => {
     installWebAuthn(null)

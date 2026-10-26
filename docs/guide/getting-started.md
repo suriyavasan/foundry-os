@@ -28,13 +28,21 @@ The `doctor` command is your friend. Run it any time something seems off.
 
 ## 2. Open it
 
-Go to <http://127.0.0.1:8700> (or <http://localhost:8700> with Docker) in your browser. The installers will open it for you.
+Go to <http://127.0.0.1:8700> (or <http://localhost:8700> with Docker) in your browser. On a computer with a screen, `foundryos` opens it for you.
+
+**No screen? (a server, a VPS, a Mac you reach over SSH.)** Nothing opens a browser there. Set it up in the terminal instead:
+
+```bash
+foundryos setup
+```
+
+It does steps 3 to 6 below in your terminal (account, optional two-factor sign-in, company and idea, your AI, how work gets done) and offers a free public address and the background service at the end. It is safe to run again: finished steps are skipped. On Linux, answer yes to "keep it running after you log out" (this is *linger*). To use the web app from your own computer afterwards, forward the port (`ssh -N -L 8700:127.0.0.1:8700 user@host`, then open <http://localhost:8700>) or use the public address. Details and a script-friendly form are in [Installing: headless server](../install.md#headless-server--ssh) and [the command line](cli.md#set-up-from-the-terminal).
 
 ## 3. Create your account
 
 Choose a username and a strong password (at least 12 characters, not a common one). This makes you the owner of the company.
 
-If you open the page from a different device than the one running Foundry AI OS, you also need a **setup token**. It proves you control the machine. On that machine, run `companyos auth setup-token` (this will be `foundryos auth setup-token`, see [the command line](cli.md)). From the machine itself no token is needed.
+If you open the page from a different device than the one running Foundry AI OS, you also need a **setup token**. It proves you control the machine. On that machine, run `foundryos auth setup-token` (`companyos auth setup-token` in a source checkout, see [the command line](cli.md)). From the machine itself no token is needed. `foundryos setup` asks for the token itself when it needs one.
 
 ## 4. Connect your AI
 

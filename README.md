@@ -16,6 +16,7 @@
 - **It runs on your machine.** Your data stays in a folder on your computer. You bring your own AI: a key from OpenRouter, Anthropic or OpenAI, any OpenAI-compatible service, or a free local model through Ollama.
 - **Coding tools can do the work.** Optionally, employees can do their work through coding command-line tools you already have (Claude Code, Codex, OpenCode, Google Antigravity CLI), while your AI key runs the management side.
 - **Reach it from anywhere.** Use it on your phone over your home network, or through a secure tunnel, your own domain and company email. You connect each outside account once; the AI Co-founder never signs up for anything by itself.
+- **A free public URL, no account.** `foundryos reach public start` gives you an `https://<words>.trycloudflare.com` address (a Cloudflare quick tunnel). It changes whenever the tunnel restarts; `foundryos reach --watch` and `foundryos status` show the current one. For a stable address use a named tunnel on your own domain or Tailscale Funnel.
 
 ## Install
 
@@ -27,7 +28,7 @@
 brew install suriyavasan/tap/foundry-os
 ```
 
-Then run `foundryos`. It starts in the background and opens your browser. Update later with `brew upgrade foundry-os`. To start it at login: `brew services start foundry-os`.
+Then run `foundryos`. It starts in the background and opens your browser (on a machine with no screen it prints the addresses instead, see [Headless / SSH](#headless--ssh)). Update later with `brew upgrade foundry-os`. To start it at login: `brew services start foundry-os`.
 
 **2. One-line installer** (Apple Silicon Macs and Linux, no Homebrew needed)
 
@@ -35,7 +36,7 @@ Then run `foundryos`. It starts in the background and opens your browser. Update
 curl -fsSL https://raw.githubusercontent.com/suriyavasan/foundry-os/main/install.sh | sh
 ```
 
-It installs, starts the background service and opens your browser. Update later with `foundryos update`.
+It installs, starts the background service and opens your browser (over SSH it hands over to `foundryos setup` instead). Update later with `foundryos update`.
 
 **3. Docker** (any system, including Windows)
 
@@ -46,6 +47,17 @@ docker run -d --name foundry-os -p 8700:8700 -v foundry-os:/data ghcr.io/suriyav
 Then open <http://localhost:8700>. Your data lives in the `foundry-os` volume.
 
 Windows without Docker is not supported in the first release. Use Docker, or WSL (Linux inside Windows).
+
+### Headless / SSH
+
+On a server or a Mac you only reach over SSH there is no browser, so nothing tries to open one. Set everything up in the terminal:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/suriyavasan/foundry-os/main/install.sh | sh -s -- --linger
+foundryos setup        # account, company, your AI, work mode, background service, optional free public URL
+```
+
+`foundryos setup` can be run again (finished steps are skipped) and has a script form: `foundryos setup --non-interactive --secrets-stdin ...` (secrets are never command-line options). `--linger` keeps the service running after you log out on Linux. To use the screen from your own computer, forward the port (`ssh -N -L 8700:127.0.0.1:8700 user@host`, then open <http://localhost:8700>) or use the public URL. Details: [docs/install.md](docs/install.md#headless-server--ssh). This path was tested with fakes (fake tunnel, service manager and providers), not on a real server.
 
 ### From source
 
@@ -67,7 +79,7 @@ The agent runtime (the part that lets employees actually work) is set up separat
 3. **Choose how work gets done.** "API only" (everything runs on your AI key) or "API plus coding tools". You can skip this and change it later.
 4. **Write your first note.** For example: "Build a landing page for our first product." The AI Co-founder takes it from there.
 
-Steps 2 and 3 belong to the new setup screens that are still being finished. See [Getting started](docs/guide/getting-started.md).
+Steps 2 and 3 belong to the new setup screens that are still being finished. On a machine without a screen, `foundryos setup` does all of this in the terminal. See [Getting started](docs/guide/getting-started.md).
 
 ## Requirements
 

@@ -20,6 +20,9 @@ export function makeReach(over: Omit<Partial<ReachabilityStatus>, 'tunnel' | 'la
       restarts: 0,
       started_at: null,
       error: null,
+      ephemeral: false,
+      last_url: null,
+      url_changed_at: null,
       binary: { name: 'cloudflared', found: true, version: '2026.1.0', path: '/usr/local/bin/cloudflared', install_instructions: [], download_offered: false, download_url: null, download_sha256: null, download_size_bytes: null },
       providers: [
         { kind: 'cloudflare_quick', requires_account: null, available: true, unavailable_reason: null },

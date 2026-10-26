@@ -384,6 +384,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/passkeys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Passkeys */
+        get: operations["list_passkeys_api_auth_passkeys_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/passkeys/register/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Passkey Register Options
+         * @description Start adding a passkey: the WebAuthn creation options and the ``attempt_id`` to send back.
+         *     Needs the CSRF header (it is a cookie-authenticated POST).
+         */
+        post: operations["passkey_register_options_api_auth_passkeys_register_options_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/passkeys/register/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Passkey Register Verify */
+        post: operations["passkey_register_verify_api_auth_passkeys_register_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/passkeys/{passkey_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Passkey
+         * @description Needs a session younger than 10 minutes, or ``{password}`` in the body
+         *     (``403 reauthentication_required`` otherwise). The last sign-in method of an account without a
+         *     password cannot be removed (``409``).
+         */
+        delete: operations["delete_passkey_api_auth_passkeys__passkey_id__delete"];
+        options?: never;
+        head?: never;
+        /** Rename Passkey */
+        patch: operations["rename_passkey_api_auth_passkeys__passkey_id__patch"];
+        trace?: never;
+    };
+    "/api/auth/passkey/login/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Passkey Login Options
+         * @description Public. Same response shape for every username (known or not, with or without passkeys);
+         *     without a username ``allowCredentials`` is empty (discoverable credentials / conditional UI).
+         */
+        post: operations["passkey_login_options_api_auth_passkey_login_options_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/passkey/login/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Passkey Login Verify
+         * @description Public. Same answer and cookies as the password login; a passkey is its own second factor,
+         *     so no TOTP code is asked for.
+         */
+        post: operations["passkey_login_verify_api_auth_passkey_login_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/notifications": {
         parameters: {
             query?: never;
@@ -4652,6 +4772,18 @@ export interface components {
             two_factor_required: boolean;
             /** Expires At */
             expires_at: string | null;
+            /**
+             * Passkeys Count
+             * @default 0
+             */
+            passkeys_count: number;
+            /**
+             * Passkey Supported Origin
+             * @default false
+             */
+            passkey_supported_origin: boolean;
+            /** Passkey Unsupported Reason */
+            passkey_unsupported_reason: "ephemeral_origin" | null;
         };
         /** AuthUser */
         AuthUser: {
@@ -4794,7 +4926,7 @@ export interface components {
             /** Available */
             available: boolean;
             /** Command */
-            command?: string | null;
+            command: string | null;
             /** Requires */
             requires: string[];
             /**
@@ -4804,7 +4936,7 @@ export interface components {
              */
             status: "none" | "running" | "succeeded" | "failed";
             /** Manual */
-            manual?: string | null;
+            manual: string | null;
         };
         /**
          * CliInstallLog
@@ -5747,6 +5879,11 @@ export interface components {
              * @default true
              */
             make_default?: boolean;
+            /**
+             * Allow Private Network
+             * @default false
+             */
+            allow_private_network?: boolean;
         };
         /** DetectResult */
         DetectResult: {
@@ -7207,6 +7344,11 @@ export interface components {
             is_local: boolean;
             /** Enabled */
             enabled: boolean;
+            /**
+             * Allow Private Network
+             * @default false
+             */
+            allow_private_network: boolean;
             /** Input Price Per Mtok Micros */
             input_price_per_mtok_micros: number | null;
             /** Output Price Per Mtok Micros */
@@ -7249,6 +7391,11 @@ export interface components {
              * @default true
              */
             enabled?: boolean;
+            /**
+             * Allow Private Network
+             * @default false
+             */
+            allow_private_network?: boolean;
             /** Input Price Per Mtok Micros */
             input_price_per_mtok_micros?: number | null;
             /** Output Price Per Mtok Micros */
@@ -7275,6 +7422,8 @@ export interface components {
             is_local?: boolean | null;
             /** Enabled */
             enabled?: boolean | null;
+            /** Allow Private Network */
+            allow_private_network?: boolean | null;
             /** Input Price Per Mtok Micros */
             input_price_per_mtok_micros?: number | null;
             /** Output Price Per Mtok Micros */
@@ -7712,6 +7861,13 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /** Page[PasskeyInfo] */
+        Page_PasskeyInfo_: {
+            /** Items */
+            items: components["schemas"]["PasskeyInfo"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
         /** Page[Project] */
         Page_Project_: {
             /** Items */
@@ -7767,6 +7923,88 @@ export interface components {
             items: components["schemas"]["Task"][];
             /** Next Cursor */
             next_cursor: string | null;
+        };
+        /** PasskeyDelete */
+        PasskeyDelete: {
+            /** Password */
+            password?: string | null;
+        };
+        /** PasskeyInfo */
+        PasskeyInfo: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Created At */
+            created_at: string;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Transports */
+            transports: string[];
+            /** Backed Up */
+            backed_up: boolean;
+        };
+        /**
+         * PasskeyLoginOptions
+         * @description ``public_key`` is the ``PublicKeyCredentialRequestOptions`` JSON for
+         *     ``navigator.credentials.get()``; ``allowCredentials`` is empty without a username
+         *     (discoverable credentials / conditional UI).
+         */
+        PasskeyLoginOptions: {
+            /** Attempt Id */
+            attempt_id: string;
+            /** Public Key */
+            public_key: {
+                [key: string]: unknown;
+            };
+        };
+        /** PasskeyLoginOptionsRequest */
+        PasskeyLoginOptionsRequest: {
+            /** Username */
+            username?: string | null;
+        };
+        /** PasskeyLoginVerify */
+        PasskeyLoginVerify: {
+            /** Attempt Id */
+            attempt_id: string;
+            /** Credential */
+            credential: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * PasskeyRegistrationOptions
+         * @description ``public_key`` is the WebAuthn ``PublicKeyCredentialCreationOptions`` JSON (base64url
+         *     fields), as ``PublicKeyCredential.parseCreationOptionsFromJSON`` expects it.
+         */
+        PasskeyRegistrationOptions: {
+            /** Attempt Id */
+            attempt_id: string;
+            /** Public Key */
+            public_key: {
+                [key: string]: unknown;
+            };
+        };
+        /** PasskeyRegistrationOptionsRequest */
+        PasskeyRegistrationOptionsRequest: {
+            /** Name */
+            name?: string | null;
+        };
+        /** PasskeyRegistrationVerify */
+        PasskeyRegistrationVerify: {
+            /** Attempt Id */
+            attempt_id: string;
+            /** Name */
+            name?: string | null;
+            /** Credential */
+            credential: {
+                [key: string]: unknown;
+            };
+        };
+        /** PasskeyRename */
+        PasskeyRename: {
+            /** Name */
+            name: string;
         };
         /** PasswordChange */
         PasswordChange: {
@@ -7918,6 +8156,57 @@ export interface components {
             work_mode: string;
             /** Work Runtime */
             work_runtime: string | null;
+            /** Work Model Provider Id */
+            work_model_provider_id: string | null;
+            /** Work Model Name */
+            work_model_name: string | null;
+            /** Cli Role Families */
+            cli_role_families: ("founder" | "hr" | "engineering" | "design" | "marketing" | "sales" | "customer_success" | "research" | "qa" | "operations" | "finance" | "generic")[] | null;
+            /**
+             * Cli Run Reservation Micros
+             * @default 1000000
+             */
+            cli_run_reservation_micros: number;
+            /**
+             * Management Reserved Slots
+             * @default 1
+             */
+            management_reserved_slots: number;
+            /**
+             * Max Parallel Runs Per Agent
+             * @default 1
+             */
+            max_parallel_runs_per_agent: number;
+            /**
+             * Max Work Tasks Per Project
+             * @default 15
+             */
+            max_work_tasks_per_project: number;
+            /**
+             * Max Subtasks Per Task
+             * @default 5
+             */
+            max_subtasks_per_task: number;
+            /**
+             * Circuit Breaker Cooldown Seconds
+             * @default 1800
+             */
+            circuit_breaker_cooldown_seconds: number;
+            /**
+             * Initiative Enabled
+             * @default true
+             */
+            initiative_enabled: boolean;
+            /**
+             * Initiative Interval Seconds
+             * @default 21600
+             */
+            initiative_interval_seconds: number;
+            /**
+             * Project Auto Complete
+             * @default true
+             */
+            project_auto_complete: boolean;
             /** Created At */
             created_at: string;
             /** Updated At */
@@ -7991,6 +8280,30 @@ export interface components {
             ai_disclosure_enabled?: boolean | null;
             /** Ai Disclosure Text */
             ai_disclosure_text?: string | null;
+            /** Work Model Provider Id */
+            work_model_provider_id?: string | null;
+            /** Work Model Name */
+            work_model_name?: string | null;
+            /** Cli Role Families */
+            cli_role_families?: ("founder" | "hr" | "engineering" | "design" | "marketing" | "sales" | "customer_success" | "research" | "qa" | "operations" | "finance" | "generic")[] | null;
+            /** Cli Run Reservation Micros */
+            cli_run_reservation_micros?: number | null;
+            /** Management Reserved Slots */
+            management_reserved_slots?: number | null;
+            /** Max Parallel Runs Per Agent */
+            max_parallel_runs_per_agent?: number | null;
+            /** Max Work Tasks Per Project */
+            max_work_tasks_per_project?: number | null;
+            /** Max Subtasks Per Task */
+            max_subtasks_per_task?: number | null;
+            /** Circuit Breaker Cooldown Seconds */
+            circuit_breaker_cooldown_seconds?: number | null;
+            /** Initiative Enabled */
+            initiative_enabled?: boolean | null;
+            /** Initiative Interval Seconds */
+            initiative_interval_seconds?: number | null;
+            /** Project Auto Complete */
+            project_auto_complete?: boolean | null;
         };
         /** ProgressBody */
         ProgressBody: {
@@ -8222,6 +8535,11 @@ export interface components {
         ProviderTestRequest: {
             /** Model */
             model?: string | null;
+            /**
+             * Allow Private Network
+             * @default false
+             */
+            allow_private_network?: boolean;
         };
         /** RateLimitList */
         RateLimitList: {
@@ -9529,6 +9847,15 @@ export interface components {
             binary: components["schemas"]["TunnelBinary"] | null;
             /** Providers */
             providers: components["schemas"]["TunnelProviderOption"][];
+            /**
+             * Ephemeral
+             * @default false
+             */
+            ephemeral: boolean;
+            /** Last Url */
+            last_url: string | null;
+            /** Url Changed At */
+            url_changed_at: string | null;
         };
         /** TwoFactorDisable */
         TwoFactorDisable: {
@@ -10211,6 +10538,226 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_passkeys_api_auth_passkeys_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_PasskeyInfo_"];
+                };
+            };
+        };
+    };
+    passkey_register_options_api_auth_passkeys_register_options_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasskeyRegistrationOptionsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasskeyRegistrationOptions"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    passkey_register_verify_api_auth_passkeys_register_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasskeyRegistrationVerify"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasskeyInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_passkey_api_auth_passkeys__passkey_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                passkey_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PasskeyDelete"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_passkey_api_auth_passkeys__passkey_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                passkey_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasskeyRename"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasskeyInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    passkey_login_options_api_auth_passkey_login_options_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasskeyLoginOptionsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasskeyLoginOptions"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    passkey_login_verify_api_auth_passkey_login_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasskeyLoginVerify"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthSession"];
+                };
             };
             /** @description Validation Error */
             422: {

@@ -1350,7 +1350,7 @@ token gets `403 guardrail_denied` (human-only action `reachability.manage`, with
 
 | Method & path | Purpose |
 |---|---|
-| `GET /reachability` | `ReachabilityStatus`: mode (`local`/`lan`/`public`), device name, hostname, `local_urls`, `lan` (addresses with interface and URL, `<host>.local` mDNS name), `tunnel` (state, URL, health, restarts, `binary`, `providers`), `active_url`, `public_exposure_blocked_reason` / `_code`, `domain` summary. Polls are local only (no network calls). |
+| `GET /reachability` | `ReachabilityStatus`: mode (`local`/`lan`/`public`), device name, hostname, `local_urls`, `lan` (addresses with interface and URL, `<host>.local` mDNS name), `tunnel` (state, URL, health, restarts, `binary`, `providers`, and since M13 `ephemeral`, `last_url`, `url_changed_at`), `active_url`, `public_exposure_blocked_reason` / `_code`, `domain` summary. Polls are local only (no network calls). |
 | `PATCH /reachability/lan` `{enabled}` | Persists the bind preference and returns `ReachabilityStatus`. Switching **on** needs the exposure gate. |
 | `POST /reachability/tunnel/start` `TunnelConfig {provider, hostname?}` | Starts the supervised tunnel; returns `TunnelStatus` (usually `starting`; poll). Gate enforced. |
 | `POST /reachability/tunnel/stop` | Stops it; `TunnelStatus`. |
@@ -1375,6 +1375,21 @@ running and a connected `tailscale` account). The supervisor restarts a dead pro
 counts them), gives up with `state: "error"` after 8 consecutive failures, health-checks `<url>/api/health` every 30 s and restarts a tunnel
 that fails three checks in a row. A tunnel that was running is resumed at startup (`COMPANY_OS_TUNNEL_AUTORESUME`). The child gets a minimal
 environment (never the server's secrets); the named-tunnel token travels in `TUNNEL_TOKEN`, not argv.
+
+**Public URL tracking (M13).** Three fields were added to `TunnelStatus` (all in `GET /reachability` under `tunnel`, and in the body of the start / stop / install answers):
+
+| Field | Type | Meaning |
+|---|---|---|
+| `ephemeral` | `bool` (default `false`) | `true` when the address changes every time the tunnel starts: provider `cloudflare_quick`, or a `*.trycloudflare.com` host. `false` for `cloudflare_named` and `tailscale_funnel` |
+| `last_url` | `string \| null` | The last public URL the tunnel had. Kept across stops and restarts, so a stopped tunnel still shows what the address was. `null` before the first one |
+| `url_changed_at` | `datetime \| null` | When `last_url` appeared |
+
+Each time a running tunnel reports a URL different from `last_url`, the server stores it (with the previous one and the last five), writes the audit event
+`reachability.tunnel_url_changed` (`data`: `url`, `previous_url`, `provider`) for each company of the installation owner, emits `reachability.updated`, logs `Public URL: <url>`,
+and rewrites `<data dir>/public-url.json` (`url`, `provider`, `state`, `changed_at`, `previous_url`; mode 0600; `url` is `null` while the tunnel is stopped, starting or in error).
+An unchanged URL records nothing. A stop now clears `url` through the same path. The CLI (`foundryos reach --watch`, `reach public start|stop`, `status`) is built on
+`GET /reachability`, `GET /reachability/tunnel/install-plan`, `POST /reachability/tunnel/install`, `POST /reachability/tunnel/start` and `POST /reachability/tunnel/stop`; it adds no endpoints.
+`foundryos setup` uses the existing auth, company, model-provider, AI-setup, CLI-runtime and reachability endpoints and adds none either.
 
 ### Connected accounts (`/companies/{cid}`, owners/admins)
 
@@ -1670,6 +1685,9 @@ Server library: `webauthn` (py_webauthn 3.x, BSD-3). Attestation is `none`; noth
 
 `AuthSession` (from `GET /session`, `/setup`, `/login`, `/passkey/login/verify`) gained `passkeys_count: int` (the signed-in person's passkeys, else 0)
 and `passkey_supported_origin: bool` (can *this request's* origin use WebAuthn at all; show the passkey UI only when true).
+Since M13 it also has `passkey_unsupported_reason: "ephemeral_origin" | null`: `"ephemeral_origin"` when the request's host is a quick-tunnel address (`*.trycloudflare.com`,
+or the host of the running tunnel when that tunnel is a quick tunnel), `null` otherwise. It is only ever set together with `passkey_supported_origin: false`; a client that does
+not know the field treats it like any unsupported origin. The web app uses it to say "Passkeys need a stable address" instead of the plain-http message.
 
 **Challenges.** Created by the server, stored in `passkey_challenges`, valid 5 minutes, single use, and burnt *before* verification (a failed
 attempt cannot be retried: ask for new options). A registration challenge is bound to the person who asked; a login challenge to the anonymous
@@ -1681,12 +1699,13 @@ attempt cannot be retried: ask for new options). A registration challenge is bou
 | Host | RP id | Accepted `clientDataJSON.origin` |
 |---|---|---|
 | `localhost`, `127.0.0.1` (any port) | `localhost` | `http(s)://<that host:port>`, `http://localhost:<port>` and `http://127.0.0.1:<port>`, and the loopback entries of `COMPANY_OS_CORS_ORIGINS` (the Vite dev server) |
-| the host of a **configured https origin**: the running tunnel URL (M8), a company custom domain (M8), an https `COMPANY_OS_PUBLIC_URL`, or an entry of `COMPANY_OS_PASSKEY_ORIGINS` (comma separated or a JSON list of origins) | that host name | exactly that origin |
-| anything else (LAN IP, `*.local`, an unknown name) | none | `passkey_supported_origin = false`; both options routes answer `400 passkey_origin_unsupported` |
+| the host of a **configured https origin**: the running tunnel URL (M8; **not** a quick tunnel, see below), a company custom domain (M8), an https `COMPANY_OS_PUBLIC_URL`, or an entry of `COMPANY_OS_PASSKEY_ORIGINS` (comma separated or a JSON list of origins) | that host name | exactly that origin |
+| anything else (LAN IP, `*.local`, an unknown name, a quick-tunnel address) | none | `passkey_supported_origin = false`; both options routes answer `400 passkey_origin_unsupported` (`passkey_unsupported_reason = "ephemeral_origin"` for a quick-tunnel address) |
 
 Verification rejects a response whose origin is not in the accepted set, whose RP-id hash differs, or whose RP id differs from the one the
 challenge was issued for. A passkey is bound to its RP id: one registered on `localhost` does not work on the tunnel domain and vice versa,
-and a quick tunnel (`*.trycloudflare.com`) gets a new host name on every start, so use a named tunnel or a custom domain for passkeys there.
+and a quick tunnel (`*.trycloudflare.com`) gets a new host name on every start. Since M13 a quick-tunnel host (any `*.trycloudflare.com`, and the running tunnel's host when its provider is
+`cloudflare_quick`) gets **no** relying party at all, so no passkey can be created or used there; use a named tunnel or a custom domain, or `http://localhost` (an SSH port-forward).
 
 **LAN limits.** Browsers expose WebAuthn only in a secure context (HTTPS, or `localhost`). Opening Foundry AI OS at `http://192.168.x.x:8700` or
 `http://my-mac.local:8700` therefore cannot create or use a passkey (the browser refuses before the server is asked), and the server answers
@@ -1704,6 +1723,8 @@ sign-in is refused (generic `401`), the stored counter is left alone, and `auth.
 
 **Exposure gate (M8).** At least one passkey counts as strong authentication, like 2FA: an owner whose password was not set under the policy may expose the
 device once a passkey exists (`GET /reachability`: `public_exposure_blocked_code` clears and `public_exposure_advice` is no longer `two_factor_recommended`).
+Since M13 a passkey registered on an ephemeral origin does not count: the `auth.passkey_added` audit event now carries `rp_id` next to `passkey_id`, and the gate ignores passkeys whose
+`rp_id` is a `*.trycloudflare.com` host. A passkey added before M13 has no `rp_id` in its event and counts as before.
 
 **Verified and not verified.** Verified: full registration and login ceremonies against a software authenticator built with `cryptography` (ES256, `attestation: none`,
 real signatures and counters; tests `test_passkeys.py`), the policy above, migration `0010` up/down. Not verified: a real browser/OS authenticator (Touch ID, Windows Hello, a

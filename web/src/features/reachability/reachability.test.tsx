@@ -169,6 +169,31 @@ describe('tunnel card', () => {
     await waitFor(() => expect(api.calls.some((c) => c.method === 'POST' && c.path === '/reachability/tunnel/stop')).toBe(true))
   })
 
+  it('quick tunnel: says the address changes when Foundry restarts and when it last changed', async () => {
+    const changedAt = new Date(Date.now() - 2 * 3600 * 1000).toISOString()
+    boot(m8(makeReach({ tunnel: { ...publicTunnel, ephemeral: true, last_url: publicTunnel.url, url_changed_at: changedAt } })))
+    const card = await tunnelCard()
+    const note = await within(card).findByTestId('ephemeral-note')
+    expect(note).toHaveTextContent('This address changes when Foundry restarts')
+    expect(note).toHaveTextContent(/changed 2 hours ago/)
+    expect(note).toHaveTextContent(/passkeys need a stable address/i)
+  })
+
+  it('stopped quick tunnel: shows the last address it had', async () => {
+    boot(m8(makeReach({ tunnel: { provider: 'cloudflare_quick', state: 'stopped', ephemeral: true, last_url: 'https://old-fox.trycloudflare.com', url_changed_at: new Date(Date.now() - 86400 * 1000).toISOString() } })))
+    const card = await tunnelCard()
+    const note = await within(card).findByTestId('ephemeral-note')
+    expect(note).toHaveTextContent('https://old-fox.trycloudflare.com')
+    expect(note).toHaveTextContent(/changed yesterday/)
+  })
+
+  it('a stable tunnel shows no ephemeral note', async () => {
+    boot(m8(makeReach({ tunnel: { provider: 'cloudflare_named', state: 'running', url: 'https://app.example.com', ephemeral: false, healthy: true } })))
+    const card = await tunnelCard()
+    expect(await within(card).findByText('https://app.example.com')).toBeInTheDocument()
+    expect(within(card).queryByTestId('ephemeral-note')).not.toBeInTheDocument()
+  })
+
   it('error: shows the error and offers to start again', async () => {
     boot(m8(makeReach({ tunnel: { state: 'error', error: 'cloudflared exited with code 1', restarts: 3 } })))
     const card = await tunnelCard()

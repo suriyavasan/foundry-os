@@ -90,7 +90,8 @@ Open - listed so nobody assumes they are handled:
 
 * **G1 Docker image and Compose stack unverified**, Docker-socket sandbox unverified; the Compose file's `--forwarded-allow-ips *`
   trusts `X-Forwarded-*` from any peer (fine behind compose's private network, wrong if the API port is published to an
-  untrusted proxy).
+  untrusted proxy). The same flag is in the image's entrypoint (`packaging/docker/entrypoint.sh`), so it also applies to
+  `docker run -p 8700:8700`; section 6.3 says what that does and does not weaken.
 * **G2 PostgreSQL unverified** (no server available): migrations are written to be portable, never run there.
 * ~~**G3 Server-side requests to owner-supplied URLs**~~ **CLOSED** (post-M9 hardening, section 5): SSRF guard with
   DNS resolution, address pinning and an explicit private-network opt-in. Residual: see 5.1.
@@ -210,3 +211,78 @@ Dated 2026-10-24. Every claim below has a test that fails if it stops holding; w
   visible in your shell history - prefer the prompt or a file redirect. Restoring from an encrypted backup decrypts
   secrets into a 0700 staging folder on the target disk before they are moved into place. PostgreSQL installs are still
   not covered by `backup`.
+
+## 6. Headless setup and the public URL (M13)
+
+Dated 2026-10-26. This is an analysis of the code as it is after `099092d`; it adds no new enforcement. Where a test backs a claim it is named;
+the rest is reading the code, and says so. Nothing here was exercised against a real tunnel, a real Docker daemon or a hostile client.
+
+### 6.1 What can reach a fresh install, and who can claim it
+
+A fresh install has no owner password. The first account is created by `POST /api/auth/setup` (the web screen, or `foundryos setup`). While that is
+pending, whoever can make that request first becomes the owner.
+
+| How the server is reachable | Who can claim it | What stops others |
+|---|---|---|
+| Default: bound to `127.0.0.1` (installer, Homebrew, `foundryos up`) | Anything on this machine that can open a local socket, including another user account on a shared machine. Also anyone who forwards the port with SSH, who by definition has a shell here | The request must be loopback: TCP peer loopback, **no** forwarding headers, loopback `Host`. T `test_setup_from_loopback_needs_no_token`, `test_a_proxied_request_is_not_loopback`. Nothing remote can reach the port |
+| Bound to the network (LAN preference, Docker `-p 8700:8700`, `COMPANY_OS_BIND_HOST=0.0.0.0`) | Only someone who knows the setup token (the contents of `owner.token`, mode 0600, shown by `foundryos auth setup-token` on the machine) | T `test_setup_needs_the_setup_token_unless_loopback`, `test_fresh_install_reports_setup_required_and_who_needs_the_token`; wrong tokens are throttled per address (`setup:<ip>`), see 6.3 |
+| A tunnel (quick, named, Funnel) | Nobody can start one first: every tunnel start needs the exposure gate (password auth on, owner with a policy-compliant password or 2FA, so an account exists). The wizard orders account before public URL. cloudflared connects from `127.0.0.1` but forwards `X-Forwarded-For` / `CF-*` headers, so tunnelled requests are never "loopback" | T `test_m8_reachability_api.py::test_lan_needs_the_exposure_gate_and_reports_restart_required`, `::test_local_auth_mode_never_allows_exposure`, `test_a_proxied_request_is_not_loopback` |
+
+The window is the time between the server starting and the account existing. `install.sh` starts the server before the account exists, then (on a
+headless terminal) runs `foundryos setup` straight away, so the window is the time it takes to answer the first prompts. With `--no-start`, without a
+terminal, or when you start it and walk away, the window stays open until someone runs `foundryos setup`.
+
+* **G11 (new, open): on a shared machine another local user can claim an unclaimed install.** The loopback exemption exists so that the person sitting at
+  the machine needs no token. It cannot tell them from another local account. Mitigation today: create the account immediately (`foundryos setup`), and
+  do not leave an unclaimed install running on a multi-user host. A possible fix (require the setup token even on loopback when the host has other
+  interactive users) is not built.
+* Password and setup token travel as HTTP request bodies. `foundryos setup` talking to a remote `--api-url` over plain `http://` sends them in clear text,
+  and the wizard does not warn. Use `https://` or the SSH port-forward. Not tested against a remote server over the internet.
+* `--secrets-stdin` keeps secrets out of argv, output and the audit log (T `test_cli_setup_wizard.py::test_non_interactive_run_keeps_secrets_out_of_argv_output_and_audit`).
+  It does not protect a secrets file you leave on disk: delete it after use.
+
+### 6.2 A public URL and the login back-off: username lockout (G12)
+
+Sign-in is throttled per username (`user:<name>`) and per address (`ip:<addr>`): 3 free failures per username, then 2, 4, 8 ... seconds up to 15 minutes
+(`login_free_attempts`, `login_max_lockout_seconds`). While a lock is active even the correct password is refused, and an attempt during a lock does not extend
+it (T `test_accounts_auth.py::test_lockout_is_exponential_and_capped`, `::test_lock_expires_and_success_resets_the_counter`; unknown usernames are throttled
+exactly like real ones, T `::test_unknown_usernames_are_throttled_exactly_like_real_ones`).
+
+* **G12 (new, open): anyone who can reach the sign-in page and guesses the owner's username can keep the owner locked out.** Four wrong passwords start
+  the lock; one more wrong attempt each time it expires (about one request per 15 minutes) holds it at the cap. It protects the password and costs the
+  owner availability. It was an accepted trade while the app was reachable only locally; a public URL makes it reachable by strangers, and the wizard's
+  summary prints the username. This is reading the code, not a measured attack.
+* What still works while locked out: a personal API token (the CLI is not throttled by the user key), `foundryos auth reset-password USERNAME` on the server
+  machine (it also clears the lockout), and a passkey on a stable address (passkey sign-in uses the credential and address keys, not the username key).
+  Passkeys are refused on quick-tunnel addresses (section 4 of the M13 spec), so on a quick tunnel the only web sign-in is the throttled password.
+  The SSH port-forward reaches the same throttle rows, so it does not bypass a lock.
+* Mitigation today: pick a username that is not guessable, turn on two-factor sign-in (it does not stop the lockout but stops a guessed password), keep a
+  CLI token, prefer a named tunnel or Funnel plus a passkey, or put a WAF / Cloudflare Access in front. A real fix (per-address-and-username keys, a
+  CAPTCHA, or an owner exemption by passkey or token) is not built.
+
+### 6.3 Docker `--forwarded-allow-ips '*'` (G1, what it changes)
+
+The image runs `uvicorn --proxy-headers --forwarded-allow-ips '*'`: every peer is trusted to set `X-Forwarded-For`. Reading the code:
+
+* **Not weakened:** the loopback and setup-token rule. Any forwarding header disqualifies a request from being "loopback", whatever its claimed address
+  (T `test_a_proxied_request_is_not_loopback`). The password check, the per-username lockout and the exposure gate do not look at the client address.
+* **Weakened:** everything keyed by client address. If the container port is published to untrusted clients, a client can send a different `X-Forwarded-For`
+  with each request and get a fresh bucket each time: the generic per-IP HTTP rate limit (G4), the per-IP login throttle (`ip:<addr>`), the setup-token
+  guess throttle (`setup:<addr>`), and the SSE cap per address. Only the per-username lockout is left against password guessing, which makes G12 more
+  likely to be the only brake. A 256-bit setup token is not guessable either way.
+* **Not weakened by a tunnel in a normal install:** outside Docker the default is `--forwarded-allow-ips 127.0.0.1`, and cloudflared connects from
+  `127.0.0.1`, so only the tunnel's `X-Forwarded-For` is believed (T `test_public_url_announce.py::test_a_request_through_the_tunnel_gets_its_own_rate_limit_bucket`,
+  which simulates the tunnel's headers). Not verified against a real tunnel.
+* Recommended: publish the container port on `127.0.0.1` only (`-p 127.0.0.1:8700:8700`, as `docs/install.md` does) and put the tunnel or a reverse proxy you
+  control in front of it; or run uvicorn with `--forwarded-allow-ips` set to that proxy's address. The entrypoint's `'*'` is not changed in M13.
+
+### 6.4 Quick tunnels
+
+* A quick-tunnel address is a bearer-less public door: anyone who learns it can reach the sign-in page. Its random name is not a secret worth relying on
+  (it appears in logs, `public-url.json` and the audit log). Use two-factor sign-in with it; the wizard warns when it is off.
+* `public-url.json` and the stored URL history are mode 0600 / inside the database. The audit event `reachability.tunnel_url_changed` contains the URL, so
+  the URL is visible to company members who can read the activity log.
+* Passkeys on ephemeral origins are refused and do not count toward the exposure gate (T `test_passkeys.py::test_a_quick_tunnel_address_gets_no_passkeys`,
+  `::test_a_passkey_cannot_be_added_through_a_quick_tunnel`, `::test_a_passkey_from_a_quick_tunnel_origin_is_not_strong_authentication`).
+* The `cloudflared` binary is downloaded only after confirmation and verified against the publisher's SHA-256 (M8). The quick tunnel runs with an empty
+  `HOME` and its pid is registered, so a crash does not leave a second tunnel behind (T `test_public_url_announce.py::test_a_stale_registered_tunnel_is_killed_before_a_new_one_starts` kills a real stray process, but a fake tunnel program, not `cloudflared`).

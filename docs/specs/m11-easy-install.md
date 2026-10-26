@@ -60,13 +60,20 @@ foundry-os/
   `<repo>/data`.
 - **`foundryos` with no arguments** = "make it work": if not running, start it in the
   background (as the user service when installed, else a detached supervised process with a
-  pid file), wait for health, open the browser (setup screen on first run). Subcommands:
+  pid file), wait for health, open the browser (setup screen on first run). *M13: on a machine with no
+  screen (SSH session, container, Linux without a display) nothing opens a browser; the local URL, an
+  SSH port-forward hint and the public URL are printed and `foundryos setup` is offered.* Subcommands:
   `start`, `stop`, `restart`, `status` (existing semantics), `open`, `logs [-f]`, `update`,
   `rollback`, `version`, `service install|uninstall`, `uninstall [--purge]`, plus all existing
-  CLI groups.
+  CLI groups (M13 adds `setup` and `reach public start|stop`).
 - **Background service:** macOS LaunchAgent (`~/Library/LaunchAgents/ai.foundry-os.plist`,
   `RunAtLoad`, `KeepAlive`), Linux `systemd --user` unit (`foundry-os.service`, `loginctl
-  enable-linger` only if the user opts in). Homebrew installs use the formula's `service do`
+  enable-linger` only if the user opts in: `--linger` on `service install` and `install.sh`; the
+  `foundryos setup` wizard (M13) defaults it **on** when the service is installed, because a headless server
+  that stops at logout is not a server). It is run as the user, never with `sudo`. *M13: with no
+  graphical login the macOS agent falls back from `gui/<uid>` to `user/<uid>` (no start at boot) and
+  `service install` prints the `sudo` steps for a LaunchDaemon; `systemctl --user` retries with
+  `XDG_RUNTIME_DIR` when there is no bus.* Homebrew installs use the formula's `service do`
   block instead (no duplicate agents; `foundryos service install` detects Homebrew and defers
   to `brew services`).
 - **Updates:**
@@ -95,9 +102,13 @@ POSIX sh, `set -eu`, readable, no `sudo`, idempotent:
    tarball + `SHA256SUMS`, verify with `shasum -a 256`/`sha256sum`, unpack to
    `~/.foundry-os/versions/<v>`, link `current`, link `~/.local/bin/foundryos` (add to PATH
    in the user's shell rc only with a printed notice; never edit rc files silently twice).
-4. `foundryos service install && foundryos` (start + open browser), unless `--no-start`.
+4. `foundryos service install && foundryos` (start + open browser), unless `--no-start`. *M13: on a
+   headless box (same rules as `app/ops/headless.py`) no browser opens; if a terminal is attached and the
+   install is still unclaimed, hand off to `foundryos setup` (on `/dev/tty`), else print
+   `Next: foundryos setup`. `--linger` passes `--linger` to `service install`.*
 5. Print next steps (open URL, `foundryos update`, uninstall).
-Flags/env: `--version`, `--no-start`, `--no-service`, `--prefix`, `FOUNDRYOS_NO_BREW=1`.
+Flags/env: `--version`, `--no-start`, `--no-service`, `--linger` (`FOUNDRYOS_LINGER=1`, M13), `--prefix`,
+`FOUNDRYOS_NO_BREW=1`.
 Tested with shellcheck and in CI on macOS + Linux runners (install from the just-built
 artifacts via a local file URL override `FOUNDRYOS_DOWNLOAD_BASE`).
 

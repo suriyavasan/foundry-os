@@ -1523,6 +1523,11 @@ export interface AuthSession {
    * without passkeys: the UI treats that as "no passkey support" and shows nothing.
    */
   passkey_supported_origin?: boolean
+  /**
+   * Why passkeys are off on this origin, when the server knows: `ephemeral_origin` is a free quick-tunnel address
+   * (it changes when Foundry restarts, so a passkey bound to it would stop working). Absent or null otherwise.
+   */
+  passkey_unsupported_reason?: 'ephemeral_origin' | null
 }
 
 export interface SetupRequest {
@@ -1848,6 +1853,12 @@ export interface TunnelStatus {
   error: string | null
   binary: TunnelBinary | null
   providers: TunnelProviderOption[]
+  /** A quick tunnel: its address is new every time it starts. False for a named tunnel and Tailscale Funnel. */
+  ephemeral: boolean
+  /** The last address the tunnel had, kept while it is stopped. */
+  last_url: string | null
+  /** When `last_url` appeared. */
+  url_changed_at: string | null
 }
 
 export interface TunnelConfig {

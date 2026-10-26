@@ -81,6 +81,9 @@ export function normalizeTunnel(raw: unknown): TunnelStatus {
     error: str(o.error),
     binary: normalizeBinary(o.binary),
     providers: (Array.isArray(o.providers) ? o.providers : []).map(normalizeProviderOption).filter((p): p is TunnelProviderOption => p !== null),
+    ephemeral: o.ephemeral === true,
+    last_url: str(o.last_url),
+    url_changed_at: str(o.url_changed_at),
   }
 }
 

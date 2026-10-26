@@ -74,6 +74,7 @@ version stays in `~/.foundry-os/versions/` so you can switch back by pointing `c
 | `--bin-dir DIR` | `FOUNDRYOS_BIN_DIR` | where the `foundryos` link goes (default `~/.local/bin`) |
 | `--no-start` | `FOUNDRYOS_NO_START=1` | install only |
 | `--no-service` | `FOUNDRYOS_NO_SERVICE=1` | do not install the login service |
+| `--linger` | `FOUNDRYOS_LINGER=1` | Linux: keep the service running after you log out (`loginctl enable-linger`; recommended over SSH) |
 | `--no-modify-path` | `FOUNDRYOS_NO_MODIFY_PATH=1` | never touch your shell startup file |
 | `--no-brew` | `FOUNDRYOS_NO_BREW=1` | do not use Homebrew even if present |
 | `-y`, `--yes` | | answer yes to the Homebrew question |
@@ -89,7 +90,9 @@ The launcher (`bin/foundryos`) finds its bundle, sets the data directory and the
 interpreters, runtime and web UI, marks the copy as installed (`FOUNDRYOS_INSTALLED=1`) and runs the CLI:
 
 - `foundryos` starts Foundry AI OS in the background (as your user service when one is installed) and opens
-  the browser; if it is already running it just opens the browser;
+  the browser; if it is already running it just opens the browser. On a machine with no screen (over SSH, in a
+  container, a Linux server without `DISPLAY`) it opens nothing and prints the addresses instead, see
+  [Headless server / SSH](#headless-server--ssh);
 - `foundryos start | stop | restart | open | logs [-f]` control it; `foundryos serve` runs it in the
   foreground without a browser (what the Homebrew / launchd / systemd service runs);
 - `foundryos service install | uninstall | status` sets up the login service (macOS LaunchAgent, Linux
@@ -101,7 +104,80 @@ interpreters, runtime and web UI, marks the copy as installed (`FOUNDRYOS_INSTAL
 - `foundryos uninstall [--purge]` removes the program (and, with `--purge` and a typed confirmation, your
   data). Details: [guide/cli.md](guide/cli.md), [guide/updates-backups.md](guide/updates-backups.md).
 
-`install.sh` runs `foundryos service install` and starts the app at the end of an install.
+`install.sh` runs `foundryos service install` and starts the app at the end of an install. On a headless
+terminal it then hands over to `foundryos setup`.
+
+## Headless server / SSH
+
+For a home server, a VPS or a Mac you only reach over SSH. There is no browser on that machine, so the whole
+onboarding runs in the terminal.
+
+```sh
+ssh you@server
+curl -fsSL https://raw.githubusercontent.com/suriyavasan/foundry-os/main/install.sh | sh -s -- --linger
+```
+
+The installer detects that there is no screen (an SSH session, no `DISPLAY` on Linux, a container). It does not
+try to open a browser. It starts Foundry AI OS and, if you are at a terminal and nobody has claimed the install
+yet, runs `foundryos setup` for you. Otherwise it prints `Next: foundryos setup`. Homebrew and Docker installs
+work the same way: run `foundryos setup` (Docker: `docker exec -it foundry-os foundryos setup`; we did not run that in a container).
+
+`foundryos setup` asks for the owner account (hidden password prompt), optional two-factor sign-in (a QR code in
+the terminal), the company and a one-line idea, the model API (tested live, same five checks as the web app),
+how work gets done (API only, or API plus a coding tool such as Claude Code), the background service, and a free
+public URL. It can be run again: finished steps are skipped, and `foundryos setup --only public-url` runs one
+step. Every option is listed in [the command line guide](guide/cli.md#set-up-from-the-terminal).
+
+**Keep it running after you log out (Linux).** A systemd user service stops at your last logout unless
+*linger* is on. `--linger` on the installer, `foundryos service install --linger` and the setup wizard (where it
+defaults to on) run `loginctl enable-linger $USER`. Foundry AI OS never runs `sudo`: if the command is refused it
+prints the `sudo loginctl enable-linger $USER` line for you. `foundryos doctor` shows whether linger is on.
+
+**A Mac reached only over SSH.** The LaunchAgent is normally loaded into `gui/<uid>`, which needs a graphical
+login. Without one, Foundry AI OS loads it into `user/<uid>`: it runs now and restarts if it stops, but does not
+start after a reboot until someone logs in. For start at boot use automatic login, or a LaunchDaemon:
+`foundryos service install` prints the exact `sudo` commands (it never runs them).
+
+**Reach it from your own computer.** Forward the port, or use a public URL:
+
+```sh
+ssh -N -L 8700:127.0.0.1:8700 you@server      # then open http://localhost:8700 on your computer
+foundryos reach public start                    # a free https://<words>.trycloudflare.com address
+foundryos reach --watch                         # prints the address, and again whenever it changes
+```
+
+The free address changes every time the tunnel restarts, and a quick tunnel may not carry live-update streams (the
+web app then refreshes by polling instead). See [reach it from anywhere](guide/reach-it-from-anywhere.md).
+
+**A script, no questions asked.** Put the secrets in a file only you can read and pipe it in. Secrets are never
+accepted as options, so they stay out of the process list and your shell history:
+
+```sh
+(umask 077; cat > ~/foundry-secrets) <<'EOF'
+password=choose-a-long-password-here
+api_key=your-model-api-key
+EOF
+
+foundryos setup --non-interactive --secrets-stdin \
+  --username founder --company-name "Acme" --idea "Sell hand-made candles online" \
+  --provider openrouter --model <model-id> \
+  --work-mode api --service --linger \
+  --public-url quick < ~/foundry-secrets
+rm -f ~/foundry-secrets
+```
+
+`--non-interactive` never prompts. If an input is missing it lists everything that is missing, exits with status 2
+and creates nothing. Without `--public-url` the public URL step is skipped; `--public-url quick` counts as your
+consent to download `cloudflared` (its version, URL and SHA-256 are printed first). Two-factor sign-in needs a code
+from your authenticator app, so run `foundryos setup --only 2fa` in a terminal afterwards, especially before you
+use a public URL. Add `--json` for one JSON document on standard output. When the server is on another machine
+(`foundryos --api-url https://host setup ...`), add `setup_token=...` to the secrets file; `foundryos auth
+setup-token` on that machine prints it.
+
+**What was verified.** The wizard, the headless detection, the service fallbacks and the URL handling were
+tested with fakes (a fake `cloudflared`, `launchctl`, `systemctl`, `loginctl`, coding tools and providers). No real
+tunnel, systemd session, LaunchDaemon, model provider or SSH hand-off from `install.sh` was run. See
+[the M13 spec](specs/m13-headless-setup-and-public-url.md#6-tests-and-what-was-not-verified).
 
 ## Docker
 

@@ -306,7 +306,8 @@ It holds `company_os.db`, `secret.key`, `owner.token`, `artifacts/`, `skills/`, 
 rotated at 10 MB, 5 kept), `run/` (pid files) and `state/` (the last-started version, the update-check cache).
 
 **Running.** `foundryos` (no arguments) starts a detached `foundryos serve` (a pid file in `run/`, output in
-`logs/foundry-os.log`) unless it is already answering on the port, waits for `/api/health` and opens the browser;
+`logs/foundry-os.log`) unless it is already answering on the port, waits for `/api/health` and opens the browser (not on a
+headless box, see below);
 `start`, `stop`, `restart`, `open`, `logs` are the pieces. "Running" means a Foundry health answer on the port; "who
 started it" comes from the run files and the service manager. If the port answers but nothing here started it,
 `stop` says so instead of killing a stranger.
@@ -319,6 +320,27 @@ and the usual system folders, and `FOUNDRYOS_DATA_DIR` / `FOUNDRYOS_PORT` / `FOU
 when you installed it. With Homebrew, the formula's `service do` block (`brew services`) is the only service: `service
 install` defers to it, `start` / `stop` / `restart` drive it through `brew services`, and an existing Homebrew service is
 never duplicated even by an installer copy.
+
+**Headless boxes, linger and launchd domains (M13).** `app/ops/headless.py` decides whether there is a screen: `FOUNDRYOS_OPEN_BROWSER=1` says
+yes; `FOUNDRYOS_NO_BROWSER`, `SSH_CONNECTION` / `SSH_TTY`, Linux without `DISPLAY` and `WAYLAND_DISPLAY`, or `/.dockerenv` say no. With no screen
+`foundryos`, `start`, `open` and `up` never open a browser (and never let `webbrowser` start a text-mode one); they print the local URL, the SSH port-forward
+(`ssh -N -L <port>:127.0.0.1:<port> user@host`) and the public URL from `<data>/public-url.json`, and offer `foundryos setup` while the install is unclaimed.
+`foundryos doctor` has a `headless` line (info).
+
+*Linux.* `systemctl --user` fails with "Failed to connect to bus" in a shell without a user session bus (`su`, `sudo -u`, some SSH setups). Foundry retries
+once with `XDG_RUNTIME_DIR=/run/user/<uid>` and `DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/<uid>/bus` when that directory exists. A user unit stops at the
+user's last logout unless *linger* is on: `service install --linger`, `install.sh --linger` / `FOUNDRYOS_LINGER=1` and the setup wizard (default on) run
+`loginctl enable-linger <user>` as that user and never use `sudo`; if it is refused the output says to run `sudo loginctl enable-linger <user>` yourself. On a
+headless box `service install` without `--linger` warns. `doctor` reports `linger` (warns when off and headless) and `service lifetime` (warns when the
+service stops at logout). When the service cannot be started at all, `foundryos start` runs a plain detached background process instead and says so.
+
+*macOS.* A LaunchAgent is bootstrapped into `gui/<uid>` first (needs a graphical login) and into `user/<uid>` when that is refused (a Mac reached only over
+SSH). The domain that worked is written to `~/Library/LaunchAgents/ai.foundry-os.domain`; `status`, `start`, `restart`, `stop` and `uninstall` look in both.
+In `user/<uid>` the job runs and is restarted by launchd but is not started after a reboot until someone logs in. For start at boot without a login use
+automatic login or a **LaunchDaemon**: `service install` writes `<data>/ai.foundry-os.daemon.plist` (it runs as your user, with `HOME` set, because launchd
+does not set it for daemons) and prints the commands, which you run yourself: `foundryos service uninstall`, then `sudo cp` the plist to
+`/Library/LaunchDaemons/ai.foundry-os.plist`, `sudo chown root:wheel`, `sudo chmod 644`, `sudo launchctl bootstrap system /Library/LaunchDaemons/ai.foundry-os.plist`.
+`doctor` reports `service lifetime` for both cases.
 
 **Updates.** Installer: `foundryos update` / `rollback` (see `docs/guide/updates-backups.md`). Homebrew: `brew upgrade
 foundry-os`. The check for a newer release is cached for 24 hours in `state/update-check.json` and exposed to the owner as
@@ -336,4 +358,5 @@ pre-migration backup and its retention, uninstall safety, and start / restart / 
 Run by hand from a source checkout with a temporary data folder on port 8713: start, status, logs, stop, restart, the
 automatic backup on a version change. **Not verified:** a real LaunchAgent / systemd unit loading (macOS and Linux
 service managers), `brew services`, a real update from a published GitHub release (none exists yet), the bundle launcher
-end to end (owned by the packaging work), Windows.
+end to end (owned by the packaging work), Windows. M13's headless additions (the `user/<uid>` fallback, the LaunchDaemon steps, the systemd bus retry,
+`loginctl enable-linger`) were also tested only through fake `launchctl`, `systemctl` and `loginctl`: no real service manager, reboot or logout was involved.

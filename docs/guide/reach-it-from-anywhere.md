@@ -29,13 +29,40 @@ A **tunnel** gives your computer a public address on the internet without openin
 
 | Kind | Needs | Good for |
 |---|---|---|
-| **Cloudflare quick tunnel** | The `cloudflared` helper. No account | Trying it out. The address is random and changes every time |
+| **Cloudflare quick tunnel** | The `cloudflared` helper. No account | A free address for your phone. It is random and changes every time the tunnel restarts |
 | **Cloudflare named tunnel** | A domain on your Cloudflare account and a Cloudflare token | A stable address on your own domain |
 | **Tailscale Funnel** | Tailscale installed and signed in, with Funnel allowed | A stable `*.ts.net` address. *Not verified by us against a real Funnel setup* |
 
 Foundry keeps the tunnel running, restarts it if it drops, and checks it every 30 seconds.
 
 Tunnel and TLS were **not** tested against the real internet in our verification. Try the quick tunnel from a phone on mobile data before relying on it.
+
+### From the terminal (no browser needed)
+
+```bash
+foundryos reach public start       # the free quick tunnel; asks before downloading cloudflared
+foundryos reach --watch            # prints the address now and every time it changes
+foundryos reach public stop        # turn it off (it stays off after a restart)
+```
+
+`foundryos setup` offers the same thing once, as its last step. The download of `cloudflared` happens only after you confirm; the command shows the version, the address and the SHA-256 it will check. `named` and `tailscale` work the same way (`reach public start named --hostname app.example.com`).
+
+### The quick tunnel's address changes
+
+A quick tunnel gets a new random address **every time it starts**, which includes every time Foundry restarts. So:
+
+- Do not bookmark it or hand it out as a permanent link. Anything that points at the old address, such as a link you sent or the hosted screen on Vercel, stops working.
+- Foundry keeps track for you. Each change is remembered (the last five), written to the activity log and the server log, and shown in *Reachability > Public URL* ("This address changes when Foundry restarts", with when it last changed, and the last address while the tunnel is stopped).
+- On a machine with no browser, read the current address from `foundryos status`, from `foundryos reach --watch`, or from the file `<data folder>/public-url.json` (only you can read it; `url` is empty while the tunnel is down).
+- For an address that stays, use a **named tunnel** (your own domain on Cloudflare) or **Tailscale Funnel**.
+
+### Passkeys need a stable address
+
+A passkey is tied to the exact address you made it on. Because a quick-tunnel address changes, Foundry **does not offer passkeys there**: the passkey buttons are hidden, the Account screen says "Passkeys need a stable address", and the server refuses to create one. A passkey that somehow exists for a quick-tunnel address would not count as strong sign-in for opening the device to the network. Passkeys do work at `http://localhost:8700` (including through an SSH port-forward, because browsers treat localhost as secure) and on a named tunnel or Tailscale address. For a quick tunnel use your password with two-factor sign-in.
+
+### Live updates through a quick tunnel
+
+Cloudflare's documentation says quick tunnels do not support server-sent events, which is what the web app normally uses for live updates. If the live stream does not connect, the web app falls back to refreshing every 10 seconds, so the screen still works, just less instantly. We have not run a real quick tunnel to see this ourselves. If you want instant updates, forward the port over SSH (`ssh -N -L 8700:127.0.0.1:8700 user@host`, then open `http://localhost:8700`), or use a named tunnel or Tailscale Funnel.
 
 ## Level 3: your own domain
 
@@ -47,7 +74,7 @@ Pick one in *Reachability > Domain*:
 
 ## Hosted screen on Vercel (optional)
 
-Normally your computer serves the screen through the tunnel. If you want the screen hosted on Vercel too, connect Vercel and press *Deploy*. The browser still talks only to the Vercel address, and the data stays on your computer. Use a named tunnel or a domain for this, because a quick tunnel's address changes. Redeploy if your public address changes.
+Normally your computer serves the screen through the tunnel. If you want the screen hosted on Vercel too, connect Vercel and press *Deploy*. The browser still talks only to the Vercel address, and the data stays on your computer. Use a named tunnel or a domain for this, because a quick tunnel's address changes. Redeploy if your public address changes (`foundryos reach --watch` tells you).
 
 ## Company email
 
