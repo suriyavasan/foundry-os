@@ -45,6 +45,7 @@ from app.api.routes import (
     system,
     tasks,
     team,
+    wallet,
     webhooks,
 )
 from app.core.config import APP_VERSION, Settings, get_settings
@@ -295,6 +296,7 @@ def create_app(
         reachability.router,
         identity.router,
         webhooks.router,
+        wallet.router,
         agent_api.router,
     ):
         app.include_router(router, prefix="/api")

@@ -29,6 +29,12 @@ ALLOWED_TOOLSETS = frozenset(
 )
 SANDBOX_ONLY = frozenset({"terminal", "code_execution"})
 
+# M15 purchasing. Every working role may ASK the company to buy something (the tool commits
+# nothing; the server decides, rate limits and requires the agent to own the task). The AI
+# Co-founder, who runs the strategic loop and not the work, answers subscription renewal reviews.
+PURCHASE_REQUEST_TOOL = "company_request_purchase"
+SUBSCRIPTION_REVIEW_TOOL = "company_review_subscription"
+
 WORKER_TOOLS = (
     "company_get_context",
     "company_report_progress",
@@ -38,6 +44,7 @@ WORKER_TOOLS = (
     "company_create_task",
     "company_request_help",
     "company_propose_memory",
+    PURCHASE_REQUEST_TOOL,
 )
 MANAGER_EXTRA = (
     "company_plan_project",
@@ -64,6 +71,7 @@ LEAD_TOOLS = (
     "company_manage_project",
     "company_escalate",
     "company_propose_memory",
+    PURCHASE_REQUEST_TOOL,
 )
 # The AI Co-founder: strategy only. It reads the live state, triages the Founder's notes,
 # shapes goals/projects/schedules, requests hires and decides; it does not do the work itself.
@@ -90,6 +98,8 @@ FOUNDER_TOOLS = (
     "company_post_reflection",
     "company_reply_reflection",
     "company_revise_reflection",
+    # M15: answers subscription renewal reviews (it does not request purchases itself)
+    SUBSCRIPTION_REVIEW_TOOL,
 )
 HR_TOOLS = (
     "company_get_context",
@@ -106,6 +116,7 @@ HR_TOOLS = (
     "company_create_role_template",
     "company_hire_agent",
     "company_propose_memory",
+    PURCHASE_REQUEST_TOOL,
 )
 
 

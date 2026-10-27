@@ -73,6 +73,8 @@ class Agent(ApiModel):
     tool_permissions: list[str]
     monthly_budget_micros: int | None
     daily_budget_micros: int | None
+    # M15: this agent's monthly purchase cap (null = only the company policy applies). Human-only.
+    purchase_monthly_limit_micros: int | None = None
     role_template: str | None = None  # M4: role template slug this employee was created from
     role_family: RoleFamilyLiteral = "generic"  # avatar type the canvas draws
     created_at: Timestamp

@@ -20,6 +20,7 @@ from app.runtimes.registry import RuntimeRegistry
 from app.runtimes.scripted import ScriptedRuntime
 from app.skills.env import SkillsEnv
 from tests.helpers import FakeClock
+from tests.m15_helpers import no_card_network  # noqa: F401  (autouse: no Stripe/Mercury calls)
 
 
 def alembic_config(db_url: str) -> Config:

@@ -11,6 +11,7 @@ import { BreakdownCard } from '@/features/finance/BreakdownCard'
 import { BudgetCard } from '@/features/finance/BudgetCard'
 import { ExpensesCard } from '@/features/finance/ExpensesCard'
 import { PeriodBar } from '@/features/finance/PeriodBar'
+import { PurchasesCard } from '@/features/finance/PurchasesCard'
 import { RunCostsCard } from '@/features/finance/RunCostsCard'
 import { TotalsCards } from '@/features/finance/TotalsCards'
 import { TrendCard } from '@/features/finance/TrendCard'
@@ -48,6 +49,7 @@ export function FinancePanel() {
             </CardBody>
           </Card>
           <BasicFinance />
+          <PurchasesCard companyId={companyId} />
         </div>
       </PanelFrame>
     )
@@ -84,6 +86,7 @@ export function FinancePanel() {
             <TrendCard companyId={companyId} from={range.from} to={range.to} />
             <BreakdownCard companyId={companyId} from={range.from} to={range.to} />
             <ExpensesCard companyId={companyId} from={range.from} to={range.to} today={today} />
+            <PurchasesCard companyId={companyId} />
             <RunCostsCard companyId={companyId} from={range.from} to={range.to} />
           </>
         )}

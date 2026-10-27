@@ -29,6 +29,10 @@ Guardrails (M6, docs/specs/m6-guardrails-and-governance.md):
 Reflections (M10, docs/specs/m10-ai-setup-cli-reflections.md section 4; AI Co-founder only on the server):
     company_post_reflection, company_reply_reflection, company_revise_reflection
 
+Purchasing (M15, docs/specs/m15-agent-cards-and-purchasing.md):
+    company_request_purchase (ask the company to buy something; commits nothing, never carries a card number),
+    company_review_subscription (keep or cancel a subscription at its renewal review)
+
 Which of these a given employee sees is decided by the control plane (spec ``company_tools``
 subset, derived from the role template); the server remains the authority on every call.
 
@@ -46,8 +50,9 @@ import json
 import mimetypes
 import os
 import re
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_UP, Decimal, InvalidOperation
 from typing import Any, Callable, Optional
+from urllib.parse import quote, urlsplit
 
 import httpx
 
@@ -1105,6 +1110,107 @@ def company_revise_reflection(args: dict[str, Any], **_: Any) -> str:
     return _call("POST", f"/reflections/{str(args['reflection_id']).strip()}/revise", json=body)
 
 
+RECURRING_KINDS = ["none", "monthly", "yearly"]
+SUBSCRIPTION_DECISIONS = ["keep", "cancel"]
+MIN_JUSTIFICATION_CHARS = 40
+_PAN_RUN = re.compile(r"(?<!\d)(?:\d[ -]?){13,19}(?!\d)")
+
+
+def _looks_like_card_number(text: str) -> bool:
+    """A 13-19 digit run (spaces/dashes allowed) that passes the Luhn check. Agents never handle card
+    numbers: such text is refused before it leaves the runtime (the control plane rejects and redacts
+    the same shape again; this check never echoes the number back)."""
+    for match in _PAN_RUN.finditer(text):
+        digits = re.sub(r"\D", "", match.group())
+        if not 13 <= len(digits) <= 19 or len(set(digits)) == 1:
+            continue
+        total = 0
+        for i, ch in enumerate(reversed(digits)):
+            n = int(ch)
+            if i % 2 == 1:
+                n = n * 2 - 9 if n * 2 > 9 else n * 2
+            total += n
+        if total % 10 == 0:
+            return True
+    return False
+
+
+def _money_arg(value: Any, name: str) -> str:
+    """A positive US-dollar amount as a decimal string with at most 2 places (rounded UP to the cent so a
+    price is never understated). Strings, never floats, go over the wire."""
+    try:
+        dec = Decimal(str(value).strip().replace("$", "").replace(",", ""))
+    except (InvalidOperation, ValueError):
+        raise ValueError(f"{name} must be a number") from None
+    if not dec.is_finite() or dec <= 0:
+        raise ValueError(f"{name} must be greater than 0")
+    if dec >= Decimal("1e12"):
+        raise ValueError(f"{name} is too large")
+    return str(dec.quantize(Decimal("0.01"), rounding=ROUND_UP))
+
+
+def company_request_purchase(args: dict[str, Any], **_: Any) -> str:
+    """Ask the company to buy something (M15). Commits nothing: the control plane decides (auto, AI
+    Co-founder or the Founder) and a person completes any checkout. No card data is ever involved."""
+    if (bad := _need(args, "item", "vendor", "url", "amount_usd", "recurring", "justification")):
+        return bad
+    texts = {k: str(args.get(k) or "").strip() for k in ("item", "vendor", "justification", "alternatives_considered")}
+    if any(_looks_like_card_number(t) for t in texts.values()):
+        return _err("invalid_arguments", "Never include a card number. A person completes the checkout; "
+                    "describe the item and the price only.")
+    url = str(args["url"]).strip()
+    parts = urlsplit(url)
+    if parts.scheme != "https" or not parts.hostname or parts.username or parts.password:
+        return _err("invalid_arguments", "url must be the vendor's https:// pricing or checkout page "
+                    "(no credentials in it)")
+    recurring = str(args["recurring"]).strip().lower()
+    if recurring not in RECURRING_KINDS:
+        return _err("invalid_arguments", f"recurring must be one of: {', '.join(RECURRING_KINDS)}")
+    if len(texts["justification"]) < MIN_JUSTIFICATION_CHARS:
+        return _err("invalid_arguments", f"justification must be at least {MIN_JUSTIFICATION_CHARS} characters: "
+                    "why the task needs this and why free options do not work")
+    task_id = _task_id(args)
+    if not task_id:
+        return _err("invalid_arguments", "Missing required argument(s): task_id")
+    try:
+        amount = _money_arg(args["amount_usd"], "amount_usd")
+        original = (_money_arg(args["original_amount"], "original_amount")
+                    if args.get("original_amount") not in (None, "") else None)
+    except ValueError as exc:
+        return _err("invalid_arguments", str(exc))
+    try:
+        qty = Decimal(str(args["quantity"]).strip()) if args.get("quantity") not in (None, "") else Decimal(1)
+        quantity = int(qty) if qty == qty.to_integral_value() else 0
+    except (InvalidOperation, ValueError, OverflowError):
+        quantity = 0
+    if quantity < 1:
+        return _err("invalid_arguments", "quantity must be a whole number, at least 1")
+    currency = str(args.get("original_currency") or "").strip().upper()
+    if original and not re.fullmatch(r"[A-Z]{3}", currency):
+        return _err("invalid_arguments", "original_currency must be a 3-letter ISO-4217 code when original_amount is given")
+    if currency and not original:
+        currency = ""
+    return _call("POST", "/purchases", json=_clean({
+        "item": texts["item"][:200], "vendor": texts["vendor"][:200], "url": url, "amount_usd": amount,
+        "original_amount": original, "original_currency": currency or None, "recurring": recurring,
+        "quantity": quantity, "justification": texts["justification"][:2000],
+        "alternatives_considered": texts["alternatives_considered"][:2000] or None, "task_id": task_id}))
+
+
+def company_review_subscription(args: dict[str, Any], **_: Any) -> str:
+    """Answer a renewal review: keep a subscription or ask for it to be cancelled (a person cancels)."""
+    if (bad := _need(args, "subscription_id", "decision", "reason")):
+        return bad
+    decision = str(args["decision"]).strip().lower()
+    if decision not in SUBSCRIPTION_DECISIONS:
+        return _err("invalid_arguments", "decision must be 'keep' or 'cancel'")
+    reason = str(args["reason"]).strip()
+    if _looks_like_card_number(reason):
+        return _err("invalid_arguments", "Never include a card number in a reason.")
+    return _call("POST", f"/subscriptions/{quote(str(args['subscription_id']).strip(), safe='')}/review",
+                 json={"decision": decision, "reason": reason[:1000]})
+
+
 # --------------------------------------------------------------------------- schemas
 # Kept deliberately terse: small local models degrade with long tool descriptions.
 
@@ -1475,6 +1581,33 @@ _TOOLS: dict[str, tuple[dict[str, Any], Callable[..., str], str]] = {
                  "reason": _str("Why (for reject)")},
                 ["memory_id"]),
         company_verify_memory, "✔️"),
+    "company_request_purchase": (
+        _schema("company_request_purchase",
+                "Ask the company to buy something your task needs (a tool, subscription or service). Prefer free "
+                "options first. This commits nothing: the company decides, and a person completes the checkout. "
+                "NEVER include card numbers. You are woken with the outcome.",
+                {"item": _str("What exactly, e.g. 'Plausible Analytics Growth plan, 10k pageviews'"),
+                 "vendor": _str("Seller's name"),
+                 "url": _str("https:// pricing or checkout page of the seller"),
+                 "amount_usd": {"type": "number", "description": "Full charge in US dollars, incl. tax if known"},
+                 "recurring": {"type": "string", "enum": RECURRING_KINDS, "description": "none = one-time"},
+                 "justification": _str("Why the task needs this and why free options do not work (40+ characters)"),
+                 "quantity": {"type": "integer", "description": "Units (default 1)"},
+                 "original_amount": {"type": "number", "description": "Price in another currency (optional)"},
+                 "original_currency": _str("ISO-4217 code of original_amount, e.g. EUR"),
+                 "alternatives_considered": _str("Free or cheaper options you looked at (optional)"),
+                 "task_id": _str("The task that needs it (default: your current task)")},
+                ["item", "vendor", "url", "amount_usd", "recurring", "justification"]),
+        company_request_purchase, "🛒"),
+    "company_review_subscription": (
+        _schema("company_review_subscription",
+                "Answer a subscription renewal review: keep it, or cancel it (a person cancels on the vendor's "
+                "site). No answer within 48 hours counts as cancel.",
+                {"subscription_id": _str("Subscription id (from the review task)"),
+                 "decision": {"type": "string", "enum": SUBSCRIPTION_DECISIONS},
+                 "reason": _str("Why: is it still used, and is it worth the price?")},
+                ["subscription_id", "decision", "reason"]),
+        company_review_subscription, "🔁"),
 }
 
 def _availability(tool_name: str) -> Callable[[], bool]:

@@ -558,6 +558,11 @@ def transition_agent(
     events.emit(db, ctx.company_id, "agent.updated", {"agent_id": agent.id, "status": target.value})
     # Readiness depends on the assignee being active: pausing/retiring/activating re-evaluates.
     tasks.recompute_readiness(db, ctx.company_id, agent_id=agent.id, principal=principal)
+    if action == "retire":
+        from app.services import wallet  # local: wallet -> purchasing -> agents
+
+        # M15: its unpaid purchases are cancelled (cards closed) and its subscriptions pass on
+        wallet.on_agent_retired(db, agent, principal)
     if target == AgentStatus.ACTIVE:
         autonomy_hooks.on_agent_activated(db, agent, principal)
     _commit(db)

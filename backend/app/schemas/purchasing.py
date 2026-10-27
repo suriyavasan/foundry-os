@@ -572,6 +572,11 @@ class AgentPurchaseLimitUpdate(RequestModel):
     purchase_monthly_limit_micros: int | None = Field(default=None, ge=0, le=MAX_BUDGET_MICROS)
 
 
+class AgentPurchaseLimitOut(ApiModel):
+    agent_id: str
+    purchase_monthly_limit_micros: int | None
+
+
 # ---------------------------------------------------------------- list envelopes
 
 CardAccountPage = Page[CardAccountOut]

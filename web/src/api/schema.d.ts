@@ -3022,6 +3022,445 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/webhooks/cards/{company_id}/{provider}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Card Events
+         * @description A card provider event (Stripe Issuing). The signature is verified against the company's
+         *     stored webhook secret and the event only triggers a sync: nothing in the body is trusted.
+         *     Unknown company, no secret, no webhooks for that provider and a bad signature all answer the
+         *     same 401.
+         */
+        post: operations["card_events_api_webhooks_cards__company_id___provider__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/wallet": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Overview */
+        get: operations["get_overview_api_companies__company_id__wallet_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/wallet/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Providers */
+        get: operations["get_providers_api_companies__company_id__wallet_providers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/wallet/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Accounts */
+        get: operations["list_accounts_api_companies__company_id__wallet_accounts_get"];
+        put?: never;
+        /** Create Account */
+        post: operations["create_account_api_companies__company_id__wallet_accounts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/wallet/accounts/{account_id}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Check Account */
+        post: operations["check_account_api_companies__company_id__wallet_accounts__account_id__check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/wallet/accounts/{account_id}/funding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Funding */
+        get: operations["get_funding_api_companies__company_id__wallet_accounts__account_id__funding_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/wallet/accounts/{account_id}/default": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set Default */
+        post: operations["set_default_api_companies__company_id__wallet_accounts__account_id__default_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/wallet/accounts/{account_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Disable Account
+         * @description Disables the account and freezes its cards (the history stays).
+         */
+        delete: operations["disable_account_api_companies__company_id__wallet_accounts__account_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/wallet/cards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Cards */
+        get: operations["list_cards_api_companies__company_id__wallet_cards_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/wallet/cards/{card_id}/freeze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Freeze Card */
+        post: operations["freeze_card_api_companies__company_id__wallet_cards__card_id__freeze_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/wallet/cards/{card_id}/unfreeze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Unfreeze Card */
+        post: operations["unfreeze_card_api_companies__company_id__wallet_cards__card_id__unfreeze_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/wallet/cards/{card_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close Card */
+        post: operations["close_card_api_companies__company_id__wallet_cards__card_id__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/wallet/cards/{card_id}/reveal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Reveal Card
+         * @description A link to the provider's own page. Needs a browser session signed in within five minutes (or
+         *     the owner token on the CLI); a personal API token cannot reveal.
+         */
+        get: operations["reveal_card_api_companies__company_id__wallet_cards__card_id__reveal_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/wallet/transactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Transactions */
+        get: operations["list_transactions_api_companies__company_id__wallet_transactions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/wallet/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sync Wallet */
+        post: operations["sync_wallet_api_companies__company_id__wallet_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/wallet/agents/{agent_id}/purchase-limit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Set Agent Purchase Limit */
+        patch: operations["set_agent_purchase_limit_api_companies__company_id__wallet_agents__agent_id__purchase_limit_patch"];
+        trace?: never;
+    };
+    "/api/companies/{company_id}/purchases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Purchases */
+        get: operations["list_purchases_api_companies__company_id__purchases_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/purchases/{purchase_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Purchase */
+        get: operations["get_purchase_api_companies__company_id__purchases__purchase_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/purchases/{purchase_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Purchase */
+        post: operations["approve_purchase_api_companies__company_id__purchases__purchase_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/purchases/{purchase_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Purchase */
+        post: operations["reject_purchase_api_companies__company_id__purchases__purchase_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/purchases/{purchase_id}/mark-paid": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark Paid */
+        post: operations["mark_paid_api_companies__company_id__purchases__purchase_id__mark_paid_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/purchases/{purchase_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Purchase */
+        post: operations["cancel_purchase_api_companies__company_id__purchases__purchase_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Subscriptions */
+        get: operations["list_subscriptions_api_companies__company_id__subscriptions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/subscriptions/{subscription_id}/cancelled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Subscription Cancelled */
+        post: operations["subscription_cancelled_api_companies__company_id__subscriptions__subscription_id__cancelled_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/subscriptions/{subscription_id}/keep": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Subscription Keep */
+        post: operations["subscription_keep_api_companies__company_id__subscriptions__subscription_id__keep_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/agent/v1/context": {
         parameters: {
             query?: never;
@@ -3834,6 +4273,68 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agent/v1/purchases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request Purchase
+         * @description Ask to buy something (the ``company_request_purchase`` tool). It commits nothing: a policy
+         *     and an approval decide, and a person completes the checkout. The answer carries no card data;
+         *     you are woken when it is decided or paid.
+         */
+        post: operations["request_purchase_api_agent_v1_purchases_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/v1/purchases/{purchase_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Purchase
+         * @description Your own purchase request only (another's id is a 404).
+         */
+        get: operations["get_purchase_api_agent_v1_purchases__purchase_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/v1/subscriptions/{subscription_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Review Subscription
+         * @description Keep or cancel a subscription you own before it renews (a cancel is a task for a person).
+         */
+        post: operations["review_subscription_api_agent_v1_subscriptions__subscription_id__review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3886,6 +4387,8 @@ export interface components {
             monthly_budget_micros: number | null;
             /** Daily Budget Micros */
             daily_budget_micros: number | null;
+            /** Purchase Monthly Limit Micros */
+            purchase_monthly_limit_micros: number | null;
             /** Role Template */
             role_template: string | null;
             /**
@@ -3901,6 +4404,61 @@ export interface components {
             /** Status Changed At */
             status_changed_at: string;
             live: components["schemas"]["AgentLive"] | null;
+        };
+        /**
+         * AgentCardOut
+         * @description A card as the control plane knows it: provider id, last4, brand, expiry and limits. There
+         *     is deliberately no ``number`` / ``cvc`` field.
+         */
+        AgentCardOut: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string;
+            /** Card Account Id */
+            card_account_id: string;
+            /** Provider Card Id */
+            provider_card_id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "single_use" | "subscription";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "frozen" | "closed" | "expired";
+            /** Purchase Request Id */
+            purchase_request_id: string | null;
+            /** Subscription Id */
+            subscription_id: string | null;
+            /** Agent Id */
+            agent_id: string | null;
+            /** Last4 */
+            last4: string;
+            /** Brand */
+            brand: string | null;
+            /** Exp Month */
+            exp_month: number | null;
+            /** Exp Year */
+            exp_year: number | null;
+            /** Limit Micros */
+            limit_micros: number;
+            /**
+             * Limit Interval
+             * @enum {string}
+             */
+            limit_interval: "per_authorization" | "monthly" | "yearly" | "all_time";
+            merchant_lock: components["schemas"]["MerchantLockOut"];
+            /** Expires At */
+            expires_at: string | null;
+            /** Frozen Reason */
+            frozen_reason: string | null;
+            /** Closed At */
+            closed_at: string | null;
+            /** Created At */
+            created_at: string;
         };
         /** AgentContext */
         AgentContext: {
@@ -4065,6 +4623,21 @@ export interface components {
             body: string;
             /** Created At */
             created_at: string;
+        };
+        /** AgentPurchaseLimitOut */
+        AgentPurchaseLimitOut: {
+            /** Agent Id */
+            agent_id: string;
+            /** Purchase Monthly Limit Micros */
+            purchase_monthly_limit_micros: number | null;
+        };
+        /**
+         * AgentPurchaseLimitUpdate
+         * @description ``purchase_monthly_limit_micros`` of one agent: human-only, null = inherit the company.
+         */
+        AgentPurchaseLimitUpdate: {
+            /** Purchase Monthly Limit Micros */
+            purchase_monthly_limit_micros?: number | null;
         };
         /**
          * AgentReflection
@@ -4832,6 +5405,225 @@ export interface components {
             /** Estimated Micros */
             estimated_micros: number;
         };
+        /**
+         * CardAccountCheck
+         * @description Result of a live check of an account: never contains a key or a card number.
+         */
+        CardAccountCheck: {
+            /** Account Id */
+            account_id: string;
+            /** Ok */
+            ok: boolean;
+            /** Mode */
+            mode: ("live" | "test") | null;
+            /** Issuing Enabled */
+            issuing_enabled: boolean | null;
+            /** Balance Readable */
+            balance_readable: boolean | null;
+            /** Balance Micros */
+            balance_micros: number | null;
+            /** Message */
+            message: string | null;
+        };
+        /**
+         * CardAccountCreate
+         * @description Connect a provider (``connected_account_id`` of the M8 vault) or register the owner's own
+         *     card (``manual``: a label, a brand and the LAST FOUR digits only).
+         */
+        CardAccountCreate: {
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "manual" | "stripe_issuing" | "mercury" | "fake";
+            /** Label */
+            label: string;
+            /**
+             * Mode
+             * @default live
+             * @enum {string}
+             */
+            mode?: "live" | "test";
+            /** Connected Account Id */
+            connected_account_id?: string | null;
+            /** External Ref */
+            external_ref?: string | null;
+            /** Manual Brand */
+            manual_brand?: string | null;
+            /** Manual Last4 */
+            manual_last4?: string | null;
+            /**
+             * Make Default
+             * @default true
+             */
+            make_default?: boolean;
+        };
+        /** CardAccountOut */
+        CardAccountOut: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "manual" | "stripe_issuing" | "mercury" | "fake";
+            /** Label */
+            label: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "setup" | "active" | "attention" | "disabled";
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "live" | "test";
+            /** Connected Account Id */
+            connected_account_id: string | null;
+            /** External Ref */
+            external_ref: string | null;
+            /** Manual Brand */
+            manual_brand: string | null;
+            /** Manual Last4 */
+            manual_last4: string | null;
+            /** Is Default */
+            is_default: boolean;
+            /** Last Balance Micros */
+            last_balance_micros: number | null;
+            /** Balance Checked At */
+            balance_checked_at: string | null;
+            /** Last Synced At */
+            last_synced_at: string | null;
+            /** Last Error */
+            last_error: string | null;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /** CardActionRequest */
+        CardActionRequest: {
+            /** Reason */
+            reason?: string | null;
+        };
+        /** CardProviderInfo */
+        CardProviderInfo: {
+            /**
+             * Id
+             * @enum {string}
+             */
+            id: "manual" | "stripe_issuing" | "mercury" | "fake";
+            /** Label */
+            label: string;
+            capabilities: components["schemas"]["ProviderCapabilitiesOut"];
+            /** Eligibility */
+            eligibility: string;
+            /** Recommended For */
+            recommended_for: ("india_company" | "us_company" | "not_incorporated" | "other")[];
+            /** Steps */
+            steps: components["schemas"]["ProviderGuideStep"][];
+            /** Verification */
+            verification: string;
+            /** Needs Connected Account */
+            needs_connected_account: boolean;
+            /**
+             * Available
+             * @default true
+             */
+            available: boolean;
+        };
+        /** CardProviderList */
+        CardProviderList: {
+            /** Items */
+            items: components["schemas"]["CardProviderInfo"][];
+            /** Guide Updated On */
+            guide_updated_on: string;
+        };
+        /**
+         * CardReveal
+         * @description How a HUMAN can see the number: a link to the provider's own surface. M16 adds
+         *     ``issuing_elements``. The number never passes through this server.
+         */
+        CardReveal: {
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "provider_dashboard";
+            /** Url */
+            url: string;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "manual" | "stripe_issuing" | "mercury" | "fake";
+            /** Note */
+            note: string;
+        };
+        /** CardTransactionOut */
+        CardTransactionOut: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string;
+            /** Card Account Id */
+            card_account_id: string;
+            /** Card Id */
+            card_id: string | null;
+            /** Purchase Request Id */
+            purchase_request_id: string | null;
+            /** Subscription Id */
+            subscription_id: string | null;
+            /** Provider Txn Id */
+            provider_txn_id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "authorization" | "capture" | "refund" | "decline" | "reversal";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "settled" | "reversed" | "declined";
+            /** Amount Micros */
+            amount_micros: number;
+            /**
+             * Cost Kind
+             * @default verified
+             * @enum {string}
+             */
+            cost_kind: "verified" | "estimated" | "unknown";
+            /** Merchant Amount Minor */
+            merchant_amount_minor: number | null;
+            /** Merchant Currency */
+            merchant_currency: string | null;
+            /** Merchant Name */
+            merchant_name: string | null;
+            /** Merchant Mcc */
+            merchant_mcc: string | null;
+            /** Merchant Country */
+            merchant_country: string | null;
+            /**
+             * Match Status
+             * @enum {string}
+             */
+            match_status: "matched" | "unmatched" | "mismatch";
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "provider" | "human";
+            /** Occurred At */
+            occurred_at: string;
+            /** Settled At */
+            settled_at: string | null;
+            /** Created At */
+            created_at: string;
+        };
         /** CatalogItem */
         CatalogItem: {
             /** Slug */
@@ -4899,6 +5691,49 @@ export interface components {
             optional: boolean;
             /** Providers */
             providers: string[];
+        };
+        /**
+         * CheckoutPacket
+         * @description What the human needs to complete the checkout. ``vendor_domain`` is shown prominently; the
+         *     url, item and vendor are untrusted agent text.
+         */
+        CheckoutPacket: {
+            /** Vendor */
+            vendor: string;
+            /** Vendor Domain */
+            vendor_domain: string;
+            /** Url */
+            url: string;
+            /** Item */
+            item: string;
+            /** Quantity */
+            quantity: number;
+            /** Amount Micros */
+            amount_micros: number;
+            /** Card Limit Micros */
+            card_limit_micros: number | null;
+            /**
+             * Recurrence
+             * @enum {string}
+             */
+            recurrence: "one_time" | "monthly" | "yearly";
+            /** Company Email */
+            company_email: string | null;
+            /** Bring Back */
+            bring_back: string | null;
+            /** Card Last4 */
+            card_last4: string | null;
+            /** Card Brand */
+            card_brand: string | null;
+            /** Card Exp Month */
+            card_exp_month: number | null;
+            /** Card Exp Year */
+            card_exp_year: number | null;
+            /**
+             * Steps
+             * @default []
+             */
+            steps: string[];
         };
         /** CliAuth */
         CliAuth: {
@@ -6415,6 +7250,20 @@ export interface components {
             created_by_id: string | null;
             /** Created At */
             created_at: string;
+            /**
+             * Source
+             * @default human
+             * @enum {string}
+             */
+            source: "human" | "card" | "provider_action";
+            /**
+             * Cost Kind
+             * @default verified
+             * @enum {string}
+             */
+            cost_kind: "verified" | "estimated" | "unknown";
+            /** Purchase Request Id */
+            purchase_request_id: string | null;
         };
         /** ExternalExpenseCreate */
         ExternalExpenseCreate: {
@@ -6471,6 +7320,22 @@ export interface components {
             /** Runs */
             runs: number;
         };
+        /**
+         * FinancePurchases
+         * @description Agent purchases (M15), kept apart from model spend: a tool bought for $20 never uses up a
+         *     model budget. ``held_micros`` is committed (approved, not yet charged); only
+         *     ``settled_verified_micros`` is a charge.
+         */
+        FinancePurchases: {
+            /** Period */
+            period: string;
+            /** Settled Verified Micros */
+            settled_verified_micros: number;
+            /** Held Micros */
+            held_micros: number;
+            /** Budget Micros */
+            budget_micros: number | null;
+        };
         /** FinanceRun */
         FinanceRun: {
             /** Run Id */
@@ -6516,6 +7381,7 @@ export interface components {
             external_expenses_micros: number;
             /** Budgets */
             budgets: components["schemas"]["BudgetStatus"][];
+            purchases: components["schemas"]["FinancePurchases"];
         };
         /** FinanceTotals */
         FinanceTotals: {
@@ -6635,6 +7501,25 @@ export interface components {
             eligibility: string[];
             /** Steps */
             steps: string[];
+        };
+        /**
+         * FundingInstructions
+         * @description Fetched live from the provider for the owner, never stored.
+         */
+        FundingInstructions: {
+            /** Account Id */
+            account_id: string;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "manual" | "stripe_issuing" | "mercury" | "fake";
+            /** Instructions */
+            instructions: {
+                [key: string]: string;
+            };
+            /** Fetched At */
+            fetched_at: string;
         };
         /** Goal */
         Goal: {
@@ -7339,6 +8224,20 @@ export interface components {
             /** Label */
             label: string | null;
         };
+        /** MerchantLockOut */
+        MerchantLockOut: {
+            /** Name */
+            name?: string | null;
+            /** Domain */
+            domain?: string | null;
+            /**
+             * Mcc Allow
+             * @default []
+             */
+            mcc_allow?: string[];
+            /** Country */
+            country?: string | null;
+        };
         /** ModelProvider */
         ModelProvider: {
             /** Id */
@@ -7664,6 +8563,13 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** Page[AgentCardOut] */
+        Page_AgentCardOut_: {
+            /** Items */
+            items: components["schemas"]["AgentCardOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
         /** Page[AgentNote] */
         Page_AgentNote_: {
             /** Items */
@@ -7717,6 +8623,20 @@ export interface components {
         Page_AuditEvent_: {
             /** Items */
             items: components["schemas"]["AuditEvent"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** Page[CardAccountOut] */
+        Page_CardAccountOut_: {
+            /** Items */
+            items: components["schemas"]["CardAccountOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** Page[CardTransactionOut] */
+        Page_CardTransactionOut_: {
+            /** Items */
+            items: components["schemas"]["CardTransactionOut"][];
             /** Next Cursor */
             next_cursor: string | null;
         };
@@ -7895,6 +8815,13 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /** Page[PurchaseRequestOut] */
+        Page_PurchaseRequestOut_: {
+            /** Items */
+            items: components["schemas"]["PurchaseRequestOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
         /** Page[Reflection] */
         Page_Reflection_: {
             /** Items */
@@ -7927,6 +8854,13 @@ export interface components {
         Page_Skill_: {
             /** Items */
             items: components["schemas"]["Skill"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** Page[SubscriptionOut] */
+        Page_SubscriptionOut_: {
+            /** Items */
+            items: components["schemas"]["SubscriptionOut"][];
             /** Next Cursor */
             next_cursor: string | null;
         };
@@ -8045,6 +8979,65 @@ export interface components {
         };
         /** Policy */
         Policy: {
+            /**
+             * Purchasing Enabled
+             * @default false
+             */
+            purchasing_enabled: boolean;
+            /**
+             * Purchase Auto Approve Micros
+             * @default 0
+             */
+            purchase_auto_approve_micros: number;
+            /**
+             * Purchase Agent Auto Monthly Micros
+             * @default 0
+             */
+            purchase_agent_auto_monthly_micros: number;
+            /**
+             * Purchase Cofounder Limit Micros
+             * @default 0
+             */
+            purchase_cofounder_limit_micros: number;
+            /**
+             * Purchase Cofounder Monthly Micros
+             * @default 0
+             */
+            purchase_cofounder_monthly_micros: number;
+            /** Purchase Monthly Budget Micros */
+            purchase_monthly_budget_micros: number | null;
+            /**
+             * Purchase Recurring Requires Human
+             * @default true
+             */
+            purchase_recurring_requires_human: boolean;
+            /**
+             * Purchase New Vendor Requires Human
+             * @default true
+             */
+            purchase_new_vendor_requires_human: boolean;
+            /**
+             * Purchase Tolerance Bps
+             * @default 1000
+             */
+            purchase_tolerance_bps: number;
+            /**
+             * Purchase Tolerance Min Micros
+             * @default 2000000
+             */
+            purchase_tolerance_min_micros: number;
+            /**
+             * Purchase Card Ttl Hours
+             * @default 72
+             */
+            purchase_card_ttl_hours: number;
+            /** Purchase Checkout Member Id */
+            purchase_checkout_member_id: string | null;
+            /**
+             * Subscription Renewal Alert Days
+             * @default 7
+             */
+            subscription_renewal_alert_days: number;
             /** Id */
             id: string;
             /** Company Id */
@@ -8234,6 +9227,32 @@ export interface components {
         };
         /** PolicyUpdate */
         PolicyUpdate: {
+            /** Purchasing Enabled */
+            purchasing_enabled?: boolean | null;
+            /** Purchase Auto Approve Micros */
+            purchase_auto_approve_micros?: number | null;
+            /** Purchase Agent Auto Monthly Micros */
+            purchase_agent_auto_monthly_micros?: number | null;
+            /** Purchase Cofounder Limit Micros */
+            purchase_cofounder_limit_micros?: number | null;
+            /** Purchase Cofounder Monthly Micros */
+            purchase_cofounder_monthly_micros?: number | null;
+            /** Purchase Monthly Budget Micros */
+            purchase_monthly_budget_micros?: number | null;
+            /** Purchase Recurring Requires Human */
+            purchase_recurring_requires_human?: boolean | null;
+            /** Purchase New Vendor Requires Human */
+            purchase_new_vendor_requires_human?: boolean | null;
+            /** Purchase Tolerance Bps */
+            purchase_tolerance_bps?: number | null;
+            /** Purchase Tolerance Min Micros */
+            purchase_tolerance_min_micros?: number | null;
+            /** Purchase Card Ttl Hours */
+            purchase_card_ttl_hours?: number | null;
+            /** Purchase Checkout Member Id */
+            purchase_checkout_member_id?: string | null;
+            /** Subscription Renewal Alert Days */
+            subscription_renewal_alert_days?: number | null;
             /** Autonomy Mode */
             autonomy_mode?: ("autonomous" | "supervised") | null;
             /** Human Approval Required For */
@@ -8430,6 +9449,29 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** ProviderCapabilitiesOut */
+        ProviderCapabilitiesOut: {
+            /** Issue Cards */
+            issue_cards: boolean;
+            /** Single Use */
+            single_use: boolean;
+            /** Merchant Mcc Lock */
+            merchant_mcc_lock: boolean;
+            /** Per Auth Limit */
+            per_auth_limit: boolean;
+            /** Interval Limits */
+            interval_limits: string[];
+            /** List Transactions */
+            list_transactions: boolean;
+            /** Balance */
+            balance: boolean;
+            /** Webhooks */
+            webhooks: boolean;
+            /** Programmatic Checkout */
+            programmatic_checkout: boolean;
+            /** Test Mode */
+            test_mode: boolean;
+        };
         /** ProviderCheck */
         ProviderCheck: {
             /** Ok */
@@ -8442,6 +9484,18 @@ export interface components {
             account_label: string | null;
             /** Scopes */
             scopes: string[];
+        };
+        /** ProviderGuideStep */
+        ProviderGuideStep: {
+            /** Title */
+            title: string;
+            /** Body */
+            body: string;
+            /**
+             * Owner Only
+             * @default true
+             */
+            owner_only: boolean;
         };
         /**
          * ProviderInfo
@@ -8560,6 +9614,264 @@ export interface components {
              * @default false
              */
             allow_private_network?: boolean;
+        };
+        /**
+         * PurchaseAck
+         * @description What the agent gets back: no card data, ever.
+         */
+        PurchaseAck: {
+            /** Purchase Request Id */
+            purchase_request_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "requested" | "pending_approval" | "approved" | "issuing" | "issue_failed" | "card_issued" | "awaiting_checkout" | "authorized" | "settled" | "human_task" | "rejected" | "expired" | "cancelled";
+            /** Decision */
+            decision: ("auto" | "cofounder" | "human" | "report_only") | null;
+            /** Next Step */
+            next_step: string;
+        };
+        /** PurchaseApprovalSummary */
+        PurchaseApprovalSummary: {
+            /** Id */
+            id: string;
+            /** Status */
+            status: string;
+            /** Approver */
+            approver: string;
+            /** Decided By Type */
+            decided_by_type: string | null;
+            /** Decision Note */
+            decision_note: string | null;
+            /** Decided At */
+            decided_at: string | null;
+        };
+        /** PurchaseCancelRequest */
+        PurchaseCancelRequest: {
+            /** Reason */
+            reason?: string | null;
+        };
+        /**
+         * PurchaseDecisionRequest
+         * @description Approve / reject through the Wallet (a thin wrapper over ``approvals.decide``).
+         */
+        PurchaseDecisionRequest: {
+            /** Note */
+            note?: string | null;
+        };
+        /**
+         * PurchaseMarkPaid
+         * @description Manual mode (or a human checkout the provider could not see): the amount the human
+         *     confirms is recorded ``verified``, source ``human`` ("confirmed by you").
+         */
+        PurchaseMarkPaid: {
+            /** Merchant Amount Usd */
+            merchant_amount_usd: number | string;
+            /** Billed Amount Inr */
+            billed_amount_inr?: number | string | null;
+            /** Receipt Artifact Id */
+            receipt_artifact_id?: string | null;
+            /** Note */
+            note?: string | null;
+        };
+        /** PurchasePolicyRecommendation */
+        PurchasePolicyRecommendation: {
+            /** Purchase Cofounder Limit Micros */
+            purchase_cofounder_limit_micros: number;
+            /** Purchase Cofounder Monthly Micros */
+            purchase_cofounder_monthly_micros: number;
+            /** Purchase Auto Approve Micros */
+            purchase_auto_approve_micros: number;
+            /** Purchase Recurring Requires Human */
+            purchase_recurring_requires_human: boolean;
+            /** Purchase New Vendor Requires Human */
+            purchase_new_vendor_requires_human: boolean;
+        };
+        /**
+         * PurchaseRequestCreate
+         * @description The body of ``POST /api/agent/v1/purchases`` (the ``company_request_purchase`` tool).
+         */
+        PurchaseRequestCreate: {
+            /** Item */
+            item: string;
+            /** Vendor */
+            vendor: string;
+            /** Url */
+            url: string;
+            /** Amount Usd */
+            amount_usd: number | string;
+            /** Original Amount */
+            original_amount?: number | string | null;
+            /** Original Currency */
+            original_currency?: string | null;
+            /**
+             * Recurring
+             * @enum {string}
+             */
+            recurring: "none" | "monthly" | "yearly";
+            /**
+             * Quantity
+             * @default 1
+             */
+            quantity?: number;
+            /** Justification */
+            justification: string;
+            /** Alternatives Considered */
+            alternatives_considered?: string | null;
+            /** Task Id */
+            task_id: string;
+        };
+        /** PurchaseRequestDetail */
+        PurchaseRequestDetail: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string;
+            /** Agent Id */
+            agent_id: string;
+            /** Agent Name */
+            agent_name: string | null;
+            /** Run Id */
+            run_id: string | null;
+            /** Task Id */
+            task_id: string;
+            /** Project Id */
+            project_id: string | null;
+            /** Item */
+            item: string;
+            /** Vendor */
+            vendor: string;
+            /** Vendor Domain */
+            vendor_domain: string;
+            /** Url */
+            url: string;
+            /** Quantity */
+            quantity: number;
+            /** Amount Micros */
+            amount_micros: number;
+            /** Original Amount Minor */
+            original_amount_minor: number | null;
+            /** Original Currency */
+            original_currency: string | null;
+            /**
+             * Recurrence
+             * @enum {string}
+             */
+            recurrence: "one_time" | "monthly" | "yearly";
+            /** Justification */
+            justification: string;
+            /** Alternatives */
+            alternatives: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "requested" | "pending_approval" | "approved" | "issuing" | "issue_failed" | "card_issued" | "awaiting_checkout" | "authorized" | "settled" | "human_task" | "rejected" | "expired" | "cancelled";
+            /** Decision */
+            decision: ("auto" | "cofounder" | "human" | "report_only") | null;
+            /** Checkout Path */
+            checkout_path: ("programmatic" | "human_checkout" | "human_buys") | null;
+            /** Approval Id */
+            approval_id: string | null;
+            /** Card Id */
+            card_id: string | null;
+            /** Subscription Id */
+            subscription_id: string | null;
+            /** Checkout Task Id */
+            checkout_task_id: string | null;
+            /** Held Micros */
+            held_micros: number;
+            /** Settled Micros */
+            settled_micros: number | null;
+            /** Cost Kind */
+            cost_kind: ("verified" | "estimated" | "unknown") | null;
+            checkout_packet: components["schemas"]["CheckoutPacket"] | null;
+            /** Expires At */
+            expires_at: string | null;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+            approval: components["schemas"]["PurchaseApprovalSummary"] | null;
+            card: components["schemas"]["AgentCardOut"] | null;
+            /**
+             * Transactions
+             * @default []
+             */
+            transactions: components["schemas"]["CardTransactionOut"][];
+        };
+        /** PurchaseRequestOut */
+        PurchaseRequestOut: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string;
+            /** Agent Id */
+            agent_id: string;
+            /** Agent Name */
+            agent_name: string | null;
+            /** Run Id */
+            run_id: string | null;
+            /** Task Id */
+            task_id: string;
+            /** Project Id */
+            project_id: string | null;
+            /** Item */
+            item: string;
+            /** Vendor */
+            vendor: string;
+            /** Vendor Domain */
+            vendor_domain: string;
+            /** Url */
+            url: string;
+            /** Quantity */
+            quantity: number;
+            /** Amount Micros */
+            amount_micros: number;
+            /** Original Amount Minor */
+            original_amount_minor: number | null;
+            /** Original Currency */
+            original_currency: string | null;
+            /**
+             * Recurrence
+             * @enum {string}
+             */
+            recurrence: "one_time" | "monthly" | "yearly";
+            /** Justification */
+            justification: string;
+            /** Alternatives */
+            alternatives: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "requested" | "pending_approval" | "approved" | "issuing" | "issue_failed" | "card_issued" | "awaiting_checkout" | "authorized" | "settled" | "human_task" | "rejected" | "expired" | "cancelled";
+            /** Decision */
+            decision: ("auto" | "cofounder" | "human" | "report_only") | null;
+            /** Checkout Path */
+            checkout_path: ("programmatic" | "human_checkout" | "human_buys") | null;
+            /** Approval Id */
+            approval_id: string | null;
+            /** Card Id */
+            card_id: string | null;
+            /** Subscription Id */
+            subscription_id: string | null;
+            /** Checkout Task Id */
+            checkout_task_id: string | null;
+            /** Held Micros */
+            held_micros: number;
+            /** Settled Micros */
+            settled_micros: number | null;
+            /** Cost Kind */
+            cost_kind: ("verified" | "estimated" | "unknown") | null;
+            checkout_packet: components["schemas"]["CheckoutPacket"] | null;
+            /** Expires At */
+            expires_at: string | null;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
         };
         /** RateLimitList */
         RateLimitList: {
@@ -9469,6 +10781,81 @@ export interface components {
             /** Result Summary */
             result_summary: string | null;
         };
+        /**
+         * SubscriptionHumanAction
+         * @description ``POST /subscriptions/{id}/cancelled`` and ``.../keep`` (owner/admin).
+         */
+        SubscriptionHumanAction: {
+            /** Note */
+            note?: string | null;
+        };
+        /** SubscriptionOut */
+        SubscriptionOut: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string;
+            /** Purchase Request Id */
+            purchase_request_id: string;
+            /** Agent Id */
+            agent_id: string | null;
+            /** Agent Name */
+            agent_name: string | null;
+            /** Vendor */
+            vendor: string;
+            /** Vendor Domain */
+            vendor_domain: string;
+            /** Item */
+            item: string;
+            /** Amount Micros */
+            amount_micros: number;
+            /**
+             * Recurrence
+             * @enum {string}
+             */
+            recurrence: "one_time" | "monthly" | "yearly";
+            /** Card Id */
+            card_id: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "review_due" | "cancel_requested" | "cancelled" | "lapsed";
+            /**
+             * Started On
+             * Format: date
+             */
+            started_on: string;
+            /** Next Renewal On */
+            next_renewal_on: string | null;
+            /** Last Charged On */
+            last_charged_on: string | null;
+            /** Last Charge Micros */
+            last_charge_micros: number | null;
+            /** Review Task Id */
+            review_task_id: string | null;
+            /** Cancel Task Id */
+            cancel_task_id: string | null;
+            /** Reviewed At */
+            reviewed_at: string | null;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /**
+         * SubscriptionReviewIn
+         * @description Body of ``POST /api/agent/v1/subscriptions/{id}/review`` (the review tool).
+         */
+        SubscriptionReviewIn: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "keep" | "cancel";
+            /** Reason */
+            reason: string;
+        };
         /** SystemStatus */
         SystemStatus: {
             emergency_stop: components["schemas"]["EmergencyStopStatus"];
@@ -10007,6 +11394,115 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** WalletBalance */
+        WalletBalance: {
+            /** Available Micros */
+            available_micros: number | null;
+            /** Pending Micros */
+            pending_micros: number | null;
+            /** As Of */
+            as_of: string | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "provider" | "manual";
+        };
+        /** WalletCheckoutItem */
+        WalletCheckoutItem: {
+            /** Purchase Request Id */
+            purchase_request_id: string;
+            /** Item */
+            item: string;
+            /** Vendor */
+            vendor: string;
+            /** Vendor Domain */
+            vendor_domain: string;
+            /** Amount Micros */
+            amount_micros: number;
+            /** Checkout Task Id */
+            checkout_task_id: string | null;
+            /** Expires At */
+            expires_at: string | null;
+        };
+        /** WalletMonth */
+        WalletMonth: {
+            /** Period */
+            period: string;
+            /** Settled Verified Micros */
+            settled_verified_micros: number;
+            /** Held Micros */
+            held_micros: number;
+            /** Budget Micros */
+            budget_micros: number | null;
+        };
+        /** WalletOverview */
+        WalletOverview: {
+            /**
+             * Available
+             * @default true
+             */
+            available: boolean;
+            /** Milestone */
+            milestone: string | null;
+            /** Enabled */
+            enabled: boolean;
+            /** Accounts */
+            accounts: components["schemas"]["CardAccountOut"][];
+            balance: components["schemas"]["WalletBalance"] | null;
+            month: components["schemas"]["WalletMonth"];
+            /** Awaiting Checkout */
+            awaiting_checkout: components["schemas"]["WalletCheckoutItem"][];
+            /** Pending Approvals */
+            pending_approvals: number;
+            /** Renewals Due */
+            renewals_due: components["schemas"]["WalletRenewal"][];
+            /**
+             * Low Balance
+             * @default false
+             */
+            low_balance: boolean;
+            /** Attention */
+            attention: string | null;
+            setup: components["schemas"]["WalletSetupHint"] | null;
+        };
+        /** WalletRenewal */
+        WalletRenewal: {
+            /** Subscription Id */
+            subscription_id: string;
+            /** Vendor */
+            vendor: string;
+            /** Amount Micros */
+            amount_micros: number;
+            /**
+             * Next Renewal On
+             * Format: date
+             */
+            next_renewal_on: string;
+        };
+        /**
+         * WalletSetupHint
+         * @description Shown when purchasing is not set up: the recommended values once the owner opts in.
+         */
+        WalletSetupHint: {
+            /** Providers */
+            providers: ("manual" | "stripe_issuing" | "mercury" | "fake")[];
+            recommended_policy: components["schemas"]["PurchasePolicyRecommendation"] | null;
+        };
+        /** WalletSyncResult */
+        WalletSyncResult: {
+            /** Accounts Synced */
+            accounts_synced: number;
+            /** Transactions Seen */
+            transactions_seen: number;
+            /** Transactions New */
+            transactions_new: number;
+            /**
+             * Errors
+             * @default []
+             */
+            errors: string[];
         };
     };
     responses: never;
@@ -16819,6 +18315,890 @@ export interface operations {
             };
         };
     };
+    card_events_api_webhooks_cards__company_id___provider__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_overview_api_companies__company_id__wallet_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WalletOverview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_providers_api_companies__company_id__wallet_providers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardProviderList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_accounts_api_companies__company_id__wallet_accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_CardAccountOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_account_api_companies__company_id__wallet_accounts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CardAccountCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardAccountOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_account_api_companies__company_id__wallet_accounts__account_id__check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardAccountCheck"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_funding_api_companies__company_id__wallet_accounts__account_id__funding_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FundingInstructions"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_default_api_companies__company_id__wallet_accounts__account_id__default_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardAccountOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    disable_account_api_companies__company_id__wallet_accounts__account_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardAccountOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_cards_api_companies__company_id__wallet_cards_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_AgentCardOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    freeze_card_api_companies__company_id__wallet_cards__card_id__freeze_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                card_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CardActionRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentCardOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unfreeze_card_api_companies__company_id__wallet_cards__card_id__unfreeze_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                card_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CardActionRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentCardOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    close_card_api_companies__company_id__wallet_cards__card_id__close_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                card_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CardActionRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentCardOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reveal_card_api_companies__company_id__wallet_cards__card_id__reveal_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                card_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardReveal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_transactions_api_companies__company_id__wallet_transactions_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_CardTransactionOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_wallet_api_companies__company_id__wallet_sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WalletSyncResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_agent_purchase_limit_api_companies__company_id__wallet_agents__agent_id__purchase_limit_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentPurchaseLimitUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentPurchaseLimitOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_purchases_api_companies__company_id__purchases_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                agent_id?: string | null;
+                checkout_task_id?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_PurchaseRequestOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_purchase_api_companies__company_id__purchases__purchase_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                purchase_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseRequestDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_purchase_api_companies__company_id__purchases__purchase_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                purchase_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PurchaseDecisionRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseRequestDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_purchase_api_companies__company_id__purchases__purchase_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                purchase_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PurchaseDecisionRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseRequestDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_paid_api_companies__company_id__purchases__purchase_id__mark_paid_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                purchase_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PurchaseMarkPaid"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseRequestDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_purchase_api_companies__company_id__purchases__purchase_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                purchase_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PurchaseCancelRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseRequestDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_subscriptions_api_companies__company_id__subscriptions_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_SubscriptionOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    subscription_cancelled_api_companies__company_id__subscriptions__subscription_id__cancelled_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subscription_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SubscriptionHumanAction"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    subscription_keep_api_companies__company_id__subscriptions__subscription_id__keep_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subscription_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SubscriptionHumanAction"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_context_api_agent_v1_context_get: {
         parameters: {
             query?: never;
@@ -18319,6 +20699,105 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Reflection"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_purchase_api_agent_v1_purchases_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PurchaseRequestCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseAck"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_purchase_api_agent_v1_purchases__purchase_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                purchase_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseAck"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_subscription_api_agent_v1_subscriptions__subscription_id__review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subscription_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubscriptionReviewIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionOut"];
                 };
             };
             /** @description Validation Error */

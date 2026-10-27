@@ -385,14 +385,7 @@ _ROUTES = [
     RouteSpec("POST", "/guardrails/flags", "guardrail.flag"),
     RouteSpec("POST", "/peer-reviews/{approval_id}/decide", "peer_review.decide"),
     RouteSpec("POST", "/provider-actions", "", dynamic=True),
-]
-
-
-# M15 agent-API routes. NOT in ``ROUTES`` yet: the endpoints do not exist until the purchasing
-# service lands, and a registered route without an endpoint fails
-# ``test_no_registered_route_is_stale``.
-# WP1 adds ``*_M15_ROUTES`` to ``_ROUTES`` in the same change that adds the endpoints.
-_M15_ROUTES = [
+    # M15: an agent can only request a purchase and review its own subscriptions
     RouteSpec("POST", "/purchases", "purchase.request"),
     RouteSpec("GET", "/purchases/{purchase_id}", "purchase.read"),
     RouteSpec("POST", "/subscriptions/{subscription_id}/review", "subscription.review"),
@@ -430,7 +423,6 @@ ACTIONS: dict[str, ActionSpec] = {
 }
 PROVIDER_ACTIONS: dict[str, ActionSpec] = {s.name: s for s in _PROVIDER_ACTIONS}
 ROUTES: dict[tuple[str, str], RouteSpec] = {(r.method, r.path): r for r in _ROUTES}
-M15_ROUTES: dict[tuple[str, str], RouteSpec] = {(r.method, r.path): r for r in _M15_ROUTES}
 
 TIERS: tuple[str, ...] = tuple(t.value for t in T)
 

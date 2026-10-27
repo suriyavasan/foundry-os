@@ -503,6 +503,7 @@ def test_hr_gets_the_hiring_tools_and_workers_get_a_lean_set(env):
         "company_create_task",
         "company_request_help",
         "company_propose_memory",
+        "company_request_purchase",
     ]
     assert seen["toolsets"] == ["company", "file", "web", "search", "skills", "todo"]
     assert "skills_manage" not in seen["toolsets"]

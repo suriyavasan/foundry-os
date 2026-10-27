@@ -14,6 +14,8 @@ from app.core.config import Settings
 from app.integrations import tailscale as ts
 from app.integrations.agentmail import AgentMailClient
 from app.integrations.base import IntegrationHttp, ProviderAuthError, ProviderError
+from app.integrations.cards.mercury import MercuryProvider
+from app.integrations.cards.stripe_issuing import StripeIssuingProvider
 from app.integrations.cloudflare import CloudflareClient
 from app.integrations.github import GithubClient
 from app.integrations.namecheap import NamecheapClient
@@ -26,7 +28,7 @@ from app.integrations.vercel import VercelClient
 class ProviderSpec:
     id: str
     label: str
-    category: str  # dns | hosting | code | email | tunnel | registrar | oauth
+    category: str  # dns | hosting | code | email | tunnel | registrar | oauth | cards
     secrets: tuple[str, ...] = ("api_token",)  # [0] is main
     optional_secrets: tuple[str, ...] = ()
     metadata: tuple[str, ...] = ()
@@ -112,6 +114,29 @@ SPECS: dict[str, ProviderSpec] = {
             help="Namecheap API key, ApiUser, UserName and the whitelisted client IP. "
             "Purchases also need registrant_<Field> metadata.",
         ),
+        # M15 agent cards. The control plane makes every call; agents never get these keys
+        # (``actions`` is empty: no agent can use them directly). The card adapters are
+        # implemented against the providers' documented APIs and fixture-tested, not verified live.
+        ProviderSpec(
+            "stripe_issuing",
+            "Stripe Issuing",
+            "cards",
+            secrets=("api_key",),
+            optional_secrets=("webhook_secret",),
+            metadata=("cardholder_id",),
+            help="A Stripe RESTRICTED key: write Issuing Cards and Issuing Cardholders; read "
+            "Issuing Authorizations, Issuing Transactions and Balance; nothing else. A sandbox "
+            "key (rk_test_...) is a safe first test.",
+        ),
+        ProviderSpec(
+            "mercury",
+            "Mercury",
+            "cards",
+            secrets=("api_token",),
+            metadata=("account_id",),
+            help="A Mercury API token with read/write access. Mercury may require your server's "
+            "public IP on an allowlist for write tokens.",
+        ),
         ProviderSpec("gmail", "Gmail", "oauth", needs_secret=False, oauth=True),
         ProviderSpec("outlook", "Outlook", "oauth", needs_secret=False, oauth=True),
     )
@@ -163,6 +188,15 @@ def build_client(
             username=meta.get("username", ""),
             client_ip=meta.get("client_ip", ""),
         )
+    if provider == "stripe_issuing":
+        return StripeIssuingProvider(
+            client,
+            main,
+            cardholder_id=meta.get("cardholder_id") or None,
+            webhook_secret=secrets.get("webhook_secret") or None,
+        )
+    if provider == "mercury":
+        return MercuryProvider(client, main, account_id=meta.get("account_id") or None)
     client.close()
     raise ProviderError(f"No client for provider {provider!r}")
 
@@ -256,6 +290,26 @@ def _t_namecheap(c: NamecheapClient, meta: dict[str, str]) -> CheckResult:
     return CheckResult(True, "Connected to Namecheap", info.get("account"), ("domains",))
 
 
+def _t_cards(c: StripeIssuingProvider | MercuryProvider, meta: dict[str, str]) -> CheckResult:
+    """Authenticated, Issuing / Cards enabled, balance readable. Creates no card."""
+    info = c.check()
+    mode = str(info.get("mode", "live"))
+    scopes = ["auth"]
+    if info.get("issuing_enabled"):
+        scopes.append("cards")
+    if info.get("balance_readable"):
+        scopes.append("balance")
+    if not info.get("ok"):
+        return CheckResult(
+            False,
+            str(info.get("message") or "Card issuing is not enabled for this credential"),
+            None,
+            tuple(scopes),
+        )
+    label = f"{c.provider} ({mode})"
+    return CheckResult(True, f"Connected to {c.provider} ({mode} mode)", label, tuple(scopes))
+
+
 _TESTS = {
     "cloudflare": _t_cloudflare,
     "vercel": _t_vercel,
@@ -264,6 +318,8 @@ _TESTS = {
     "resend": _t_resend,
     "porkbun": _t_porkbun,
     "namecheap": _t_namecheap,
+    "stripe_issuing": _t_cards,
+    "mercury": _t_cards,
 }
 
 

@@ -211,6 +211,37 @@ def summary(
         "wasted": wasted,
         "external_expenses_micros": expenses_total(db, ctx, p),
         "budgets": _budgets(db, ctx, now, p.tz),
+        "purchases": purchases_block(db, ctx, now),
+    }
+
+
+def purchases_block(db: Session, ctx: CompanyContext, now: datetime) -> dict[str, Any]:
+    """This month's agent purchases (settled and verified, held, the purchase budget). Separate
+    from the model budgets above; the settled card charges are also in the expenses total."""
+    from app.models.enums import PURCHASE_HOLD_STATUSES, PurchaseStatus
+    from app.models.purchasing import PurchaseRequest
+    from app.services import ledger
+
+    company = db.get(Company, ctx.company_id)
+    month = ledger.periods_for(now, company.timezone if company else "UTC").month
+    settled = db.scalar(
+        select(func.coalesce(func.sum(PurchaseRequest.settled_micros), 0)).where(
+            PurchaseRequest.company_id == ctx.company_id,
+            PurchaseRequest.status == PurchaseStatus.SETTLED.value,
+            PurchaseRequest.period_month == month,
+        )
+    )
+    held = db.scalar(
+        select(func.coalesce(func.sum(PurchaseRequest.held_micros), 0)).where(
+            PurchaseRequest.company_id == ctx.company_id,
+            PurchaseRequest.status.in_([s.value for s in PURCHASE_HOLD_STATUSES]),
+        )
+    )
+    return {
+        "period": month,
+        "settled_verified_micros": int(settled or 0),
+        "held_micros": int(held or 0),
+        "budget_micros": policy.load_policy(db, ctx.company_id).purchase_monthly_budget_micros,
     }
 
 

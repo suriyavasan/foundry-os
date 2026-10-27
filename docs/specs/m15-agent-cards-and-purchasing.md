@@ -1007,6 +1007,38 @@ Deviations (all deliberate; WP owners should treat these as the contract):
     enforced by WP1's `wallet.provider_for`; step 0 only provides the class.
 
 
+### 4.13b WP1 as built (2026-10-27) and further deviations
+
+`services/purchasing.py`, `services/wallet.py`, `api/routes/wallet.py`, the three agent routes, the policy
+fields (`/policy`, with the ceilings), `purchase_policy.updated` audit line, finance `purchases` block,
+`/wallet` command, `agent_cards` checklist step, freeze on emergency stop / company pause, retire hook.
+Tests: `test_m15_{purchasing,policy,api}.py`, helpers in `tests/m15_wp1_helpers.py`. Deviations:
+
+1. **`rules.purchase_band`** and `Facts.purchasing`: the purchase bands apply only when the purchasing
+   service resolves `purchase.make` / `subscription.start`. The same actions arriving as provider actions keep
+   the `auto_spend_limit_micros` default (tested by `test_guardrails_engine`). Rules can only tighten.
+2. **Approval hook:** `approvals.decide` calls `purchasing.apply_decision` (inside its transaction) and, after the
+   commit, `purchasing.issue_after_decision`; `approvals.consume_internal` spends the approval without a
+   principal and without a commit, in the transaction that records `card.issue_started`.
+3. **No account, or purchasing off, is `report_only`** (a human task, status `human_task`, terminal). A manual
+   account (or a vanished account) gives `awaiting_checkout` with no card and `checkout_path=human_buys`.
+4. **Mark paid is for purchases without a card only**; a card-issued purchase is settled by reconciliation
+   (marking it paid as well would count the charge twice). It writes a `human` capture
+   (`provider_txn_id=human-<purchase id>`), a `verified` expense with `source=human`, and calls
+   `subscriptions.create_from_settled` for a recurring purchase.
+5. **Reveal step-up:** there is no password re-entry endpoint. The route needs the owner token or a browser
+   session created within 300 s, else `403 reauth_required` (details `max_age_seconds`); a personal API token
+   always gets 403. The UI sends the person through sign-in again.
+6. **Extra endpoints:** `GET /wallet/accounts`, `PATCH /wallet/agents/{agent_id}/purchase-limit` (human-only,
+   `purchase_policy.update`), `GET /purchases?checkout_task_id=` (task to purchase). `Agent` out gains
+   `purchase_monthly_limit_micros`. Approve / reject / mark-paid / cancel return `PurchaseRequestDetail`.
+7. **Issuing is synchronous after the commit** (agent request in the auto band, or the approval decision),
+   and retried by `purchasing.expire_stale` (the scheduler hook): transient failures back off 1 / 5 / 15 / 60 /
+   120 minutes (max 5 attempts), permanent ones raise the critical alert `card_issue_failed`. Retry state is in
+   `checkout_packet["_issue"]`, the outcome note in `checkout_packet["_note"]` (ignored by the schema).
+8. **Ack for agents:** `POST/GET /api/agent/v1/purchases` return `PurchaseAck` only. `schemas/agent_api.py` did
+   not need additions.
+
 ### 4.14 Verification and what may be claimed afterwards (rule 8)
 
 **Fully claimable after M15 (offline):** the fake provider, manual mode, and the policy, approval, reconciliation,

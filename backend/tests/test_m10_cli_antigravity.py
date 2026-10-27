@@ -152,6 +152,7 @@ def test_mcp_config_launches_only_the_company_server_and_the_token_stays_in_its_
         "update_task",
         "request_help",
         "find_colleagues",
+        "request_purchase",
     ]
     [(token_path, token)] = rec["token_files"].items()
     assert token["text"] == RUN_TOKEN and token["mode"] == 0o600

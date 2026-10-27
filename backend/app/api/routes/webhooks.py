@@ -1,4 +1,5 @@
-"""Public webhooks (no session: authenticated by signature only). Today: inbound e-mail."""
+"""Public webhooks (no session: authenticated by signature only): inbound e-mail and card-provider
+events (which only trigger a sync)."""
 
 from __future__ import annotations
 
@@ -7,7 +8,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.api.deps import DbSession
 from app.core.errors import PayloadTooLarge
-from app.services import email_identity
+from app.services import card_reconcile, email_identity
 
 router = APIRouter(tags=["webhooks"])
 
@@ -39,6 +40,25 @@ async def inbound_email(company_id: str, source: str, request: Request, db: DbSe
         request.app.state.integrations,
         company_id,
         source,
+        dict(request.headers),
+        body,
+    )
+
+
+@router.post("/webhooks/cards/{company_id}/{provider}", status_code=202)
+async def card_events(company_id: str, provider: str, request: Request, db: DbSession):
+    """A card provider event (Stripe Issuing). The signature is verified against the company's
+    stored webhook secret and the event only triggers a sync: nothing in the body is trusted.
+    Unknown company, no secret, no webhooks for that provider and a bad signature all answer the
+    same 401."""
+    settings = request.app.state.settings
+    body = await _read_capped(request, settings.webhook_max_bytes)
+    return await run_in_threadpool(
+        card_reconcile.receive_webhook,
+        db,
+        request.app.state.integrations,
+        company_id,
+        provider,
         dict(request.headers),
         body,
     )

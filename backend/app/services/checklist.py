@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.principal import CompanyContext
 from app.integrations.context import IntegrationContext
+from app.models.purchasing import CardAccount
 from app.models.reachability import CompanyDomain
 from app.services import connected_accounts, email_identity
 from app.services import reachability as reach
@@ -17,6 +18,21 @@ def _connect_status(db: Session, company_id: str, providers: list[str]) -> str:
     if any(a.status == "connected" for a in accounts):
         return "done"
     return "attention" if accounts else "todo"
+
+
+def _wallet_status(db: Session, company_id: str) -> str:
+    """Done once purchasing is switched on with an active card account; attention when an account
+    needs a look; todo otherwise."""
+    from app.services import policy, wallet
+
+    accounts = list(db.scalars(select(CardAccount).where(CardAccount.company_id == company_id)))
+    live = [a for a in accounts if a.status != "disabled"]
+    if (
+        wallet.active_account(db, company_id) is not None
+        and policy.load_policy(db, company_id).purchasing_enabled
+    ):
+        return "done"
+    return "attention" if any(a.status == "attention" for a in live) else "todo"
 
 
 def build(db: Session, ctx: CompanyContext, ic: IntegrationContext) -> dict:
@@ -38,6 +54,7 @@ def build(db: Session, ctx: CompanyContext, ic: IntegrationContext) -> dict:
             "providers": list(providers),
         }
 
+    wallet_status = _wallet_status(db, cid)
     steps = [
         step(
             "password",
@@ -103,6 +120,15 @@ def build(db: Session, ctx: CompanyContext, ic: IntegrationContext) -> dict:
             if identity["status"] == "connected"
             else ("attention" if identity["status"] == "error" else "todo"),
             providers=["agentmail", "resend"],
+        ),
+        step(
+            "agent_cards",
+            "Set up agent cards (optional)",
+            "Lets agents request purchases. A person always completes the checkout; the system "
+            "issues the card and records the charge. Until then a request becomes your task.",
+            "Agents can request purchases within the limits you set; everything else comes to you.",
+            wallet_status,
+            optional=True,
         ),
     ]
     done = sum(1 for s in steps if s["status"] == "done")

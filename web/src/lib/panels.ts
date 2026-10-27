@@ -27,6 +27,7 @@ export const SIMPLE_PANELS = [
   'reflections',
   'standards',
   'command-center',
+  'wallet',
 ] as const
 export type SimplePanel = (typeof SIMPLE_PANELS)[number]
 
@@ -120,6 +121,7 @@ export const PANEL_TITLE: Record<SimplePanel, string> = {
   reflections: 'Reflections',
   standards: 'Standards',
   'command-center': 'Command Center',
+  wallet: 'Agent cards',
 }
 
 const LEGACY_AREAS: Record<string, SimplePanel | null> = {

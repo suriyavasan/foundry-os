@@ -5,12 +5,10 @@ from __future__ import annotations
 
 import json
 from decimal import Decimal
-from unittest.mock import MagicMock
 
 import pytest
 from pydantic import ValidationError
 
-from app.core.errors import NotAvailable
 from app.guardrails import ratelimit, registry
 from app.models.policy import (
     MAX_PURCHASE_AGENT_AUTO_MONTHLY_MICROS,
@@ -18,7 +16,6 @@ from app.models.policy import (
     MAX_PURCHASE_COFOUNDER_LIMIT_MICROS,
 )
 from app.schemas import purchasing as sp
-from app.services import card_reconcile, purchasing, subscriptions, wallet
 
 FORBIDDEN = {"pan", "cvc", "cvv", "number", "card_number", "full_number", "expiry"}
 VALID_REQUEST = {
@@ -72,15 +69,14 @@ def test_the_two_runtime_tools_map_to_agent_actions():
     assert registry.get_action("domain.purchase").human_required is True
 
 
-def test_m15_agent_routes_are_defined_but_not_enabled_until_the_endpoints_exist():
-    assert set(registry.M15_ROUTES) == {
-        ("POST", "/purchases"),
-        ("GET", "/purchases/{purchase_id}"),
-        ("POST", "/subscriptions/{subscription_id}/review"),
-    }
-    for key, spec in registry.M15_ROUTES.items():
-        assert registry.get_action(spec.action) is not None, key
-        assert key not in registry.ROUTES  # WP1 moves them in with the endpoints
+def test_m15_agent_routes_are_registered_with_their_actions():
+    for key, action in {
+        ("POST", "/purchases"): "purchase.request",
+        ("GET", "/purchases/{purchase_id}"): "purchase.read",
+        ("POST", "/subscriptions/{subscription_id}/review"): "subscription.review",
+    }.items():
+        assert registry.ROUTES[key].action == action, key
+        assert registry.get_action(action) is not None
 
 
 def test_purchase_requests_are_rate_limited_per_agent_and_company():
@@ -184,27 +180,3 @@ def test_mark_paid_takes_decimal_dollars_never_floats_in_the_schema():
     assert body.merchant_amount_usd == Decimal("19.50")
     with pytest.raises(ValidationError):
         sp.PurchaseMarkPaid(merchant_amount_usd="0")
-
-
-# ---------------------------------------------------------------- stubs change nothing
-
-
-def test_the_stubs_raise_not_available_m15_and_the_scheduler_hooks_are_no_ops():
-    db = MagicMock()  # the stubs never touch the database
-    with pytest.raises(NotAvailable) as exc:
-        purchasing.get_purchase(db, None, "x")  # type: ignore[arg-type]
-    assert exc.value.details == {"available": False, "milestone": "M15"}
-    for call in (
-        lambda: wallet.overview(db, None),
-        lambda: wallet.list_providers(db, None),
-        lambda: subscriptions.get_subscription(db, None, "x"),
-    ):
-        with pytest.raises(NotAvailable):
-            call()
-    assert card_reconcile.sync_company(db, "c1") == sp.WalletSyncResult(
-        accounts_synced=0, transactions_seen=0, transactions_new=0, errors=[]
-    )
-    assert card_reconcile.run_all(db) == 0 and card_reconcile.check_balances(db) == 0
-    assert subscriptions.check(db) == 0
-    assert purchasing.expire_stale(db, "c1") == 0
-    assert wallet.freeze_all_cards(db, "c1", reason="emergency stop") == 0

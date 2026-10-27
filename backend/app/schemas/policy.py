@@ -5,7 +5,8 @@ from typing import Literal
 from pydantic import Field, field_validator
 
 from app.schemas.agent import MAX_BUDGET_MICROS, RoleFamilyLiteral
-from app.schemas.common import ApiModel, RequestModel, Timestamp
+from app.schemas.common import Timestamp
+from app.schemas.purchasing import PurchasePolicy, PurchasePolicyUpdate
 
 AutonomyModeLiteral = Literal["autonomous", "supervised"]
 SandboxBackendLiteral = Literal["auto", "none", "docker"]
@@ -21,7 +22,8 @@ ApprovalKindLiteral = Literal[
 ]
 
 
-class Policy(ApiModel):
+class Policy(PurchasePolicy):
+    # M15: the purchasing fields come from PurchasePolicy (human-only, with code ceilings).
     id: str
     company_id: str
     autonomy_mode: AutonomyModeLiteral
@@ -80,7 +82,7 @@ class Policy(ApiModel):
     updated_at: Timestamp
 
 
-class PolicyUpdate(RequestModel):
+class PolicyUpdate(PurchasePolicyUpdate):
     autonomy_mode: AutonomyModeLiteral | None = None
     human_approval_required_for: list[ApprovalKindLiteral] | None = None
     daily_budget_micros: int | None = Field(default=None, ge=0, le=MAX_BUDGET_MICROS)
@@ -165,6 +167,19 @@ class PolicyUpdate(RequestModel):
         "initiative_enabled",
         "initiative_interval_seconds",
         "project_auto_complete",
+        # M15 purchasing (``purchase_monthly_budget_micros`` and ``purchase_checkout_member_id``
+        # are the nullable ones: no cap / the owner)
+        "purchasing_enabled",
+        "purchase_auto_approve_micros",
+        "purchase_agent_auto_monthly_micros",
+        "purchase_cofounder_limit_micros",
+        "purchase_cofounder_monthly_micros",
+        "purchase_recurring_requires_human",
+        "purchase_new_vendor_requires_human",
+        "purchase_tolerance_bps",
+        "purchase_tolerance_min_micros",
+        "purchase_card_ttl_hours",
+        "subscription_renewal_alert_days",
     )
     @classmethod
     def _not_null(cls, v):  # only the two budget caps are nullable (null = no limit)

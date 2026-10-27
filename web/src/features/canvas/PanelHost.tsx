@@ -32,6 +32,7 @@ const ReflectionsPanel = lazy(() => import('@/features/reflections/ReflectionsPa
 const ReflectionThreadPanel = lazy(() => import('@/features/reflections/ReflectionThreadPanel').then((m) => ({ default: m.ReflectionThreadPanel })))
 const StandardsPanel = lazy(() => import('@/features/reflections/StandardsPanel').then((m) => ({ default: m.StandardsPanel })))
 const CommandCenterPanel = lazy(() => import('@/features/commandcenter/CommandCenterPanel').then((m) => ({ default: m.CommandCenterPanel })))
+const WalletPanel = lazy(() => import('@/features/wallet/WalletPanel').then((m) => ({ default: m.WalletPanel })))
 const SettingsPanel = lazy(() => import('@/features/settings/SettingsPanel').then((m) => ({ default: m.SettingsPanel })))
 
 /** Renders the drawer for the panel named in the URL. Remounts when the panel changes. */
@@ -70,6 +71,8 @@ function PanelSwitch({ panel }: { panel: NonNullable<ReturnType<typeof useCanvas
       return <FinancePanel key={key} />
     case 'settings':
       return <SettingsPanel key={key} />
+    case 'wallet':
+      return <WalletPanel key={key} />
     case 'integrations':
       return <IntegrationsPanel key={key} />
     case 'goals':

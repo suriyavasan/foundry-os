@@ -17,6 +17,7 @@ import { ReflectionsWidget } from './widgets/ReflectionsWidget'
 import { RoutinesWidget } from './widgets/RoutinesWidget'
 import { SkillsWidget } from './widgets/SkillsWidget'
 import { SpendWidget } from './widgets/SpendWidget'
+import { WalletWidget } from './widgets/WalletWidget'
 import { WorkWidget } from './widgets/WorkWidget'
 
 /**
@@ -66,6 +67,7 @@ export function CanvasPage() {
           <WorkWidget className="xl:col-span-4" />
           <ApprovalsWidget className="xl:col-span-4" />
           <SpendWidget className="xl:col-span-4" />
+          <WalletWidget className="xl:col-span-4" />
           <ArtifactsWidget className="xl:col-span-4" />
           <RoutinesWidget className="xl:col-span-4" />
           <SkillsWidget className="xl:col-span-4" />

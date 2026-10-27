@@ -44,6 +44,17 @@ class BudgetStatus(BaseModel):
     estimated_micros: int
 
 
+class FinancePurchases(BaseModel):
+    """Agent purchases (M15), kept apart from model spend: a tool bought for $20 never uses up a
+    model budget. ``held_micros`` is committed (approved, not yet charged); only
+    ``settled_verified_micros`` is a charge."""
+
+    period: str  # the company-timezone month this block describes (YYYY-MM)
+    settled_verified_micros: int
+    held_micros: int
+    budget_micros: int | None
+
+
 class FinanceSummary(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -54,6 +65,7 @@ class FinanceSummary(BaseModel):
     wasted: FinanceWasted
     external_expenses_micros: int
     budgets: list[BudgetStatus]
+    purchases: FinancePurchases
 
 
 class FinanceBreakdownRow(CostSplit):
@@ -111,6 +123,11 @@ class ExternalExpense(ApiModel):
     created_by_type: Literal["human", "agent", "system"] | None = None
     created_by_id: str | None = None
     created_at: Timestamp
+    # M15: where the amount comes from (``human`` entry, ``card`` transaction, ``provider_action``)
+    # and how sure it is (``verified`` for a real charge; a card or confirmed amount always is).
+    source: Literal["human", "card", "provider_action"] = "human"
+    cost_kind: Literal["verified", "estimated", "unknown"] = "verified"
+    purchase_request_id: str | None = None
 
 
 class ExternalExpenseCreate(RequestModel):

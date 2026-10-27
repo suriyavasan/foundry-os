@@ -48,6 +48,8 @@ COMPANY_TOOL_NAMES = (
     "company_post_reflection", "company_reply_reflection", "company_revise_reflection",
     # M12: plan a project's first task list in one call (leads and managers).
     "company_plan_project",
+    # M15: ask the company to buy something (no card data ever); answer a subscription renewal review.
+    "company_request_purchase", "company_review_subscription",
 )
 
 MIN_CONTEXT_LENGTH = 8192

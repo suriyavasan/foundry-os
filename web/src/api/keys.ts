@@ -104,6 +104,18 @@ export const qk = {
   standardsAll: (cid: string) => ['company', cid, 'standards'] as const,
   standards: (cid: string) => ['company', cid, 'standards', 'list'] as const,
   commandFeed: (cid: string) => ['company', cid, 'command-center', 'feed'] as const,
+  // M15 agent cards and purchasing. Everything company scoped lives under ['company', cid, ...].
+  walletAll: (cid: string) => ['company', cid, 'wallet'] as const,
+  wallet: (cid: string) => ['company', cid, 'wallet', 'overview'] as const,
+  walletProviders: (cid: string) => ['company', cid, 'wallet', 'providers'] as const,
+  walletCards: (cid: string) => ['company', cid, 'wallet', 'cards'] as const,
+  cardTransactions: (cid: string) => ['company', cid, 'wallet', 'transactions'] as const,
+  accountFunding: (cid: string, accountId: string) => ['company', cid, 'wallet', 'funding', accountId] as const,
+  purchasesAll: (cid: string) => ['company', cid, 'purchases'] as const,
+  purchaseList: (cid: string, status: string = 'all') => ['company', cid, 'purchases', 'list', status] as const,
+  purchaseForTask: (cid: string, taskId: string) => ['company', cid, 'purchases', 'task', taskId] as const,
+  purchase: (cid: string, id: string) => ['company', cid, 'purchases', 'detail', id] as const,
+  subscriptions: (cid: string) => ['company', cid, 'subscriptions'] as const,
   // The emergency stop is global (all companies).
   systemStatus: ['system', 'status'] as const,
   // The update check is installation-wide (owner only).

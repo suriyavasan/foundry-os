@@ -8,7 +8,13 @@ from sqlalchemy.orm import Session
 from app.core.errors import NotFound, ValidationFailed
 from app.core.principal import CompanyContext, require_human_admin
 from app.core.time import utcnow
-from app.models.policy import DEFAULT_HUMAN_APPROVAL_KINDS, CompanyPolicy
+from app.models.policy import (
+    DEFAULT_HUMAN_APPROVAL_KINDS,
+    MAX_PURCHASE_AGENT_AUTO_MONTHLY_MICROS,
+    MAX_PURCHASE_AUTO_APPROVE_MICROS,
+    MAX_PURCHASE_COFOUNDER_LIMIT_MICROS,
+    CompanyPolicy,
+)
 from app.models.provider import ModelProvider
 from app.schemas.policy import PolicyUpdate
 from app.services import audit, events
@@ -59,7 +65,28 @@ UPDATABLE = (
     "initiative_enabled",
     "initiative_interval_seconds",
     "project_auto_complete",
+    # M15 purchasing (human-only; the ceilings are checked in ``_check_purchasing``)
+    "purchasing_enabled",
+    "purchase_auto_approve_micros",
+    "purchase_agent_auto_monthly_micros",
+    "purchase_cofounder_limit_micros",
+    "purchase_cofounder_monthly_micros",
+    "purchase_monthly_budget_micros",
+    "purchase_recurring_requires_human",
+    "purchase_new_vendor_requires_human",
+    "purchase_tolerance_bps",
+    "purchase_tolerance_min_micros",
+    "purchase_card_ttl_hours",
+    "purchase_checkout_member_id",
+    "subscription_renewal_alert_days",
 )
+PURCHASE_FIELDS = frozenset(f for f in UPDATABLE if f.startswith(("purchase", "subscription_")))
+# What an AI may approve is capped in code, whatever the form sends (docs/specs/m15, section 5).
+_PURCHASE_CEILINGS = {
+    "purchase_auto_approve_micros": MAX_PURCHASE_AUTO_APPROVE_MICROS,
+    "purchase_agent_auto_monthly_micros": MAX_PURCHASE_AGENT_AUTO_MONTHLY_MICROS,
+    "purchase_cofounder_limit_micros": MAX_PURCHASE_COFOUNDER_LIMIT_MICROS,
+}
 _BUDGET_FIELDS = {"daily_budget_micros", "monthly_budget_micros", "default_run_reservation_micros"}
 # Changing these re-evaluates tasks the dispatcher parked behind the paid-model approval.
 _ROUTING_FIELDS = {"model_routing", "allow_paid_fallback", "auto_spend_limit_micros"}
@@ -137,6 +164,27 @@ def _check_slots(current: CompanyPolicy, data: PolicyUpdate) -> None:
         )
 
 
+def _check_purchasing(
+    db: Session, company_id: str, current: CompanyPolicy, data: PolicyUpdate
+) -> None:
+    """Ceilings on what an AI may approve (the schema checks them too; the service is the rule) and
+    a checkout person who really is an active, assignable member of this company."""
+    given = data.model_fields_set
+    for field, ceiling in _PURCHASE_CEILINGS.items():
+        value = getattr(data, field) if field in given else None
+        if value is not None and value > ceiling:
+            raise ValidationFailed(
+                f"{field} cannot be above {ceiling} micro-USD (a code ceiling on what an AI may "
+                "approve); the Founder can still approve any purchase by hand",
+                details=[{"loc": ["body", field], "msg": f"must be at most {ceiling}"}],
+            )
+    member_id = data.purchase_checkout_member_id if "purchase_checkout_member_id" in given else None
+    if member_id:
+        from app.services import org  # local: org -> policy
+
+        org.get_assignable_member(db, company_id, member_id)  # 404 / 422 / 409
+
+
 def create_default_policy(db: Session, company_id: str) -> CompanyPolicy:
     policy = CompanyPolicy(
         company_id=company_id, human_approval_required_for=list(DEFAULT_HUMAN_APPROVAL_KINDS)
@@ -167,6 +215,7 @@ def update_policy(db: Session, ctx: CompanyContext, data: PolicyUpdate) -> Compa
     _check_default_model(db, ctx.company_id, policy, data)
     _check_work_model(db, ctx.company_id, policy, data)
     _check_slots(policy, data)
+    _check_purchasing(db, ctx.company_id, policy, data)
     changed: list[str] = []
     for field in UPDATABLE:
         if field not in data.model_fields_set:
@@ -190,6 +239,18 @@ def update_policy(db: Session, ctx: CompanyContext, data: PolicyUpdate) -> Compa
             data={"changed": changed},
         )
         events.emit(db, ctx.company_id, "policy.updated", {"changed": changed})
+        bought = sorted(PURCHASE_FIELDS & set(changed))
+        if bought:  # its own line in the trail: who loosened or tightened what agents may buy
+            audit.record(
+                db,
+                company_id=ctx.company_id,
+                principal=ctx.principal,
+                action="purchase_policy.updated",
+                target_type="policy",
+                target_id=policy.id,
+                summary=f"Updated the purchasing policy: {', '.join(bought)}",
+                data={"changed": bought, "values": {f: getattr(policy, f) for f in bought}},
+            )
         from app.services import tasks  # local import: tasks depends on policy
 
         if _BUDGET_FIELDS & set(changed):

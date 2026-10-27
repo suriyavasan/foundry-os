@@ -401,3 +401,33 @@ def test_the_identity_prefix_is_stable_across_runs(raw, tmp_path, agent):
     import re
 
     assert not re.search(r"\b20\d\d-\d\d-\d\d\b|\d\d:\d\d:\d\d", first)  # no date or clock in the prefix
+
+
+# ------------------------------------------------------------------ M15 purchasing paragraph
+
+
+@pytest.mark.parametrize("agent", [
+    {"kind": "specialist", "role": "specialist"}, {"kind": "lead", "role": "lead"},
+    {"kind": "specialist", "role_family": "hr"}, {"kind": "worker", "role": "manager"},
+])
+def test_working_roles_get_the_purchasing_paragraph_without_card_handling(raw, agent):
+    raw["agent"].update(agent)
+    ident = build_identity_prompt(parse_spec(raw))
+    assert "company_request_purchase" in ident
+    assert "Never ask for, type, store or repeat card numbers" in ident
+    assert "The human completes the checkout" in ident
+    assert len(ident) < 6500
+
+
+def test_the_cofounder_gets_the_review_paragraph_only_when_it_has_the_tool(raw):
+    raw["agent"].update({"kind": "founder", "role": "founder"})
+    assert "BUYING THINGS" not in build_identity_prompt(parse_spec(raw))  # no company_tools given: founder default
+    raw["company_tools"] = ["company_get_state", "company_review_subscription"]
+    ident = build_identity_prompt(parse_spec(raw))
+    assert "company_review_subscription" in ident and "Never ask for, type, store or repeat card numbers" in ident
+
+
+def test_no_purchasing_paragraph_when_the_tools_are_not_granted(raw):
+    raw["agent"].update({"kind": "specialist", "role": "specialist"})
+    raw["company_tools"] = ["company_get_context", "company_complete_task"]
+    assert "BUYING THINGS" not in build_identity_prompt(parse_spec(raw))
