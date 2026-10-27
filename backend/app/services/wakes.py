@@ -16,6 +16,7 @@ requests into one ``planning`` task:
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from datetime import datetime, timedelta
 
@@ -25,7 +26,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.principal import CompanyContext
 from app.core.time import utcnow
 from app.models.agent import Agent
-from app.models.autonomy import Alert, FounderNote, WakeRequest
+from app.models.autonomy import Alert, AutonomyIntervention, FounderNote, WakeRequest
 from app.models.company import Company
 from app.models.enums import (
     TERMINAL_TASK_STATUSES,
@@ -40,7 +41,7 @@ from app.models.enums import (
     TaskStatus,
 )
 from app.models.governance import Approval
-from app.models.work import Goal, Task
+from app.models.work import Goal, Project, Task
 from app.schemas.work import TaskCreate
 from app.services import agent_roles, audit, events, policy
 
@@ -73,6 +74,13 @@ TRIGGER_LABELS = {
     "email": "new e-mail",
     "command": "Command Center input",
     "reflection": "reaction to a reflection",
+    # M12
+    "initiative": "initiative (idle company)",
+    "stall": "stalled work",
+    "goal_review": "goal review",
+    "retry": "retried wake",
+    "budget": "budget block",
+    "blocked": "blocked task",
 }
 
 
@@ -155,6 +163,7 @@ def wake_founder(
     ref_id: str | None = None,
     delay_seconds: int = EVENT_DELAY_SECONDS,
     actor_agent_id: str | None = None,
+    now: datetime | None = None,
 ) -> WakeRequest | None:
     """Wake the AI Co-founder - unless the founder itself caused the event (no self-wake loops)."""
     founder = active_founder(db, company_id)
@@ -169,6 +178,7 @@ def wake_founder(
         ref_type=ref_type,
         ref_id=ref_id,
         delay_seconds=delay_seconds,
+        now=now,
     )
 
 
@@ -183,6 +193,7 @@ def wake_agent(
     ref_id: str | None = None,
     actor_agent_id: str | None = None,
     delay_seconds: int = EVENT_DELAY_SECONDS,
+    now: datetime | None = None,
 ) -> WakeRequest | None:
     if not agent_id or agent_id == actor_agent_id:
         return None
@@ -195,6 +206,7 @@ def wake_agent(
         ref_type=ref_type,
         ref_id=ref_id,
         delay_seconds=delay_seconds,
+        now=now,
     )
 
 
@@ -247,29 +259,173 @@ def planning_allowed(db: Session, company_id: str, agent_id: str, now: datetime)
     )
 
 
-def has_work(db: Session, company_id: str) -> bool:
-    """Is there anything an idle planning schedule (heartbeat, standup, ...) should look at?"""
-    checks = (
-        select(func.count(FounderNote.id)).where(
-            FounderNote.company_id == company_id, FounderNote.status == NoteStatus.NEW
-        ),
-        select(func.count(Goal.id)).where(
-            Goal.company_id == company_id,
-            Goal.status.in_([GoalStatus.PROPOSED, GoalStatus.ACTIVE]),
-        ),
-        select(func.count(Task.id)).where(
-            Task.company_id == company_id,
-            Task.status.in_(OPEN_STATUSES),
-            Task.kind.in_([TaskKind.WORK, TaskKind.HIRING, TaskKind.REVIEW]),
-        ),
-        select(func.count(Approval.id)).where(
-            Approval.company_id == company_id, Approval.status == ApprovalStatus.PENDING
-        ),
-        select(func.count(Alert.id)).where(
-            Alert.company_id == company_id, Alert.status == AlertStatus.OPEN
+FAILED_ATTENTION_WINDOW = timedelta(days=3)
+MAX_ATTENTION_ITEMS = 200
+HEARTBEAT_FINGERPRINT_KIND = "heartbeat_fingerprint"
+WORK_KIND_VALUES = [TaskKind.WORK.value, TaskKind.HIRING.value, TaskKind.REVIEW.value]
+
+
+def attention_items(db: Session, company_id: str, now: datetime | None = None) -> list[str]:
+    """M12: what an idle planning routine (heartbeat) should look at, as sorted ``kind:id`` strings.
+    Work that is merely running, and active goals that have a project, are not in it: they need
+    nobody. New notes, failed (and not yet analysed) or blocked tasks, pending approvals, open
+    alerts, goals without projects and projects without a lead are."""
+    now = now or utcnow()
+    items: list[str] = []
+
+    def add(kind: str, ids) -> None:
+        items.extend(f"{kind}:{i}" for i in ids)
+
+    add(
+        "note",
+        db.scalars(
+            select(FounderNote.id).where(
+                FounderNote.company_id == company_id, FounderNote.status == NoteStatus.NEW
+            )
         ),
     )
-    return any(db.scalar(stmt) for stmt in checks)
+    failed = list(
+        db.scalars(
+            select(Task.id)
+            .where(
+                Task.company_id == company_id,
+                Task.status == TaskStatus.FAILED,
+                Task.kind.in_([TaskKind.WORK.value, TaskKind.HIRING.value]),
+                Task.completed_at >= now - FAILED_ATTENTION_WINDOW,
+            )
+            .order_by(Task.completed_at.desc())
+            .limit(50)
+        )
+    )
+    for task_id in failed:  # a failure whose analysis task was finished has been handled
+        handled = db.scalar(
+            select(Task.id)
+            .where(
+                Task.company_id == company_id,
+                Task.idempotency_key.like(f"failure:{task_id}:%"),
+                Task.status == TaskStatus.DONE,
+            )
+            .limit(1)
+        )
+        if handled is None:
+            items.append(f"failed:{task_id}")
+    add(
+        "blocked",
+        db.scalars(
+            select(Task.id).where(
+                Task.company_id == company_id,
+                Task.status == TaskStatus.BLOCKED,
+                Task.kind.in_(WORK_KIND_VALUES),
+            )
+        ),
+    )
+    add(
+        "approval",
+        db.scalars(
+            select(Approval.id).where(
+                Approval.company_id == company_id, Approval.status == ApprovalStatus.PENDING
+            )
+        ),
+    )
+    add(
+        "alert",
+        db.scalars(
+            select(Alert.id).where(Alert.company_id == company_id, Alert.status == AlertStatus.OPEN)
+        ),
+    )
+    with_project = select(Project.goal_id).where(
+        Project.company_id == company_id,
+        Project.goal_id.is_not(None),
+        Project.status != "cancelled",
+    )
+    add(
+        "goal",
+        db.scalars(
+            select(Goal.id).where(
+                Goal.company_id == company_id,
+                Goal.status.in_([GoalStatus.PROPOSED, GoalStatus.ACTIVE]),
+                Goal.id.notin_(with_project),
+            )
+        ),
+    )
+    add(
+        "project",
+        db.scalars(
+            select(Project.id).where(
+                Project.company_id == company_id,
+                Project.status.in_(["planned", "active"]),
+                Project.lead_agent_id.is_(None),
+            )
+        ),
+    )
+    return sorted(items)[:MAX_ATTENTION_ITEMS]
+
+
+def needs_attention(db: Session, company_id: str, now: datetime | None = None) -> bool:
+    """Is there anything an idle planning schedule (heartbeat, standup, ...) should look at?"""
+    return bool(attention_items(db, company_id, now))
+
+
+def has_open_work(db: Session, company_id: str) -> bool:
+    return bool(
+        db.scalar(
+            select(func.count(Task.id)).where(
+                Task.company_id == company_id,
+                Task.status.in_(OPEN_STATUSES),
+                Task.kind.in_(WORK_KIND_VALUES),
+            )
+        )
+    )
+
+
+def attention_fingerprint(items: list[str]) -> str:
+    return hashlib.sha256("\n".join(items).encode()).hexdigest()[:16]
+
+
+def _fingerprint_row(db: Session, company_id: str) -> AutonomyIntervention | None:
+    return db.scalar(
+        select(AutonomyIntervention).where(
+            AutonomyIntervention.company_id == company_id,
+            AutonomyIntervention.kind == HEARTBEAT_FINGERPRINT_KIND,
+            AutonomyIntervention.subject_id == company_id,
+        )
+    )
+
+
+def heartbeat_skip_reason(db: Session, company_id: str, now: datetime) -> str | None:
+    """Why the heartbeat creates no planning run now: nothing needs attention, or the attention
+    items are exactly those of the last heartbeat (it already looked at them). No commit."""
+    items = attention_items(db, company_id, now)
+    row = _fingerprint_row(db, company_id)
+    if not items:
+        if row is not None:  # a recurring identical set must fire again
+            db.delete(row)
+        return "nothing to review"
+    if row is not None and (row.data or {}).get("fingerprint") == attention_fingerprint(items):
+        return "nothing new since the last heartbeat"
+    return None
+
+
+def record_heartbeat(db: Session, company_id: str, now: datetime) -> None:
+    """The heartbeat fired: remember what it was asked to look at. No commit."""
+    fingerprint = attention_fingerprint(attention_items(db, company_id, now))
+    row = _fingerprint_row(db, company_id)
+    if row is None:
+        row = AutonomyIntervention(
+            company_id=company_id,
+            kind=HEARTBEAT_FINGERPRINT_KIND,
+            subject_type="company",
+            subject_id=company_id,
+            count=0,
+            last_at=now,
+            data={"fingerprint": fingerprint},
+            created_at=now,
+        )
+        db.add(row)
+    else:
+        row.count += 1
+        row.last_at = now
+        row.data = {"fingerprint": fingerprint}
 
 
 # ---------------------------------------------------------------- materialization

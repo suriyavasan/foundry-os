@@ -40,6 +40,7 @@ WORKER_TOOLS = (
     "company_propose_memory",
 )
 MANAGER_EXTRA = (
+    "company_plan_project",
     "company_review_task",
     "company_record_decision",
     "company_request_approval",
@@ -55,6 +56,7 @@ LEAD_TOOLS = (
     "company_complete_task",
     "company_update_task",
     "company_create_task",
+    "company_plan_project",
     "company_review_task",
     "company_record_decision",
     "company_find_colleagues",

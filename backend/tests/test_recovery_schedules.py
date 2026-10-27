@@ -71,7 +71,14 @@ def test_stale_running_run_is_failed_and_the_task_retried(
         assert res.status == "released"  # not charged for work we cannot account for
     recovered = get_task(client, cid, task["id"])
     assert recovered["status"] == "ready" and recovered["error"]["code"] == "worker_lost"
-    assert recovered["attempt_count"] == 1
+    # a lost worker is transient (M12): the attempt is refunded and the retry waits 30 s
+    assert recovered["attempt_count"] == 0
+    with app.state.session_factory() as db:
+        row = db.get(Task, task["id"])
+        assert row.transient_failures == 1
+        assert row.next_attempt_at == clock() + timedelta(seconds=30)
+    assert scheduler.tick().dispatch.queued_run_ids == []  # not before the backoff has passed
+    clock.advance(30)
     # the retry goes through the normal path and completes
     settle(scheduler, worker)
     assert get_task(client, cid, task["id"])["status"] == "done"
@@ -359,6 +366,7 @@ def test_cron_schedule_respects_timezone(app, client, company, scheduler, clock)
     from datetime import UTC, datetime
 
     cid = company["id"]
+    client.patch(api(cid, "/policy"), json={"initiative_enabled": False})  # no idle-company wake
     agent = new_agent(client, cid, runtime="unassigned")
     clock.set(datetime(2027, 1, 12, 13, 30, tzinfo=UTC))  # 08:30 in New York (EST)
     _make_schedule(

@@ -28,6 +28,7 @@ TOOLS = [
     "company_escalate", "company_request_help", "company_propose_memory", "company_verify_memory",
     "company_decide_peer_review", "company_provider_action",
     "company_post_reflection", "company_reply_reflection", "company_revise_reflection",
+    "company_plan_project",
 ]
 
 
@@ -52,7 +53,7 @@ def test_all_tools_registered_in_company_toolset():
 
     for name in TOOLS:
         assert registry.get_toolset_for_tool(name) == "company"
-    assert len(TOOLS) == 35
+    assert len(TOOLS) == 36
     assert sorted(TOOLS) == sorted(COMPANY_TOOL_NAMES)  # spec validation and registry cannot drift
 
 
@@ -597,3 +598,83 @@ def test_reflection_tools_validate_before_calling(configured, api: StubApi):
     assert call("company_reply_reflection", reflection_id="r1")["error"] == "invalid_arguments"
     assert call("company_revise_reflection", reflection_id="r1")["error"] == "invalid_arguments"
     assert api.requests == []
+
+
+# ------------------------------------------------------------------ M12: company_plan_project
+
+
+def _plan(**kw):
+    return call("company_plan_project", project_id="p-1", **kw)
+
+
+def test_plan_project_creates_tasks_in_dependency_order_and_resolves_keys(configured, api: StubApi):
+    out = _plan(tasks=[
+        {"key": "ship", "title": "Ship it", "depends_on_keys": ["build", "docs"], "acceptance_criteria": "live"},
+        {"key": "build", "title": "Build the thing", "description": "code", "priority": "high"},
+        {"key": "docs", "title": "Write docs", "depends_on_keys": ["build"]},
+    ])
+    assert "error" not in out, out
+    assert [c["key"] for c in out["created"]] == ["build", "docs", "ship"]  # dependencies first
+    ids = {c["key"]: c["id"] for c in out["created"]}
+    bodies = {r.body["title"]: r.body for r in api.calls("POST", "/tasks")}
+    assert bodies["Ship it"]["depends_on"] == [ids["build"], ids["docs"]]
+    assert bodies["Write docs"]["depends_on"] == [ids["build"]]
+    assert "depends_on" not in bodies["Build the thing"]
+    assert all(b["project_id"] == "p-1" and b["idempotency_key"].startswith("run-1:") for b in bodies.values())
+    assert bodies["Build the thing"]["priority"] == "high"
+    # the same title gets the same key as company_create_task would use (a retried call is idempotent)
+    call("company_create_task", title="build the thing")
+    assert api.calls("POST", "/tasks")[-1].body["idempotency_key"] == bodies["Build the thing"]["idempotency_key"]
+
+
+def test_plan_project_stops_at_the_first_limit_error_and_returns_what_it_created(configured, api: StubApi):
+    seen = []
+
+    def forced_limit(rec):
+        if rec.method == "POST" and rec.path.endswith("/tasks"):
+            seen.append(rec.body["title"])
+            if len(seen) == 3:  # the hook runs before the answer: this very request gets the error
+                api.forced["/tasks"] = (409, {"error": {"code": "limit_exceeded", "message": "project is full",
+                                                         "details": {"limit": "max_work_tasks_per_project"}}})
+
+    api.on_request = forced_limit
+    out = _plan(tasks=[{"key": f"t{i}", "title": f"Task {i}"} for i in range(1, 7)])
+    assert out["error"] == "limit_exceeded" and "project is full" in out["message"]
+    assert [c["key"] for c in out["created"]] == ["t1", "t2"]
+    assert out["stopped_at"] == "t3"
+    assert [f["key"] for f in out["failed"]] == ["t4", "t5", "t6"]
+    assert all(f["error"] == "not_attempted" for f in out["failed"])
+    assert len(api.calls("POST", "/tasks")) == 3  # nothing was sent after the limit error
+
+
+def test_plan_project_skips_dependents_of_a_task_that_failed_but_carries_on(configured, api: StubApi):
+    api.forced["/tasks"] = (422, {"error": {"code": "validation_failed", "message": "bad assignee", "details": None}})
+    out = _plan(tasks=[{"key": "a", "title": "A"}, {"key": "b", "title": "B", "depends_on_keys": ["a"]}])
+    assert out["created"] == [] and out["error"] == "validation_failed"
+    assert [(f["key"], f["error"]) for f in out["failed"]] == [("a", "validation_failed"), ("b", "dependency_not_created")]
+    assert len(api.calls("POST", "/tasks")) == 1
+
+
+def test_plan_project_validates_before_creating_anything(configured, api: StubApi):
+    too_many = [{"key": f"t{i}", "title": f"T{i}"} for i in range(9)]
+    assert _plan(tasks=too_many)["error"] == "invalid_arguments"
+    assert _plan(tasks=[])["error"] == "invalid_arguments"
+    assert _plan(tasks=[{"key": "a", "title": "A"}, {"key": "a", "title": "B"}])["error"] == "invalid_arguments"
+    assert _plan(tasks=[{"key": "a", "title": "A", "depends_on_keys": ["zzz"]}])["error"] == "invalid_arguments"
+    cycle = [{"key": "a", "title": "A", "depends_on_keys": ["b"]}, {"key": "b", "title": "B", "depends_on_keys": ["a"]}]
+    assert "cycle" in _plan(tasks=cycle)["message"]
+    assert _plan(tasks=[{"key": "a"}])["error"] == "invalid_arguments"
+    assert call("company_plan_project", tasks=[{"title": "x"}])["error"] == "invalid_arguments"  # no project
+    assert api.requests == []
+
+
+def test_plan_project_accepts_the_stringified_list_hermes_coercion_produces(configured, api: StubApi):
+    out = _plan(tasks=json.dumps([{"key": "a", "title": "A"}, {"key": "b", "title": "B", "depends_on_keys": "a"}]))
+    assert [c["key"] for c in out["created"]] == ["a", "b"]
+    assert api.calls("POST", "/tasks")[1].body["depends_on"] == [out["created"][0]["id"]]
+
+
+def test_plan_project_a_parked_task_is_reported_not_counted_as_created(configured, api: StubApi):
+    api.forced["/tasks"] = (202, {"status": "pending_approval", "approval_id": "ap-1"})
+    out = _plan(tasks=[{"key": "a", "title": "A"}])
+    assert out["created"] == [] and out["failed"][0]["error"] == "pending_approval"

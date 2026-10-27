@@ -103,6 +103,8 @@ class AiSetupStatus(ApiModel):
     ready: bool
     blocking_reason: BlockingReasonLiteral | None = None
     management: AiSetupManagement
+    # M12: the optional separate model for work runs (null: work runs use the routing mode).
+    work_model: AiSetupManagement | None = None
     work_mode: WorkModeLiteral
     work_runtime: WorkRuntimeLiteral | None = None
     clis: list[CliRuntimeStatus]
@@ -113,3 +115,7 @@ class AiSetupUpdate(RequestModel):
     management_model: str = Field(min_length=1, max_length=160)
     work_mode: WorkModeLiteral = "api"
     work_runtime: WorkRuntimeLiteral | None = None
+    # M12: optional work model. Omitted: unchanged. Both null: cleared. Otherwise both are set and
+    # must pass the same provider test as the management model.
+    work_model_provider_id: str | None = Field(default=None, min_length=1, max_length=36)
+    work_model_name: str | None = Field(default=None, min_length=1, max_length=160)

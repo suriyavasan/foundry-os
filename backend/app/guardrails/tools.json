@@ -36,6 +36,7 @@
     "company_get_context": {"action": "context.read"},
     "company_get_state": {"action": "state.read"},
     "company_create_task": {"action": "task.create"},
+    "company_plan_project": {"action": "task.create"},
     "company_update_task": {"action": "task.update"},
     "company_complete_task": {"action": "task.complete"},
     "company_review_task": {"action": "task.review"},

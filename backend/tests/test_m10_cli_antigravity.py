@@ -381,3 +381,25 @@ def test_work_mode_accepts_cli_antigravity_once_it_is_installed_and_configured(w
     r = world.client.put(api(cid, "/ai-setup"), json=body)
     assert r.status_code == 200, r.text
     assert r.json()["work_runtime"] == "cli:antigravity"
+
+
+def test_a_successful_run_keeps_its_files_but_not_the_cli_configuration(world):
+    result, _, _ = run(
+        world,
+        write_files=[
+            {"path": "report.md", "content": "# Report"},
+            {"path": ".agents/note.txt", "content": "cli state"},
+        ],
+    )
+    assert result.status == "succeeded"
+    assert [a.title for a in result.artifacts] == ["report.md"]
+
+
+def test_the_prompt_names_the_project_repository(world):
+    install_fake_cli(world.bin_dir, BINARY, ANTIGRAVITY_OK)
+    configure(world)
+    world.set_task_status("done")
+    request = world.request(workspace_kind="project", workspace_files=["README.md"])
+    adapter_of(world).execute(request, Sink(), CancelToken())
+    prompt = next(a for a in record_of(world.bin_dir, BINARY)["argv"] if a.startswith("You are"))
+    assert "PROJECT REPOSITORY" in prompt and "README.md" in prompt

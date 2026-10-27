@@ -9,7 +9,10 @@ Schedule/ScheduleFire machinery. Created with the company (and by migration 0005
 * operations: ``failed-run-triage`` (daily), only once an operations agent exists.
 
 Schedules marked ``skip_when_idle`` do not fire (and cost no model run) while the company has
-nothing to review. The schedules are ordinary rows: the Founder can pause or edit them.
+nothing to review; the heartbeat additionally waits while its attention items are unchanged since the
+last heartbeat (M12). Templates with ``"digest": true`` get the platform's deterministic digest
+(``services/digest.py``) appended when they fire; the standup and the weekly review then take up to
+five actions on the stuck items it lists. The schedules are ordinary rows: the Founder can pause or edit them.
 """
 
 from __future__ import annotations
@@ -51,8 +54,8 @@ COFOUNDER_SCHEDULES: list[dict[str, Any]] = [
             "title": "Heartbeat: review the company",
             "description": STATE_HINT
             + "Handle what needs you: unprocessed Founder's notes, failed or blocked work, "
-            "pending approvals, alerts, projects without a lead. If nothing needs action, "
-            "complete this task and say so.",
+            "pending approvals, alerts, goals without a project, projects without a lead. "
+            "If nothing needs action, complete this task and say so.",
             "kind": "planning",
             "skip_when_idle": True,
         },
@@ -65,9 +68,12 @@ COFOUNDER_SCHEDULES: list[dict[str, Any]] = [
         "template": {
             "title": "Daily standup",
             "description": STATE_HINT
-            + "Write a short standup (progress, blockers, next steps) with "
+            + "The platform appended a digest of the company below. Take up to 5 actions on the "
+            "stuck items it lists (unblock, reassign, retry, escalate or cancel; use the ids), "
+            "then write a short standup (progress, blockers, what you did, next steps) with "
             "company_submit_artifact (title 'Standup', kind report), then complete this task.",
             "skip_when_idle": True,
+            "digest": True,
         },
     },
     {
@@ -78,9 +84,12 @@ COFOUNDER_SCHEDULES: list[dict[str, Any]] = [
         "template": {
             "title": "Weekly strategy review",
             "description": STATE_HINT
-            + "Compare goals with progress. Adjust goals and projects, fix ownership, plan hires, "
-            "record the important decisions with company_record_decision, then complete this task.",
+            + "The platform appended a digest of the company below. Compare goals with progress. "
+            "Take up to 5 actions on the stuck items it lists, close goals that are achieved or "
+            "abandoned, adjust goals and projects, fix ownership, plan hires, record the important "
+            "decisions with company_record_decision, then complete this task.",
             "skip_when_idle": True,
+            "digest": True,
         },
     },
     {

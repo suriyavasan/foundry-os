@@ -9,9 +9,9 @@ from sqlalchemy import select
 
 from app.engine.context import EngineContext
 from app.models.company import Company
-from app.models.enums import JobStatus, RunStatus
+from app.models.enums import CompanyStatus, JobStatus, RunStatus
 from app.models.run import Job, TaskRun
-from app.services import jobs, runs, tasks
+from app.services import jobs, runs, safety, tasks
 
 STALE_HEARTBEAT_SECONDS = 30
 RECOVERY_INTERVAL_SECONDS = 30
@@ -23,6 +23,7 @@ class RecoveryReport:
     dead_job_run_ids: list[str] = field(default_factory=list)
     requeued_jobs: int = 0
     budget_released_tasks: int = 0
+    auto_resumed_company_ids: list[str] = field(default_factory=list)
 
 
 def recover(ctx: EngineContext, now: datetime | None = None) -> RecoveryReport:
@@ -80,4 +81,15 @@ def recover(ctx: EngineContext, now: datetime | None = None) -> RecoveryReport:
                 db, company_id, None, due_before=now
             )
         db.commit()
+
+    # Companies the circuit breaker paused come back after their cooldown (never a human's pause).
+    with ctx.session_factory() as db:
+        paused = list(db.scalars(select(Company.id).where(Company.status == CompanyStatus.PAUSED)))
+    for company_id in paused:
+        with ctx.session_factory() as db:
+            if safety.maybe_auto_resume(db, company_id, now):
+                db.commit()
+                report.auto_resumed_company_ids.append(company_id)
+            else:
+                db.rollback()
     return report

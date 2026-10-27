@@ -24,6 +24,8 @@ class TaskTemplate(BaseModel):
     # ``project_id`` the check is scoped to that project's open work.
     skip_when_idle: bool | None = None
     project_id: str | None = Field(default=None, max_length=36)
+    # M12: append the bounded company digest (stuck items, recent outcomes) to the task brief.
+    digest: bool | None = None
 
 
 def check_cron(value: str) -> str:

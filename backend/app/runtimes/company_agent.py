@@ -38,7 +38,7 @@ from app.guardrails import registry as guard_registry
 from app.models.agent import Agent
 from app.models.company import Company
 from app.models.run import TaskRun
-from app.models.work import Task
+from app.models.work import Project, Task
 from app.runtimes.base import (
     CancelToken,
     Capability,
@@ -74,6 +74,7 @@ from app.storage.local import LocalFileStorage
 logger = logging.getLogger("company_os.runtime.company_agent")
 
 PROTOCOL = 1
+MAX_WORKSPACE_FILES = 60
 # Events the runtime may emit. The server's own `progress` events (POST /progress) are numbered
 # from SERVER_SEQ_FLOOR; a launcher seq at or above it is dropped so the two can never collide.
 SERVER_SEQ_FLOOR = 1_000_000
@@ -128,6 +129,8 @@ RUNTIME_CONFIG_KEYS = {
     "company_tools": "list: restrict the role's company tools further",
     # M10: stay on the company agent even when the company's work mode is "hybrid" (owner only)
     "pin_runtime": "true: never route this agent's work tasks to a coding CLI",
+    # M12: keep this agent on its own model instead of the company's management/work model
+    "pin_model": "true: keep this agent on its own model (owner only)",
 }
 
 
@@ -226,7 +229,7 @@ class CompanyAgentAdapter(RuntimeAdapter):
                 isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= 500
             ):
                 issues.append(ConfigIssue(key, "must be an integer between 1 and 500"))
-            elif key == "pin_runtime" and not isinstance(value, bool):
+            elif key in ("pin_runtime", "pin_model") and not isinstance(value, bool):
                 issues.append(ConfigIssue(key, "must be true or false"))
             elif key in ("toolsets", "company_tools") and not (
                 isinstance(value, list) and all(isinstance(v, str) for v in value)
@@ -365,6 +368,11 @@ class CompanyAgentAdapter(RuntimeAdapter):
                 memory_service.relevant_for(db, company.id, agent)
             )
             task_row = db.get(Task, request.task.id)
+            project_name = None
+            if task_row is not None and task_row.project_id:
+                project_row = db.get(Project, task_row.project_id)
+                if project_row is not None and project_row.company_id == company.id:
+                    project_name = project_row.name
             review_target = (
                 reviews.review_target(db, LocalFileStorage(settings.artifacts_dir), task_row)
                 if task_row is not None and task_row.kind == "review"
@@ -464,6 +472,13 @@ class CompanyAgentAdapter(RuntimeAdapter):
                     if sandbox == "docker"
                     else {"backend": "none"}
                 ),
+            }
+        if request.workspace_kind in ("project", "review"):
+            # M12: the shared project repository. A plain per-run directory sends nothing.
+            spec["workspace"] = {
+                "kind": request.workspace_kind,
+                "project_name": project_name,
+                "files": list(request.workspace_files)[:MAX_WORKSPACE_FILES],
             }
         # The local placeholder key is a public constant, not a secret (scrubbing "ollama" would
         # mangle ordinary text).

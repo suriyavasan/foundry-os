@@ -156,3 +156,30 @@ def test_effective_permissions_show_tiers_tools_and_rate_limits(app, client, com
         == 200
     )
     assert client.get(api(cid, "/agents/nope/effective-permissions")).status_code == 404
+
+
+def test_company_plan_project_has_the_tier_of_company_create_task_and_goes_to_planners_only(
+    app, client, company
+):
+    reg = registry.tool_registry()["company_tools"]
+    assert reg["company_plan_project"]["action"] == reg["company_create_task"]["action"]
+    assert registry.tier_of_tool("company_plan_project") == registry.tier_of_tool(
+        "company_create_task"
+    )
+    assert "company_plan_project" in agent_toolkit.LEAD_TOOLS
+    assert "company_plan_project" in agent_toolkit.MANAGER_EXTRA
+    assert "company_plan_project" not in agent_toolkit.WORKER_TOOLS
+    assert (
+        "company_plan_project" not in agent_toolkit.FOUNDER_TOOLS
+    )  # the lead plans, never the Co-founder
+    assert "company_plan_project" not in agent_toolkit.HR_TOOLS
+    # and the role selection really hands it out
+    from app.models.agent import Agent
+
+    cid = company["id"]
+    team = make_team(client, cid)
+    with app.state.session_factory() as db:
+        lead = db.get(Agent, team.manager["id"])
+        worker = db.get(Agent, team.worker["id"])
+        assert "company_plan_project" in agent_toolkit.company_tools_for(db, lead)
+        assert "company_plan_project" not in agent_toolkit.company_tools_for(db, worker)

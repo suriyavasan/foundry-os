@@ -228,6 +228,7 @@ def main():
                 "limits": spec["limits"],
                 "hermes_home": spec["hermes_home"],
                 "workspace_dir": spec["workspace_dir"],
+                "workspace": spec.get("workspace"),
                 "skills": sorted(os.listdir(os.path.join(spec["hermes_home"], "skills")))
                 if os.path.isdir(os.path.join(spec["hermes_home"], "skills"))
                 else [],

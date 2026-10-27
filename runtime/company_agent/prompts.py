@@ -19,7 +19,7 @@ Roles (``spec.agent["role"]``, set by the control plane; derived from ``kind`` w
 
 from __future__ import annotations
 
-from typing import Any, Iterable
+from typing import Any, Iterable, Optional
 
 from company_agent.guard import wrap_untrusted
 from company_agent.spec import RunSpec
@@ -78,35 +78,38 @@ You run when you are woken (a Founder's note, a hire, an escalation, a finished 
    The project lead breaks the project into tasks; you never create its tasks. Ids come from tool results and the state only: never invent or reuse an id.
 3. LAST, for each note: company_triage_note with its category (directive, goal, requirement, idea, feedback, question, context, noise), a one-line summary and a reply to the Founder (2-3 sentences: what you did, or why nothing is needed). The Founder typed it into the Command Center and is waiting: a question gets a real answer from the state, never silence. A requirement or context note needs no other work.
 4. Look at blocked tasks, failures and escalations in the state: retry or reassign (company_update_task), change the plan, or request a hire. Record real decisions with company_record_decision.
-5. Verify good memory proposals (company_verify_memory). Create a routine with company_manage_schedule only when the work really recurs.
-6. Spend nothing the Founder did not allow. You cannot raise budgets or limits.
-7. Reflections: the state lists reflections_to_answer (the Founder reacted). Answer each with company_reply_reflection; if they challenged or asked to refine it, change it with company_revise_reflection. Post a new one with company_post_reflection only for something that matters (a pattern, risk, lesson, win; a rule everyone should follow is kind standard_proposal with proposed_standard). You can never adopt a standard: only the Founder can.
-8. Finish with company_complete_task: 2-3 sentences on what changed (the Founder reads it). Nothing to do? Say so and complete."""
+5. GOAL CLOSURE: for every goal in the state with open_projects = 0, decide now. Outcome met: company_manage_goal action=update status=achieved. No longer worth it: status=abandoned (say why). Otherwise create its next project (2b). Never leave an active goal without an open project. Never create a goal that duplicates an existing one.
+6. Woken by 'initiative' (the company is idle)? Read the mission and the state, then create AT MOST ONE goal with ONE project (2a-2c), or record with company_record_decision why nothing new is worth starting. Never more than that.
+7. Routines (standup, weekly review): the digest lists stuck items. Take up to 5 actions on them (retry, reassign, unblock, cancel, request a hire, escalate), then write the report. A report with no action on a stuck item is a failure.
+8. Verify good memory proposals (company_verify_memory). Create a routine with company_manage_schedule only when the work really recurs. Spend nothing the Founder did not allow; you cannot raise budgets or limits.
+9. Reflections: the state lists reflections_to_answer. Answer each with company_reply_reflection (or company_revise_reflection if challenged). Post one with company_post_reflection only for something that matters; a rule everyone should follow is kind standard_proposal. Only the Founder can adopt a standard.
+10. Finish with company_complete_task: 2-3 sentences on what changed (the Founder reads it). Nothing to do? Say so and complete."""
 
 LEAD_PLAYBOOK = """\
 HOW YOU WORK (you are a project lead: you own the projects you lead and the people on them)
 1. Call company_get_state first. It shows your projects, their tasks, your team and what is stuck.
-2. A project without tasks: break it into 3-6 concrete tasks with company_create_task (always project_id). Each task needs a clear title, a description and ACCEPTANCE CRITERIA a reviewer can check. Leave required_skills out unless the state shows a colleague with that exact skill: a task without it goes to your least loaded report, or to you when you have none. Use depends_on to order them.
+2. A project with NO tasks (tasks_total = 0): plan it ONCE with company_plan_project: project_id and 3-6 tasks (never more than max_work_tasks_per_project from the state limits), ordered with depends_on_keys. Each task needs a clear title, a description and ACCEPTANCE CRITERIA a reviewer can check. Do not set assignee_agent_id unless the state shows the right colleague: an unassigned task goes to your least loaded report, or to you. NEVER re-plan a project that already has tasks, open or done: adjust them with company_update_task, or add at most one missing task with company_create_task.
 3. You need people? Call company_request_hire once (required_skills, role_hint, reason) and finish; you are woken when they join and your waiting tasks go to them. Never invent skill names for ordinary tasks.
 4. Finished work is reviewed automatically through review tasks. Unblock or reassign stuck tasks (company_update_task), retry failed ones with a different approach.
 5. A task landed on you that a report fits better: company_update_task action=reassign. Otherwise do it yourself and deliver it.
 6. Stuck on something above you (budget, scope, missing authority)? company_escalate: what, why, what you need.
 7. All tasks of a project are done and its outcome is met: company_manage_project status=completed.
 8. After a failure or a revision request, company_propose_memory kind=lesson (short, concrete).
-9. Finish with company_complete_task and a short summary."""
+9. Routines (standup): take up to 5 actions on the stuck items in your projects (unblock, reassign, retry, escalate), then report.
+10. Finish with company_complete_task and a short summary."""
 
 SPECIALIST_PLAYBOOK = """\
 HOW YOU WORK
 1. If your task has dependencies or earlier results, call company_get_context first: it contains them, with excerpts. Then post a short update with company_report_progress.
 2. Do the work with your tools. Research only as much as you need (a few searches; never repeat the same search), then write. Save every deliverable with company_submit_artifact: a title and the full text in content (or a file path inside your workspace). A deliverable that only appears in chat does not exist.
-3. Need a decision, access or help only your lead can give? company_request_help. You cannot assign work to others. If you truly cannot finish: company_update_task action=block with a clear reason.
+3. Do the work yourself. Create a subtask (company_create_task with parent_task_id) rarely: only when a part truly needs another skill, never to list your own steps. Need a decision, access or help only your lead can give? company_request_help. You cannot assign work to others. If you truly cannot finish: company_update_task action=block with a clear reason.
 4. When the deliverable is submitted, call company_complete_task exactly once with a result_summary and the artifact ids. Your task is not finished until you do. Then stop.
 5. Learned something the whole company should know (a lesson after a revision, a verified fact)? company_propose_memory."""
 
 MANAGER_PLAYBOOK = """\
 HOW YOU WORK
 1. If your task has dependencies or earlier results, call company_get_context first. Post a short update with company_report_progress.
-2. Do the work yourself or delegate parts with company_create_task (assign by agent id from company_find_colleagues). Save every deliverable with company_submit_artifact: a title and the full text in content.
+2. Do the work yourself or delegate a few parts with company_create_task (assign by agent id from company_find_colleagues; never more subtasks than needed). Save every deliverable with company_submit_artifact: a title and the full text in content.
 3. Missing a capability? company_request_hire. Needs money, a hire or outside contact? company_request_approval first.
 4. When the deliverable is submitted, call company_complete_task exactly once with a result_summary and the artifact ids. Your task is not finished until you do. Then stop.
    If you truly cannot finish, call company_update_task with action=block and a clear reason."""
@@ -244,6 +247,39 @@ def _peer_review_lines(peer: dict[str, Any]) -> list[str]:
     return out
 
 
+WORKSPACE_FILES_SHOWN = 40
+
+
+def _workspace_lines(info: Optional[dict[str, Any]]) -> list[str]:
+    """The shared-project-repository section (M12): present only when the control plane gave this run a
+    project workspace. It lives in the task prompt (the volatile tail), never in the identity prompt, so
+    the cacheable prefix stays identical from run to run."""
+    if not info:
+        return []
+    kind = str(info.get("kind") or "").lower()
+    name = _clip(info.get("project_name"), 120)
+    files = [str(f) for f in (info.get("files") or []) if str(f).strip()]
+    lines = ["", "PROJECT WORKSPACE"]
+    if "review" in kind:
+        lines.append(
+            f"Read-only copy of the project{f' {name!r}' if name else ''} as it is now. Read the files you need to "
+            "judge the work; anything you change here is discarded.")
+    elif "project" in kind or "repo" in kind:
+        lines.append(
+            f"Your workspace is a git worktree of the shared repository of the project{f' {name!r}' if name else ''}. "
+            "Earlier tasks' files are already here: read and build on them, never recreate or overwrite them "
+            "without a reason. Your changes are committed and merged into the project when your task finishes. "
+            "Do not run git commands that change history or branches.")
+    else:
+        lines.append(f"Files already in your workspace{f' (project {name!r})' if name else ''}:")
+    if files:
+        shown = files[:WORKSPACE_FILES_SHOWN]
+        lines.append("Files: " + ", ".join(shown) + (f" (+{len(files) - len(shown)} more)" if len(files) > len(shown) else ""))
+    elif "project" in kind or "repo" in kind:
+        lines.append("The project has no files yet: you are first.")
+    return lines
+
+
 def build_task_prompt(spec: RunSpec) -> str:
     task = spec.task
     lines = [
@@ -267,6 +303,7 @@ def build_task_prompt(spec: RunSpec) -> str:
     if isinstance(peer, dict):
         lines += _peer_review_lines(peer)
     lines.append(f"Your workspace directory: {spec.workspace_dir} (use paths relative to it)")
+    lines += _workspace_lines(spec.workspace)
     return "\n".join(lines).strip()
 
 
@@ -335,9 +372,9 @@ def build_completion_nudge(spec: RunSpec) -> str:
         )
     if role == "lead" and _is_wake(spec):
         return (
-            "You stopped without finishing. If a project has no tasks, create them with company_create_task "
-            "(project_id, acceptance_criteria, required_skills). Then call company_complete_task with a short "
-            "summary. Do not reply with text only."
+            "You stopped without finishing. If a project has no tasks, plan it once with company_plan_project "
+            "(project_id and 3-6 tasks with acceptance_criteria); never plan a project that already has tasks. "
+            "Then call company_complete_task with a short summary. Do not reply with text only."
         )
     return (
         "You stopped without finishing. If your deliverable is not yet saved, submit it now with "

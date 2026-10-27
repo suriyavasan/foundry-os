@@ -12,6 +12,17 @@
   signal we have; an agent's own paid model wins), else a free one. The owner chose cost to matter
   less here, so there is no approval step; budgets still apply.
 
+Roles and models (M12, ``choose(..., task=...)``). When the dispatcher passes the task:
+
+* a **management run** (the task is not ``work``, or the agent has a management role) always uses
+  the management model (``policy.default_model_*``, chosen in AI setup). ``free_first`` never moves
+  it to a free or local model, and because the owner picked that model it is not a "paid
+  fallback" needing approval (budgets still apply). It is displaced only by an owner pin
+  (``runtime_config.pin_model``) or when the management provider is disabled;
+* a **work run** uses the optional work model (``policy.work_model_*``) when one is set: the
+  owner's consent, like a pin. Without one, the mode above applies;
+* ``task=None`` keeps the pre-M12 behaviour exactly.
+
 Routing only applies to the company-agent runtime (the only one that talks to model providers). The
 decision is stored on the run (``routing_reason``, ``model_provider_id``, ``model_used``), shown in
 finance reports.
@@ -48,6 +59,8 @@ def choose_runtime(
     * ``hybrid``: management roles (founder, HR, leads, managers) and every non-work task
       (planning, review, hiring, routines) stay on the company agent with the management model;
       ``kind=work`` tasks of everyone else go to ``policy.work_runtime`` (a coding CLI);
+    * ``policy.cli_role_families`` (null = every family): a work task of a role family outside the
+      list stays on the company agent runtime, which has web tools ("needs web", e.g. research);
     * a per-agent override wins and only an owner can set it: an agent whose runtime is itself a
       CLI, or whose ``runtime_config`` pins it (``pin_runtime: true``).
     """
@@ -63,6 +76,12 @@ def choose_runtime(
         return agent.runtime, "hybrid: management roles stay on the company agent"
     if agent.runtime != COMPANY_AGENT:
         return agent.runtime, None  # not wired to the company agent: nothing to route away from
+    families = limits.cli_role_families
+    if families is not None and agent.role_family not in families:
+        return (
+            agent.runtime,
+            f"hybrid: needs web ({agent.role_family} work stays on the company agent)",
+        )
     return limits.work_runtime, f"hybrid: work task on {limits.work_runtime}"
 
 
@@ -106,7 +125,65 @@ def _candidates(db: Session, company_id: str, limits: CompanyPolicy) -> list[Mod
     return rows
 
 
-def choose(db: Session, agent: Agent, limits: CompanyPolicy, runtime: str | None = None) -> Route:
+def is_management_run(db: Session, agent: Agent, task: Task) -> bool:
+    """Planning, review, hiring and routine tasks, and every task of a management role."""
+    return task.kind != TaskKind.WORK or agent_roles.role_of(db, agent) in MANAGEMENT_ROLES
+
+
+def _usable_provider(
+    db: Session, company_id: str, provider_id: str | None, limits: CompanyPolicy
+) -> ModelProvider | None:
+    """The company's enabled provider ``provider_id`` (honouring ``allowed_model_providers``)."""
+    if not provider_id:
+        return None
+    row = db.scalar(
+        select(ModelProvider).where(
+            ModelProvider.id == provider_id,
+            ModelProvider.company_id == company_id,
+            ModelProvider.enabled.is_(True),
+        )
+    )
+    if row is None:
+        return None
+    allowed = list(limits.allowed_model_providers or [])
+    if allowed and row.id not in allowed and row.name not in allowed:
+        return None
+    return row
+
+
+def _role_route(db: Session, agent: Agent, limits: CompanyPolicy, task: Task) -> Route | None:
+    """The management model for a management run, the work model for a work run (None: neither
+    applies and the routing mode decides)."""
+    if is_management_run(db, agent, task):
+        row = _usable_provider(db, agent.company_id, limits.default_model_provider_id, limits)
+        if row is None:
+            return None  # the management provider is disabled or gone: fall back to the mode
+        return Route(
+            row.id,
+            _model_of(limits, row),
+            f"management: the management model ({row.name})",
+            free=is_free(row),
+        )
+    if limits.work_model_provider_id and limits.work_model_name:
+        row = _usable_provider(db, agent.company_id, limits.work_model_provider_id, limits)
+        if row is None:
+            return None
+        return Route(
+            row.id,
+            limits.work_model_name,
+            f"work model: set by the owner ({row.name})",
+            free=is_free(row),
+        )
+    return None
+
+
+def choose(
+    db: Session,
+    agent: Agent,
+    limits: CompanyPolicy,
+    runtime: str | None = None,
+    task: Task | None = None,
+) -> Route:
     runtime = runtime or agent.runtime
     if runtime != COMPANY_AGENT:
         return Route()
@@ -117,6 +194,15 @@ def choose(db: Session, agent: Agent, limits: CompanyPolicy, runtime: str | None
     own_row = db.get(ModelProvider, own.provider_id)
     own_free = own_row is not None and is_free(own_row)
     own_route = Route(own.provider_id, own.model, None, free=own_free)
+
+    if task is not None:
+        if (agent.runtime_config or {}).get("pin_model") is True:
+            return Route(
+                own.provider_id, own.model, "pinned by the owner: the agent's own model", own_free
+            )
+        role_route = _role_route(db, agent, limits, task)
+        if role_route is not None:
+            return role_route
 
     mode = limits.model_routing
     if mode == ModelRouting.PINNED:

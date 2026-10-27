@@ -34,6 +34,8 @@ def _walk(root: Path):
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
         for name in sorted(filenames):
+            if name == ".git":
+                continue  # a git worktree has a .git *file* pointing at the project repository
             path = Path(dirpath) / name
             if path.is_symlink() or not path.is_file():
                 continue  # a link could point outside the workspace

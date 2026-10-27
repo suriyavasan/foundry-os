@@ -157,6 +157,9 @@ class CtxPolicy(BaseModel):
     own_monthly_budget_micros: int | None
     max_open_tasks: int = 0
     role: str = ""
+    # M12: caps on agent-created work (per project) and on child tasks (per parent task).
+    max_work_tasks_per_project: int = 15
+    max_subtasks_per_task: int = 5
 
 
 class CtxRun(BaseModel):

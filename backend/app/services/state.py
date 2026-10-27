@@ -6,11 +6,16 @@
 * **HR** sees headcount, the team's skills and the hiring requests;
 * everyone else sees their own tasks, their project and their manager.
 
-Every list is capped and every text clipped: a 7B-class model reads this in one tool call.
+Every list is capped and every text clipped: a 7B-class model reads this in one tool call. The
+projects list shows open projects first (newest first), then projects that ended in the last
+7 days, at most 25, so a new project is never hidden behind old ones. When the run's model is
+local or has a context under 32K the state uses a **compact profile** (fewer tasks and agents,
+shorter clips); cloud runs get the complete but bounded state.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
 
@@ -27,10 +32,12 @@ from app.models.enums import (
     ApprovalStatus,
     GoalStatus,
     MemoryStatus,
+    ProjectStatus,
     TaskKind,
     TaskStatus,
 )
 from app.models.governance import Approval, Decision
+from app.models.provider import ModelProvider
 from app.models.schedule import Schedule
 from app.models.work import Goal, Project, Task
 from app.schemas.autonomy import (
@@ -64,6 +71,44 @@ MAX_TASKS = 40
 MAX_AGENTS = 30
 MAX_PROJECTS = 25
 MAX_GOALS = 20
+ENDED_PROJECT_DAYS = 7
+OPEN_PROJECT_STATUSES = (ProjectStatus.PLANNED, ProjectStatus.ACTIVE, ProjectStatus.PAUSED)
+ENDED_PROJECT_STATUSES = (ProjectStatus.COMPLETED, ProjectStatus.CANCELLED)
+SMALL_CONTEXT = 32_768
+
+
+@dataclass(frozen=True)
+class Profile:
+    """How much of the state one run can read."""
+
+    name: str
+    tasks: int
+    agents: int
+    clip: int  # a hard ceiling for every text field
+
+
+FULL = Profile("full", MAX_TASKS, MAX_AGENTS, 240)
+COMPACT = Profile("compact", 15, 12, 120)
+
+
+def profile_for(db: Session, rc: AgentRunContext) -> Profile:
+    """Compact for a local model or one with a context under 32K, else full. The run's routed
+    provider decides; a run without one (direct runtime) falls back to the agent's own model."""
+    provider_id = rc.run.model_provider_id or rc.agent.model_provider
+    if not provider_id:
+        provider_id = policy.load_policy(db, rc.ctx.company_id).default_model_provider_id
+    provider = (
+        db.scalar(
+            select(ModelProvider).where(
+                ModelProvider.id == provider_id, ModelProvider.company_id == rc.ctx.company_id
+            )
+        )
+        if provider_id
+        else None
+    )
+    if provider is not None and (provider.is_local or provider.context_length < SMALL_CONTEXT):
+        return COMPACT
+    return FULL
 
 
 def _clip(text: str | None, n: int = 240) -> str | None:
@@ -73,7 +118,7 @@ def _clip(text: str | None, n: int = 240) -> str | None:
     return text if len(text) <= n else text[: n - 3] + "..."
 
 
-def _task_row(t: Task, names: dict[str, str]) -> StateTask:
+def _task_row(t: Task, names: dict[str, str], clip: int = 200) -> StateTask:
     err = t.error or {}
     return StateTask(
         id=t.id,
@@ -86,8 +131,8 @@ def _task_row(t: Task, names: dict[str, str]) -> StateTask:
         project_id=t.project_id,
         parent_task_id=t.parent_task_id,
         blocked_reason=t.blocked_reason,
-        error=_clip(f"{err.get('code')}: {err.get('message')}", 200) if err else None,
-        result_summary=_clip(t.result_summary, 200),
+        error=_clip(f"{err.get('code')}: {err.get('message')}", clip) if err else None,
+        result_summary=_clip(t.result_summary, clip),
     )
 
 
@@ -110,6 +155,11 @@ def build_state(db: Session, rc: AgentRunContext) -> AgentState:
     assert company is not None
     limits = policy.load_policy(db, company_id)
     founder = role == agent_roles.FOUNDER
+    prof = profile_for(db, rc)
+    task_clip = min(200, prof.clip)
+
+    def clip(text: str | None, n: int = 240) -> str | None:
+        return _clip(text, min(n, prof.clip))
 
     live_agents = list(
         db.scalars(
@@ -155,7 +205,25 @@ def build_state(db: Session, rc: AgentRunContext) -> AgentState:
         project_stmt = project_stmt.where(Project.id == (own_project or ""))
     elif role == agent_roles.HR:
         project_stmt = project_stmt.where(Project.id == "")
-    projects = list(db.scalars(project_stmt.order_by(Project.created_at).limit(MAX_PROJECTS)))
+    # Open projects first (newest first), then those that ended in the last 7 days.
+    projects = list(
+        db.scalars(
+            project_stmt.where(Project.status.in_(OPEN_PROJECT_STATUSES))
+            .order_by(Project.created_at.desc(), Project.id)
+            .limit(MAX_PROJECTS)
+        )
+    )
+    if len(projects) < MAX_PROJECTS:
+        projects += list(
+            db.scalars(
+                project_stmt.where(
+                    Project.status.in_(ENDED_PROJECT_STATUSES),
+                    Project.updated_at >= now - timedelta(days=ENDED_PROJECT_DAYS),
+                )
+                .order_by(Project.updated_at.desc(), Project.id)
+                .limit(MAX_PROJECTS - len(projects))
+            )
+        )
     if founder:
         goals = list(db.scalars(goal_stmt.order_by(Goal.created_at).limit(MAX_GOALS)))
     else:
@@ -165,6 +233,16 @@ def build_state(db: Session, rc: AgentRunContext) -> AgentState:
             if goal_ids
             else []
         )
+    goal_projects: dict[str, dict[str, int]] = {}
+    if goals:
+        ended = {s.value for s in ENDED_PROJECT_STATUSES}
+        for gid, status, n in db.execute(
+            select(Project.goal_id, Project.status, func.count(Project.id))
+            .where(Project.company_id == company_id, Project.goal_id.in_([g.id for g in goals]))
+            .group_by(Project.goal_id, Project.status)
+        ):
+            counts = goal_projects.setdefault(gid, {"open": 0, "ended": 0})
+            counts["ended" if status in ended else "open"] += int(n)
     project_counts: dict[str, dict[str, int]] = {}
     if projects:
         for pid, status, n in db.execute(
@@ -191,7 +269,7 @@ def build_state(db: Session, rc: AgentRunContext) -> AgentState:
                 lead_agent_id=p.lead_agent_id,
                 lead_name=names.get(p.lead_agent_id or ""),
                 budget_micros=p.budget_micros,
-                description=_clip(p.description, 300),
+                description=clip(p.description, 300),
                 tasks_total=total,
                 tasks_done=done,
                 tasks_open=sum(n for s, n in c.items() if s in {x.value for x in OPEN}),
@@ -212,7 +290,7 @@ def build_state(db: Session, rc: AgentRunContext) -> AgentState:
         db.scalars(
             visible_kinds.where(Task.status.in_(OPEN))
             .order_by(Task.updated_at.desc(), Task.id)
-            .limit(MAX_TASKS)
+            .limit(prof.tasks)
         )
     )
     failures = list(
@@ -245,9 +323,9 @@ def build_state(db: Session, rc: AgentRunContext) -> AgentState:
     )
     tasks_block: dict[str, Any] = {
         "by_status": _status_counts(db, company_id, scope),
-        "open": [_task_row(t, names).model_dump() for t in open_rows],
-        "blocked": [_task_row(t, names).model_dump() for t in blocked[:10]],
-        "unassigned": [_task_row(t, names).model_dump() for t in unassigned[:10]],
+        "open": [_task_row(t, names, task_clip).model_dump() for t in open_rows],
+        "blocked": [_task_row(t, names, task_clip).model_dump() for t in blocked[:10]],
+        "unassigned": [_task_row(t, names, task_clip).model_dump() for t in unassigned[:10]],
     }
 
     # ---- people
@@ -270,7 +348,7 @@ def build_state(db: Session, rc: AgentRunContext) -> AgentState:
         else {}
     )
     if founder or role == agent_roles.HR:
-        shown = [a for a in live_agents if a.id != agent.id][:MAX_AGENTS]
+        shown = [a for a in live_agents if a.id != agent.id][: prof.agents]
     elif role == agent_roles.LEAD:
         shown = [
             a
@@ -341,7 +419,7 @@ def build_state(db: Session, rc: AgentRunContext) -> AgentState:
         {
             "id": d.id,
             "title": d.title,
-            "rationale": _clip(d.rationale, 200),
+            "rationale": clip(d.rationale, 200),
             "made_by": names.get(d.made_by_id or "", d.made_by_type),
             "created_at": d.created_at.isoformat().replace("+00:00", "Z"),
         }
@@ -377,13 +455,13 @@ def build_state(db: Session, rc: AgentRunContext) -> AgentState:
         pending = notes.agent_list(db, rc, status="new", limit=5)
         note_block = StateNotes(unprocessed=notes.unprocessed_count(db, company_id), items=pending)
     mem = [
-        StateMemory(id=m.id, kind=m.kind, title=m.title, body=_clip(m.body, 400) or "")
+        StateMemory(id=m.id, kind=m.kind, title=m.title, body=clip(m.body, 400) or "")
         for m in memory.relevant_for(db, company_id, agent)
     ]
     proposals = []
     if founder:
         proposals = [
-            StateMemory(id=m.id, kind=m.kind, title=m.title, body=_clip(m.body, 400) or "")
+            StateMemory(id=m.id, kind=m.kind, title=m.title, body=clip(m.body, 400) or "")
             for m in db.scalars(
                 select(MemoryEntry)
                 .where(
@@ -397,12 +475,13 @@ def build_state(db: Session, rc: AgentRunContext) -> AgentState:
         ]
     return AgentState(
         role=role,
+        profile=prof.name,
         company={
             "id": company.id,
             "name": company.name,
             "status": company.status,
-            "mission": _clip(company.mission, 400),
-            "strategic_goal": _clip(company.strategic_goal, 400),
+            "mission": clip(company.mission, 400),
+            "strategic_goal": clip(company.strategic_goal, 400),
             "constraints": list(company.constraints or [])[:10],
             "you": {"id": agent.id, "name": agent.name, "role_title": agent.role_title},
         },
@@ -412,14 +491,16 @@ def build_state(db: Session, rc: AgentRunContext) -> AgentState:
                 title=g.title,
                 status=g.status,
                 priority=g.priority,
-                description=_clip(g.description, 300),
+                description=clip(g.description, 300),
                 owner_agent_id=g.owner_agent_id,
+                open_projects=goal_projects.get(g.id, {}).get("open", 0),
+                ended_projects=goal_projects.get(g.id, {}).get("ended", 0),
             )
             for g in goals
         ],
         projects=project_rows,
         tasks=tasks_block,
-        failures_24h=[_task_row(t, names) for t in failures],
+        failures_24h=[_task_row(t, names, task_clip) for t in failures],
         approvals_pending=approvals_rows,
         budget=budget,
         headcount={
@@ -428,7 +509,7 @@ def build_state(db: Session, rc: AgentRunContext) -> AgentState:
             "by_family": families,
         },
         agents=agent_rows,
-        hiring_requests=[_task_row(t, names) for t in hiring_rows],
+        hiring_requests=[_task_row(t, names, task_clip) for t in hiring_rows],
         decisions=decisions,
         memory=mem,
         memory_proposals=proposals,
@@ -444,5 +525,7 @@ def build_state(db: Session, rc: AgentRunContext) -> AgentState:
             "max_delegation_depth": limits.max_delegation_depth,
             "max_headcount": limits.max_headcount,
             "max_agent_monthly_budget_micros": limits.max_agent_monthly_budget_micros,
+            "max_work_tasks_per_project": limits.max_work_tasks_per_project,
+            "max_subtasks_per_task": limits.max_subtasks_per_task,
         },
     )

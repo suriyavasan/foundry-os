@@ -214,6 +214,8 @@ def test_emergency_stop_cancels_every_run_in_every_company_and_disables_dispatch
 ):
     cid_a = company["id"]
     cid_b = client.post("/api/companies", json={"name": "Second Co"}).json()["id"]
+    for cid in (cid_a, cid_b):  # every work run dispatches; no slot held for management
+        set_policy(client, cid, management_reserved_slots=0)
     from app.engine.worker import Worker
 
     worker_b = Worker(engine, worker_id="w2", monitor_interval=0.01, kinds=("execute_run",))

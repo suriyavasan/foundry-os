@@ -228,3 +228,27 @@ def test_a_cli_on_a_local_provider_reserves_nothing(
         assert (
             db.scalars(select(BudgetReservation.amount_micros)).one() == 0
         )  # a local model: nothing to hold
+
+
+def test_cli_role_families_keep_research_on_the_company_agent_end_to_end(
+    app, client, company, scheduler, worker, tmp_path
+):
+    """M12: with ``cli_role_families`` set, only the listed families go to the CLI; research (it needs the
+    web, which a coding CLI does not have) stays on the company agent and the run says why."""
+    from tests.guardrail_helpers import set_family
+
+    cid = company["id"]
+    hybrid(app, client, cid, tmp_path)
+    r = client.patch(api(cid, "/policy"), json={"cli_role_families": ["engineering"]})
+    assert r.status_code == 200, r.text
+    engineer = worker_agent(client, cid, name="Eli")
+    researcher = worker_agent(client, cid, name="Ray")
+    set_family(app, engineer["id"], "engineering")
+    set_family(app, researcher["id"], "research")
+    t_eng = new_task(client, cid, assignee_agent_id=engineer["id"])
+    t_res = new_task(client, cid, assignee_agent_id=researcher["id"])
+    settle(scheduler, worker, rounds=30)
+    eng, res = run_of(client, cid, t_eng["id"]), run_of(client, cid, t_res["id"])
+    assert eng["runtime"] == "cli:opencode"
+    assert res["runtime"] == "company_agent" and "needs web" in res["routing_reason"]
+    assert get_task(client, cid, t_res["id"])["status"] == "done"

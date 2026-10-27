@@ -282,3 +282,55 @@ def test_agents_and_viewers_cannot_change_the_m12_fields(
             assert who.patch(api(cid, "/policy"), json=body).status_code == 403, body
         assert who.get(api(cid, "/policy")).json()["max_work_tasks_per_project"] == 15
     assert _audit(client, cid) == []
+
+
+def test_0012_adds_the_digest_to_existing_standup_and_weekly_review(tmp_path):
+    url = f"sqlite:///{tmp_path / 'm12-digest.db'}"
+    cfg = alembic_config(url)
+    command.upgrade(cfg, "0011")
+    engine = create_engine(url)
+    now = datetime.now(UTC).replace(tzinfo=None).isoformat(sep=" ")
+    with engine.begin() as conn:
+        ids = _legacy_company(conn, "Digest")
+        conn.execute(text("DELETE FROM schedules"))
+        rows = {
+            "daily-standup": (ids["founder"], {"title": "Standup"}),
+            "weekly-strategy-review": (ids["founder"], {"title": "Weekly", "digest": False}),
+            "daily-budget-review": (ids["founder"], {"title": "Budget"}),
+            "worker-standup": (ids["worker"], {"title": "Not the Co-founder"}),
+        }
+        for name, (agent_id, template) in rows.items():
+            conn.execute(
+                text(
+                    "INSERT INTO schedules (id, company_id, name, kind, agent_id, interval_seconds, "
+                    "timezone, task_template, enabled, created_at, updated_at) VALUES "
+                    "(:i, :c, :n, 'interval', :a, 3600, 'UTC', :tt, 1, :t, :t)"
+                ),
+                {
+                    "i": str(uuid.uuid4()),
+                    "c": ids["company"],
+                    "n": name if name != "worker-standup" else "daily-standup",
+                    "a": agent_id,
+                    "tt": json.dumps(template),
+                    "t": now,
+                },
+            )
+
+    def templates():
+        with engine.connect() as conn:
+            return sorted(
+                (name, agent_id == ids["founder"], json.loads(tt))
+                for name, agent_id, tt in conn.execute(
+                    text("SELECT name, agent_id, task_template FROM schedules")
+                )
+            )
+
+    command.upgrade(cfg, "0012")
+    assert templates() == [
+        ("daily-budget-review", True, {"title": "Budget"}),
+        ("daily-standup", False, {"title": "Not the Co-founder"}),
+        ("daily-standup", True, {"title": "Standup", "digest": True}),
+        ("weekly-strategy-review", True, {"title": "Weekly", "digest": False}),  # owner's choice
+    ]
+    command.downgrade(cfg, "0011")
+    assert ("daily-standup", True, {"title": "Standup"}) in templates()

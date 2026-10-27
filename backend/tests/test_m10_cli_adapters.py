@@ -97,7 +97,12 @@ class World:
             db.commit()
 
     def request(
-        self, *, budget: int | None = 50_000, max_run_seconds: int = 60
+        self,
+        *,
+        budget: int | None = 50_000,
+        max_run_seconds: int = 60,
+        workspace_kind: str = "run_dir",
+        workspace_files: list[str] | None = None,
     ) -> ExecutionRequest:
         with self.app.state.session_factory() as db:
             agent = db.get(Agent, self.agent["id"])
@@ -134,6 +139,8 @@ class World:
                 run_token=RUN_TOKEN,
                 agent_api_url="http://127.0.0.1:8700/api/agent/v1",
                 workspace_dir=str(ws),
+                workspace_kind=workspace_kind,
+                workspace_files=list(workspace_files or []),
             )
 
 
@@ -575,3 +582,154 @@ def test_secrets_never_reach_the_logs(world, caplog):
     world.adapter("claude").execute(world.request(), Sink(), CancelToken())
     assert API_KEY not in caplog.text and RUN_TOKEN not in caplog.text
     assert repr(world.adapter("claude")) == "ClaudeCodeAdapter()"
+
+
+# ------------------------------------------------------------------ M12: project repository and files
+
+
+def prompt_of(world: World, cli: str) -> str:
+    argv = record_of(world.bin_dir, cli)["argv"]
+    return next(a for a in argv if a.startswith("You are Wes"))
+
+
+def add_finished_dependencies(world: World, count: int) -> list[str]:
+    """``count`` finished tasks, oldest first, that the world's task depends on."""
+    from datetime import timedelta
+
+    from app.core.time import utcnow
+    from app.models.work import TaskDependency
+
+    titles = []
+    with world.app.state.session_factory() as db:
+        for i in range(count):
+            title = f"Dependency {i}"
+            dep = Task(
+                company_id=world.cid,
+                title=title,
+                kind="work",
+                status="done",
+                result_summary=f"RESULT{i} " + ("lorem " * 600),
+                completed_at=utcnow() - timedelta(hours=count - i),
+                created_by_type="system",
+            )
+            db.add(dep)
+            db.flush()
+            db.add(
+                TaskDependency(
+                    company_id=world.cid, task_id=world.task["id"], depends_on_task_id=dep.id
+                )
+            )
+            titles.append(title)
+        db.commit()
+    return titles
+
+
+@pytest.mark.parametrize("cli", ["claude", "codex", "opencode"])
+def test_the_prompt_carries_inline_briefs_of_the_two_newest_finished_dependencies(world, cli):
+    _, _, lines = ADAPTERS[cli]
+    install_fake_cli(world.bin_dir, cli, lines)
+    configure(world, cli, "api_key")
+    add_finished_dependencies(world, 3)
+    world.set_task_status("done")
+    world.adapter(cli).execute(world.request(), Sink(), CancelToken())
+    prompt = prompt_of(world, cli)
+    assert "EARLIER WORK THIS TASK BUILDS ON" in prompt
+    assert "Dependency 2" in prompt and "RESULT2" in prompt
+    assert "Dependency 1" in prompt and "RESULT1" in prompt
+    assert "Dependency 0" not in prompt  # only the two newest
+    section = prompt.split("EARLIER WORK THIS TASK BUILDS ON", 1)[1].split("HOW TO WORK", 1)[0]
+    parts = [p for p in section.split("\n- ") if "RESULT" in p]
+    assert len(parts) == 2 and all(len(p) <= 1500 for p in parts)  # 2 x 1,500 characters
+
+
+def test_no_dependency_section_without_finished_dependencies(world):
+    install_fake_cli(world.bin_dir, "claude", CLAUDE_OK)
+    configure(world, "claude", "api_key")
+    world.set_task_status("done")
+    world.adapter("claude").execute(world.request(), Sink(), CancelToken())
+    prompt = prompt_of(world, "claude")
+    assert "EARLIER WORK" not in prompt and "PROJECT REPOSITORY" not in prompt
+
+
+def test_the_prompt_describes_the_project_worktree_and_the_review_copy(world):
+    install_fake_cli(world.bin_dir, "claude", CLAUDE_OK)
+    configure(world, "claude", "api_key")
+    world.set_task_status("done")
+    files = [f"src/file{i}.py" for i in range(60)]
+    world.adapter("claude").execute(
+        world.request(workspace_kind="project", workspace_files=files), Sink(), CancelToken()
+    )
+    prompt = prompt_of(world, "claude")
+    assert "PROJECT REPOSITORY" in prompt and "git worktree" in prompt
+    assert "Do NOT run git commit" in prompt and "src/file0.py" in prompt
+    assert "(+20 more)" in prompt  # the listing is bounded
+    world.adapter("claude").execute(
+        world.request(workspace_kind="review", workspace_files=["index.html"]),
+        Sink(),
+        CancelToken(),
+    )
+    prompt = prompt_of(world, "claude")
+    assert "READ-ONLY copy" in prompt and "discarded" in prompt and "index.html" in prompt
+
+
+@pytest.mark.parametrize("cli", ["claude", "codex", "opencode"])
+def test_a_successful_per_run_dir_run_keeps_the_files_it_wrote(world, cli):
+    _, _, lines = ADAPTERS[cli]
+    install_fake_cli(
+        world.bin_dir,
+        cli,
+        lines,
+        write_files=[
+            {"path": "site/index.html", "content": "<h1>hi</h1>"},
+            {"path": "notes.txt", "content": "n"},
+        ],
+    )
+    configure(world, cli, "api_key")
+    world.set_task_status("done")  # it called complete_task but never submit_artifact
+    result = world.adapter(cli).execute(world.request(), Sink(), CancelToken())
+    assert result.status == "succeeded"
+    assert {a.title for a in result.artifacts} == {"site/index.html", "notes.txt"}
+
+
+def test_files_are_not_duplicated_when_the_run_already_submitted_an_artifact(world):
+    install_fake_cli(
+        world.bin_dir,
+        "claude",
+        CLAUDE_OK,
+        write_files=[{"path": "report.md", "content": "# r"}],
+    )
+    configure(world, "claude", "api_key")
+    world.set_task_status("done")
+    adapter = world.adapter("claude")
+    adapter._run_has_artifact = lambda run_id: True  # the run used submit_artifact
+    result = adapter.execute(world.request(), Sink(), CancelToken())
+    assert result.status == "succeeded" and result.artifacts == []
+
+
+@pytest.mark.parametrize("kind", ["project", "review"])
+def test_a_project_worktree_is_not_snapshotted_by_the_cli_adapter(world, kind):
+    """In a project worktree the control plane commits the files ("Changes" artifact, branch)."""
+    install_fake_cli(
+        world.bin_dir, "claude", CLAUDE_OK, write_files=[{"path": "app.py", "content": "x=1"}]
+    )
+    configure(world, "claude", "api_key")
+    adapter = world.adapter("claude")
+    world.set_task_status("done")
+    ok = adapter.execute(world.request(workspace_kind=kind), Sink(), CancelToken())
+    assert ok.status == "succeeded" and ok.artifacts == []
+    world.set_task_status("in_progress")  # the CLI did not complete the task
+    failed = adapter.execute(world.request(workspace_kind=kind), Sink(), CancelToken())
+    assert failed.status == "failed" and {a.title for a in failed.artifacts} <= {"final-message.md"}
+
+
+def test_a_git_file_in_the_workspace_is_ignored_by_the_cli_snapshot(world):
+    install_fake_cli(
+        world.bin_dir, "claude", CLAUDE_OK, write_files=[{"path": "app.py", "content": "x=1"}]
+    )
+    configure(world, "claude", "api_key")
+    ws = world.tmp / "workspace"
+    ws.mkdir(exist_ok=True)
+    (ws / ".git").write_text("gitdir: /elsewhere/.git/worktrees/run\n")  # what a worktree has
+    world.set_task_status("done")
+    result = world.adapter("claude").execute(world.request(), Sink(), CancelToken())
+    assert {a.title for a in result.artifacts} == {"app.py"}

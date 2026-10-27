@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import logging
 import threading
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 
@@ -18,10 +19,10 @@ from sqlalchemy import select, update
 from app.engine.context import EngineContext
 from app.models.agent import Agent
 from app.models.company import Company
-from app.models.enums import CompanyStatus, CostKind, RunStatus
+from app.models.enums import AlertSeverity, CompanyStatus, CostKind, RunStatus, TaskStatus
 from app.models.ledger import BudgetReservation
 from app.models.run import TaskRun
-from app.models.work import Task
+from app.models.work import Project, Task
 from app.runtimes.base import (
     AgentSpec,
     CancelToken,
@@ -37,6 +38,7 @@ from app.runtimes.base import (
 )
 from app.services import (
     agent_auth,
+    alerts,
     audit,
     command_center,
     containment,
@@ -45,6 +47,8 @@ from app.services import (
     jobs,
     ledger,
     policy,
+    project_workspaces,
+    reviews,
     runs,
     safety,
 )
@@ -54,6 +58,18 @@ logger = logging.getLogger("company_os.executor")
 
 HEARTBEAT_SECONDS = 5
 ACTIVITY_THROTTLE_SECONDS = 1.0
+# A coding CLI can think or compile for minutes without an event: it is only cancelled as stalled
+# after at least this long, whatever the company policy says (M12).
+CLI_MIN_STALL_SECONDS = 600
+# A review starts from the project as the reviewed run left it: wait (bounded) for that run to end.
+REVIEW_TARGET_WAIT_SECONDS = 30.0
+
+
+def effective_stall_seconds(runtime_id: str, policy_seconds: int) -> int:
+    """The stall limit of a run: the company policy, but never below 10 minutes for a CLI."""
+    if runtime_id.startswith("cli:"):
+        return max(policy_seconds, CLI_MIN_STALL_SECONDS)
+    return policy_seconds
 
 
 @dataclass
@@ -249,8 +265,20 @@ class RunExecutor:
             token = agent_auth.issue_token(
                 ctx.keys, run, max_run_seconds=limits.max_run_seconds, now=now
             )
-            workspace = Path(ctx.settings.workspaces_dir) / run.company_id / run.id
-            workspace.mkdir(parents=True, exist_ok=True)
+            project = db.get(Project, task.project_id) if task.project_id else None
+            project_id = project.id if project and project.company_id == run.company_id else None
+            review_target = reviews.target_id_of(task) if task.kind == "review" else None
+            db.commit()  # no open transaction while git runs
+            if review_target:
+                self._wait_for_target_run(review_target, run.company_id)
+            ws = project_workspaces.prepare(
+                Path(ctx.settings.workspaces_dir),
+                company_id=run.company_id,
+                run_id=run.id,
+                task_kind=task.kind,
+                project_id=project_id,
+            )
+            workspace = ws.path
             request = ExecutionRequest(
                 run_id=run.id,
                 attempt_number=run.attempt_number,
@@ -288,10 +316,12 @@ class RunExecutor:
                 run_token=token,
                 agent_api_url=ctx.settings.agent_api_url,
                 workspace_dir=str(workspace),
+                workspace_kind=ws.kind,
+                workspace_files=list(ws.files),
             )
             max_run_seconds = limits.max_run_seconds
             guard = containment.RunGuard.for_policy(limits)
-            stall_seconds = limits.stall_seconds
+            stall_seconds = effective_stall_seconds(run.runtime, limits.stall_seconds)
             sink = DbEventSink(ctx, run, [token], guard)
 
             started = db.execute(
@@ -319,10 +349,20 @@ class RunExecutor:
                 )
             db.commit()
             if started.rowcount != 1:  # finalized concurrently (e.g. recovery)
+                project_workspaces.discard(ws)
                 return "skipped"
 
         return self._run_adapter(
-            run_id, job_id, adapter, request, sink, now, max_run_seconds, guard, stall_seconds
+            run_id,
+            job_id,
+            adapter,
+            request,
+            sink,
+            now,
+            max_run_seconds,
+            guard,
+            stall_seconds,
+            ws,
         )
 
     # ------------------------------------------------------------ internals
@@ -338,6 +378,7 @@ class RunExecutor:
         max_run_seconds,
         guard,
         stall_seconds,
+        ws: project_workspaces.Workspace | None = None,
     ):
         cancel = CancelToken()
         state = _MonitorState()
@@ -364,7 +405,128 @@ class RunExecutor:
             monitor.join(timeout=5)
 
         outcome = self._outcome(result, exception, state, max_run_seconds, guard)
-        return self._finalize(run_id, outcome, cancel_reason=state.cancel_reason)
+        ref: dict | None = None
+        if ws is not None:
+            outcome, ref = self._close_workspace(run_id, request, ws, outcome)
+        return self._finalize(run_id, outcome, cancel_reason=state.cancel_reason, workspace_ref=ref)
+
+    def _wait_for_target_run(self, target_task_id: str, company_id: str) -> None:
+        """A review reads the project after the reviewed run merged: wait (bounded) until no run of
+        the reviewed task is still active."""
+        deadline = time.monotonic() + REVIEW_TARGET_WAIT_SECONDS
+        while time.monotonic() < deadline and not self.shutdown.is_set():
+            with self.ctx.session_factory() as db:
+                active = db.scalar(
+                    select(TaskRun.id)
+                    .where(
+                        TaskRun.company_id == company_id,
+                        TaskRun.task_id == target_task_id,
+                        TaskRun.status.in_(runs.ACTIVE_RUN_STATUSES),
+                    )
+                    .limit(1)
+                )
+            if active is None:
+                return
+            self.shutdown.wait(0.25)
+
+    def _close_workspace(
+        self,
+        run_id: str,
+        request: ExecutionRequest,
+        ws: project_workspaces.Workspace,
+        outcome: runs.RunOutcome,
+    ) -> tuple[runs.RunOutcome, dict]:
+        """Commit and merge what the run left in its project worktree, attach the "Changes"
+        artifact and turn a successful run whose work could not be merged into a failure
+        (``merge_conflict`` is retryable: the retry starts from the new project files)."""
+        succeeded = outcome.status == RunStatus.SUCCEEDED
+        try:
+            fin = project_workspaces.finalize(
+                ws,
+                succeeded=succeeded,
+                agent_id=request.agent.id,
+                agent_name=request.agent.name,
+                task_title=request.task.title,
+            )
+        except Exception:  # finalize is meant not to raise; a run must still end
+            logger.error("run %s: closing the project workspace raised", run_id, exc_info=True)
+            return outcome, {**ws.ref(), "error": "workspace_error"}
+        outcome = replace(outcome, artifacts=[*outcome.artifacts, *fin.artifacts])
+        if succeeded and fin.error_code:
+            outcome = replace(
+                outcome,
+                status=RunStatus.FAILED,
+                exit_reason=fin.error_code,
+                error={"code": fin.error_code, "message": fin.error_message or fin.error_code},
+            )
+        self._audit_workspace(run_id, request, ws, fin)
+        return outcome, fin.ref
+
+    def _audit_workspace(
+        self,
+        run_id: str,
+        request: ExecutionRequest,
+        ws: project_workspaces.Workspace,
+        fin: project_workspaces.Finalized,
+    ) -> None:
+        if not (fin.merged or fin.conflict or fin.ref.get("error")):
+            return
+        try:
+            with self.ctx.session_factory() as db:
+                company_id = request.company.id
+                data = {
+                    "task_id": request.task.id,
+                    "project_id": ws.project_id,
+                    "base": fin.ref.get("base"),
+                    "commit": fin.ref.get("commit"),
+                    "merge_commit": fin.ref.get("merge_commit"),
+                    "conflict_files": fin.ref.get("conflict_files"),
+                }
+                if fin.merged:
+                    action, summary = "workspace.merged", "Run merged into the project repository"
+                elif fin.conflict:
+                    action, summary = (
+                        "workspace.merge_conflict",
+                        "Run could not be merged into the project repository",
+                    )
+                else:
+                    action, summary = (
+                        "workspace.error",
+                        f"Project workspace problem: {str(fin.ref.get('error'))[:200]}",
+                    )
+                audit.record(
+                    db,
+                    company_id=company_id,
+                    principal=None,
+                    action=action,
+                    target_type="run",
+                    target_id=run_id,
+                    summary=summary,
+                    data=data,
+                )
+                task = db.get(Task, request.task.id)
+                if fin.conflict and task is not None and task.status != TaskStatus.IN_PROGRESS:
+                    # The agent already completed the task through the company tools. finalize_run
+                    # reopens it for a retry from the new main and resolves this alert; the alert
+                    # stays open only when the task cannot be reopened (e.g. it was cancelled).
+                    alerts.raise_alert(
+                        db,
+                        company_id,
+                        kind="merge_conflict",
+                        severity=AlertSeverity.WARNING,
+                        title=f"Finished work of '{task.title[:120]}' is not in the project",
+                        body=(
+                            f"The changes of run {run_id[:8]} conflict with work merged since it "
+                            f"started and were kept on branch {ws.branch}."
+                        ),
+                        related_type="task",
+                        related_id=task.id,
+                        dedupe_key=f"merge_conflict:{task.id}",
+                        wake_founder=False,
+                    )
+                db.commit()
+        except Exception:  # an audit hiccup must not lose the run's outcome
+            logger.warning("run %s: could not audit the workspace result", run_id, exc_info=True)
 
     @staticmethod
     def _outcome(
@@ -450,7 +612,12 @@ class RunExecutor:
         )
 
     def _finalize(
-        self, run_id: str, outcome: runs.RunOutcome, *, cancel_reason: str | None = None
+        self,
+        run_id: str,
+        outcome: runs.RunOutcome,
+        *,
+        cancel_reason: str | None = None,
+        workspace_ref: dict | None = None,
     ) -> str:
         with self.ctx.session_factory() as db:
             run = runs.finalize_run(
@@ -458,8 +625,14 @@ class RunExecutor:
             )
             if run is None:
                 return "skipped"  # someone else (recovery) finalized it first
+            dirty = False
             if cancel_reason and not run.cancel_reason:
                 run.cancel_reason = cancel_reason
+                dirty = True
+            if workspace_ref is not None:
+                run.workspace_ref = workspace_ref
+                dirty = True
+            if dirty:
                 db.commit()
             return outcome.status.value
 

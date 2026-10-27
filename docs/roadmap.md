@@ -36,7 +36,7 @@ reachable from anywhere — without approving each step.*
 | M9 | OS packaging & hardening | `companyos` CLI, single-port serve, Docker Compose, backups, security review, final verification | done for the local install (CLI, `companyos up`, single-port serve + CSP, backup/restore, security review, `scripts/verify.sh`: 10/10 items passed on 2026-10-24 on macOS + SQLite + local qwen2.5:7b); **Docker image/Compose and PostgreSQL written but not verified** - see "Final verification" |
 | M10 | AI setup, coding-CLI workforce, Reflections, Command Center | Mandatory working-API onboarding gate (OpenRouter / Anthropic / OpenAI / OpenAI-compatible); optional Claude Code / Codex / OpenCode work runtimes (API manages the company, CLIs do the work) with isolation + MCP company tools; animated single-screen onboarding; Reflections + human-set company standards; Command Center where every input gets an output | done (live: OpenCode + local model; Claude Code/Codex not run live) |
 | M11 | Foundry AI OS: easy install | Rename to Foundry AI OS (`foundryos`); self-contained release bundles (own Python, prebuilt UI); Homebrew tap `suriyavasan/tap/foundry-os`; one-line `install.sh`; Docker image on GHCR; background service; `foundryos update`/rollback with automatic pre-migration backups; release CI | released v0.1.0 (2026-10-24) |
-| M12 | Full autonomy | The company runs end to end without the human: autonomy watchdog and closure loops (reviews, blocks, hires, project/goal completion, initiative), transient-failure backoff and breaker auto-resume, per-role models and CLI role-family scope, shared per-project git repository for hybrid work, decomposition caps; spec `specs/m12-full-autonomy.md` | in progress (WP0 schema, policy fields and docs done 2026-10-26; WP1-WP5 pending) |
+| M12 | Full autonomy | The company runs end to end without the human: autonomy watchdog and closure loops (reviews, blocks, hires, project/goal completion, initiative), transient-failure backoff and breaker auto-resume, per-role models and CLI role-family scope, shared per-project git repository for hybrid work, decomposition caps; spec `specs/m12-full-autonomy.md` | done (verified with scripted runtimes and fake CLIs only) |
 | M13 | Headless setup and a free public URL | `foundryos setup` (the whole onboarding in a terminal, resumable, scriptable with `--non-interactive` and `--secrets-stdin`); no browser on SSH or display-less boxes; Linux linger and macOS `user/` launchd fallback with LaunchDaemon hints; the Cloudflare quick tunnel as the free public URL with stored, audited, announced URL changes (`reach --watch`, `reach public start\|stop`, `public-url.json`); no passkeys on ephemeral origins; spec `specs/m13-headless-setup-and-public-url.md` | done (verified with fakes only) |
 
 Order: M3b ∥ M4-UI → M5 → M6 → M7 → M8 → M9. UI for each milestone ships with it.
@@ -68,6 +68,16 @@ detection, circuit breaker and emergency stop. Agents can never change their own
   require the Founder's approval by default (configurable).
 
 ## Status notes
+
+- **M12 status (2026-10-27):** watchdog and closure loops, retry/backoff and breaker auto-resume, reserved
+  management slots, per-role models and the CLI role-family scope, the shared per-project git repository,
+  decomposition caps, `company_plan_project`, the digest and the web settings. Two end-to-end tests
+  (`tests/test_m12_e2e.py`) run the whole company with no human after the first note: API mode (note → goal →
+  project → lead and specialist hires → plan → work → review → project closed by the lead or by the watchdog →
+  goal achieved → next goal on initiative) and hybrid mode (planning and reviews on the API runtime, work on a
+  fake `opencode` binary, task 2 starting from task 1's merged files). **Not run for real:** any cloud or local
+  model, Claude Code / Codex / OpenCode inside git worktrees, real MCP tool calls from a CLI, PostgreSQL,
+  prompt-cache hit rates, real provider 429 texts. Details: `specs/m12-full-autonomy.md` sections 2.7 and 5.
 
 - **M13 status (2026-10-26):** code in `099092d`, docs and web changes after it. Verified with fakes only: a fake `cloudflared`,
   `launchctl`, `systemctl` and `loginctl`, fake coding CLIs and fake providers. Backend suite 1,685 passed on `099092d`; web 1,217

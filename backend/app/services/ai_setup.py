@@ -103,6 +103,24 @@ def release_gate(db: Session, company_id: str) -> None:
 # ---------------------------------------------------------------- status
 
 
+def _work_model_block(db: Session, company_id: str, limits: CompanyPolicy) -> dict[str, Any] | None:
+    if not (limits.work_model_provider_id and limits.work_model_name):
+        return None
+    provider = db.scalar(
+        select(ModelProvider).where(
+            ModelProvider.id == limits.work_model_provider_id,
+            ModelProvider.company_id == company_id,
+        )
+    )
+    return {
+        "provider_id": limits.work_model_provider_id,
+        "provider_name": provider.name if provider else None,
+        "kind": provider.kind if provider else None,
+        "model": limits.work_model_name,
+        "last_test": provider.last_test if provider else None,
+    }
+
+
 def status(db: Session, ctx: CompanyContext, cli_env: Any) -> dict[str, Any]:
     from app.services import cli_runtimes
 
@@ -119,6 +137,7 @@ def status(db: Session, ctx: CompanyContext, cli_env: Any) -> dict[str, Any]:
             "model": state.model,
             "last_test": state.last_test,
         },
+        "work_model": _work_model_block(db, ctx.company_id, limits),
         "work_mode": limits.work_mode,
         "work_runtime": limits.work_runtime,
         "clis": cli_runtimes.list_status(db, cli_env),
@@ -145,12 +164,14 @@ def _require_cli_ready(db: Session, cli_env: Any, runtime: str) -> None:
         )
 
 
-def update(db: Session, ctx: CompanyContext, data: AiSetupUpdate, cli_env: Any) -> dict[str, Any]:
-    require_human_admin(ctx, "change the AI setup")
+def _require_tested_model(
+    db: Session, company_id: str, provider_id: str, model: str
+) -> ModelProvider:
+    """An enabled provider of this company whose latest test passed for ``model`` (the checks that
+    gate the management model also gate the work model)."""
     row = db.scalar(
         select(ModelProvider).where(
-            ModelProvider.id == data.management_provider_id,
-            ModelProvider.company_id == ctx.company_id,
+            ModelProvider.id == provider_id, ModelProvider.company_id == company_id
         )
     )
     if row is None:
@@ -162,15 +183,41 @@ def update(db: Session, ctx: CompanyContext, data: AiSetupUpdate, cli_env: Any) 
             "Test this provider first (POST .../model-providers/{id}/test)",
             details={"reason": "no_tested_provider"},
         )
-    if not _test_passed(row.last_test, data.management_model):
+    if not _test_passed(row.last_test, model):
         failed = [c for c in (row.last_test.get("checks") or []) if not c.get("ok")]
         tested = row.last_test.get("model")
         raise AiNotReady(
             "The provider's latest test did not pass for this model"
             + (f" ({failed[0]['name']}: {failed[0]['detail']})" if failed else "")
-            + (f"; it tested {tested!r}" if tested and tested != data.management_model else ""),
+            + (f"; it tested {tested!r}" if tested and tested != model else ""),
             details={"reason": "provider_test_failed", "checks": failed},
         )
+    return row
+
+
+def update(db: Session, ctx: CompanyContext, data: AiSetupUpdate, cli_env: Any) -> dict[str, Any]:
+    require_human_admin(ctx, "change the AI setup")
+    row = _require_tested_model(
+        db, ctx.company_id, data.management_provider_id, data.management_model
+    )
+    given = data.model_fields_set
+    work_model_given = bool({"work_model_provider_id", "work_model_name"} & given)
+    work_row: ModelProvider | None = None
+    if work_model_given:
+        if bool(data.work_model_provider_id) != bool(data.work_model_name):
+            raise ValidationFailed(
+                "work_model_provider_id and work_model_name must be set together (or both null)",
+                details=[
+                    {
+                        "loc": ["body", "work_model_name"],
+                        "msg": "set together with work_model_provider_id",
+                    }
+                ],
+            )
+        if data.work_model_provider_id and data.work_model_name:
+            work_row = _require_tested_model(
+                db, ctx.company_id, data.work_model_provider_id, data.work_model_name
+            )
     work_runtime = data.work_runtime
     if data.work_mode == "api":
         work_runtime = None
@@ -198,6 +245,16 @@ def update(db: Session, ctx: CompanyContext, data: AiSetupUpdate, cli_env: Any) 
         if getattr(limits, field) != value:
             setattr(limits, field, value)
             changed.append(field)
+    if work_model_given:
+        new_provider = work_row.id if work_row else None
+        new_name = data.work_model_name if work_row else None
+        for field, value in (
+            ("work_model_provider_id", new_provider),
+            ("work_model_name", new_name),
+        ):
+            if getattr(limits, field) != value:
+                setattr(limits, field, value)
+                changed.append(field)
     limits.updated_at = utcnow()
     audit.record(
         db,
@@ -207,12 +264,15 @@ def update(db: Session, ctx: CompanyContext, data: AiSetupUpdate, cli_env: Any) 
         target_type="policy",
         target_id=limits.id,
         summary=f"AI setup: {row.name} / {data.management_model}, work mode {data.work_mode}"
-        + (f" on {work_runtime}" if work_runtime else ""),
+        + (f" on {work_runtime}" if work_runtime else "")
+        + (f", work model {work_row.name} / {limits.work_model_name}" if work_row else ""),
         data={
             "provider_id": row.id,
             "model": data.management_model,
             "work_mode": data.work_mode,
             "work_runtime": work_runtime,
+            "work_model_provider_id": limits.work_model_provider_id,
+            "work_model": limits.work_model_name,
             "changed": changed,
             "was_ready": was_ready,
         },

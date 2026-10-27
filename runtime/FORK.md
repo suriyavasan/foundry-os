@@ -22,7 +22,7 @@ Rules for this tree: upstream files are modified **only** when unavoidable; each
 |---|---|
 | `company_agent/` | The launcher: `run.py` (entrypoint, stdin spec -> JSONL stdout, signals, limits), `spec.py` (run spec validation), `protocol.py` (event writer: seq, single terminal, redaction), `runner.py` (builds `AIAgent`, callbacks -> events, time/cancel/finish handling), `prompts.py` (role prompt), `home.py` (HERMES_HOME, SOUL.md, enforced `config.yaml`, scrubbed environment), `toolpolicy.py` (toolset mapping/removal), `approvals.py` (deny-all approval callback), `context.py` (tool client config), `guard.py` (M6: tool registry check, untrusted-content tagging, injection flagging). |
 | `company_agent/tests/` | pytest suite incl. a deterministic fake OpenAI-compatible model server and a stub agent API (counts in the milestone report). |
-| `tools/company_tools.py` | The `company` toolset (35 tools: work tools, M4 colleague/hiring/HR tools, M5 autonomy tools, M6 `company_decide_peer_review` and `company_provider_action`, M10 `company_post_reflection` / `company_reply_reflection` / `company_revise_reflection`) calling the Company OS agent API. Auto-discovered by Hermes' tool registry. |
+| `tools/company_tools.py` | The `company` toolset (36 tools: work tools, M4 colleague/hiring/HR tools, M5 autonomy tools, M6 `company_decide_peer_review` and `company_provider_action`, M10 `company_post_reflection` / `company_reply_reflection` / `company_revise_reflection`, M12 `company_plan_project`) calling the Company OS agent API. Auto-discovered by Hermes' tool registry. |
 | `company_agent/mcp_server.py` | M10: a hand-written stdio MCP server (JSON-RPC, no new dependency) that exposes a subset of the company tools to coding CLIs (Claude Code, Codex, OpenCode). Config from the environment; the run token is read from a 0600 file. Tests: `company_agent/tests/test_mcp_server.py`. |
 | `scripts/check_imports.py` | Import check for the pruned tree (run after any prune / upstream sync). |
 | `scripts/scan_dropped_imports.py` | Static list of imports of dropped modules still present in kept code. |
@@ -170,3 +170,21 @@ providers (no keys), the HR/hiring tools against a real model (they are covered 
 * The tool -> tier table lives in `backend/app/guardrails/tools.json` (single source of truth, sent in every run spec);
   `company_agent/tests/test_guard_registry.py` compares it with the tools Hermes really resolves.
 * Tests: `test_guard.py`, `test_guard_registry.py`, `test_m6_runtime.py` (incl. a real launcher subprocess run).
+
+## Milestone 12 additions (company layer only, no upstream file touched)
+
+* `tools/company_tools.py`: `company_plan_project` (36 company tools in total): a lead or manager creates a project's first
+  3-6 tasks in one call (at most 8; `depends_on_keys` resolved to the ids of tasks created earlier in the call, with a stable
+  idempotency key per run and title). It stops at the first limit error (`limit_exceeded`, rate limit, budget, guardrail) and
+  returns the created ids plus the error. No new backend route: it calls `POST /tasks` per task.
+* `company_agent/prompts.py`: Co-founder goal-closure step, initiative wake handling (at most one goal and one project, or a
+  decision), routines that take actions; leads plan once with `company_plan_project` and never re-plan a project that has
+  tasks; the lead nudge no longer asks for `required_skills`; specialists rarely create subtasks; a "PROJECT WORKSPACE"
+  section is rendered from the optional `spec["workspace"]`. `spec.py`: that optional `workspace` object and the tool name.
+* Prompt caching (checked against `agent/prompt_caching.py`, `agent/system_prompt.py`): for `platform == "company"` the system
+  prompt is `stable` (SOUL.md = our identity prompt + tool guidance; marked as the static prefix) then `volatile` (skills index and
+  a date-only line), and the per-run task prompt is `ephemeral_system_prompt`, appended after both at call time. Our identity
+  prompt therefore carries no task id, run id, workspace path or timestamp (a test pins this); everything that changes per
+  run (including the new workspace section) is in the task prompt or the first user message, so the stable prefix and the tools
+  array are byte-identical across runs of the same agent and the Anthropic early breakpoint can hit across runs.
+* Tests: `test_company_tools.py` (`company_plan_project`), `test_policy.py` (M12 prompts, stable prefix), `test_spec.py` (`workspace`).

@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from datetime import datetime
+
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import Conflict, Forbidden, LimitExceeded
 from app.core.principal import CompanyContext, require_human_admin
 from app.core.time import utcnow
 from app.models.agent import Agent
-from app.models.enums import ProjectStatus
-from app.models.work import Project
+from app.models.enums import GoalStatus, ProjectStatus
+from app.models.work import Goal, Project
 from app.schemas.work import ProjectCreate, ProjectUpdate
 from app.services import agent_roles, audit, builtin_schedules, events, policy, wakes
 from app.services.common import (
@@ -23,6 +25,7 @@ UPDATABLE = ("name", "description", "goal_id", "status", "lead_agent_id", "budge
 # What a project lead (not the founder) may change on the project it leads.
 LEAD_UPDATABLE = {"description", "status"}
 ENDED = (ProjectStatus.COMPLETED, ProjectStatus.CANCELLED)
+OPEN_FOR_GOAL = (ProjectStatus.PLANNED, ProjectStatus.ACTIVE, ProjectStatus.PAUSED)
 
 
 def list_projects(
@@ -232,6 +235,8 @@ def update_project(
                     ref_id=project.id,
                     actor_agent_id=actor,
                 )
+            if project.status in ENDED:
+                wake_for_goal_review(db, project, actor_agent_id=actor)
         db.commit()
     return project
 
@@ -271,3 +276,112 @@ def assign_lead(db: Session, project: Project, lead: Agent, principal, *, reason
         ref_type="project",
         ref_id=project.id,
     )
+
+
+def wake_for_goal_review(
+    db: Session,
+    project: Project,
+    *,
+    actor_agent_id: str | None = None,
+    now: datetime | None = None,
+) -> bool:
+    """M12: a project ended. When its goal is live and has no other open project, the Co-founder
+    gets a goal-specific wake: mark the goal achieved / abandoned or create the next project. No
+    commit. Returns whether a wake was requested."""
+    if not project.goal_id:
+        return False
+    goal = db.scalar(
+        select(Goal).where(Goal.id == project.goal_id, Goal.company_id == project.company_id)
+    )
+    if goal is None or goal.status not in (GoalStatus.PROPOSED, GoalStatus.ACTIVE):
+        return False
+    db.flush()
+    still_open = db.scalar(
+        select(func.count(Project.id)).where(
+            Project.company_id == project.company_id,
+            Project.goal_id == goal.id,
+            Project.id != project.id,
+            Project.status.in_([s.value for s in OPEN_FOR_GOAL]),
+        )
+    )
+    if still_open:
+        return False
+    request = wakes.wake_founder(
+        db,
+        project.company_id,
+        "goal_review",
+        f"Goal '{goal.title}' [id {goal.id}] has no open projects (project '{project.name}' is "
+        f"{project.status}). Mark the goal achieved or abandoned (company_manage_goal) if it is "
+        "settled, or create the next project for it (company_manage_project with goal_id).",
+        ref_type="goal",
+        ref_id=goal.id,
+        actor_agent_id=actor_agent_id,
+        now=now,
+    )
+    return request is not None
+
+
+def complete_by_system(
+    db: Session, project: Project, *, reason: str, now: datetime | None = None
+) -> bool:
+    """M12: the platform (not an agent) completes an open project whose work is finished, when the
+    company's ``project_auto_complete`` policy allows it (the caller checks). Audited as
+    ``project.auto_completed``; the Co-founder hears about it and about the goal. No commit."""
+    if project.status not in (ProjectStatus.PLANNED, ProjectStatus.ACTIVE):
+        return False
+    now = now or utcnow()
+    project.status = ProjectStatus.COMPLETED
+    project.updated_at = now
+    audit.record(
+        db,
+        company_id=project.company_id,
+        principal=None,
+        action="project.auto_completed",
+        target_type="project",
+        target_id=project.id,
+        summary=f"Project {project.name} completed automatically: {reason}",
+        data={"reason": reason, "auto": True},
+    )
+    events.emit(
+        db,
+        project.company_id,
+        "project.updated",
+        {"project_id": project.id, "changed": ["status"]},
+    )
+    builtin_schedules.sync_project_health_check(db, project, None)
+    wakes.wake_founder(
+        db,
+        project.company_id,
+        "project",
+        f"Project '{project.name}' [id {project.id}] was completed automatically: {reason}.",
+        ref_type="project",
+        ref_id=project.id,
+        now=now,
+    )
+    wake_for_goal_review(db, project, now=now)
+    return True
+
+
+def clear_lead(db: Session, project: Project, *, reason: str, now: datetime | None = None) -> None:
+    """M12: the platform removes a lead that can no longer lead (retired). The lead-hiring safety
+    net (``hiring.resolve_project_leads``) then gives the project a new lead. No commit."""
+    previous = project.lead_agent_id
+    project.lead_agent_id = None
+    project.updated_at = now or utcnow()
+    audit.record(
+        db,
+        company_id=project.company_id,
+        principal=None,
+        action="project.updated",
+        target_type="project",
+        target_id=project.id,
+        summary=f"Project {project.name} lost its lead: {reason}",
+        data={"changed": ["lead_agent_id"], "auto": True, "previous_lead_agent_id": previous},
+    )
+    events.emit(
+        db,
+        project.company_id,
+        "project.updated",
+        {"project_id": project.id, "changed": ["lead_agent_id"]},
+    )
+    builtin_schedules.sync_project_health_check(db, project, None)

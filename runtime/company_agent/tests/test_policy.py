@@ -321,4 +321,83 @@ def test_wake_runs_start_with_the_state_and_nudges_are_role_aware(raw):
     assert "company_get_state" in build_user_message(spec)
     assert "company_triage_note" in build_completion_nudge(spec)
     raw["agent"].update(kind="lead", role="lead")
-    assert "company_create_task" in build_completion_nudge(parse_spec(raw))
+    assert "company_plan_project" in build_completion_nudge(parse_spec(raw))
+
+
+# ------------------------------------------------------------------ M12 prompts
+
+
+def _identity(raw, **agent):
+    raw["agent"].update(agent)
+    return build_identity_prompt(parse_spec(raw))
+
+
+def test_the_cofounder_closes_goals_acts_on_initiative_and_standups(raw):
+    ident = _identity(raw, kind="founder", role="founder")
+    assert "GOAL CLOSURE" in ident and "open_projects = 0" in ident and "status=achieved" in ident
+    assert "status=abandoned" in ident
+    assert "'initiative'" in ident and "AT MOST ONE goal with ONE project" in ident
+    assert "Take up to 5 actions" in ident  # standups act on stuck items
+    assert len(ident) < 7500
+
+
+def test_the_lead_plans_once_with_plan_project_and_never_replans(raw):
+    ident = _identity(raw, kind="lead", role="lead")
+    assert "company_plan_project" in ident and "ONCE" in ident and "3-6 tasks" in ident
+    assert "NEVER re-plan a project that already has tasks" in ident
+    assert "max_work_tasks_per_project" in ident
+    assert "required_skills" not in ident.split("HOW YOU WORK")[1].split("3. You need people?")[0]
+    assert "company_plan_project" not in _identity(raw, kind="specialist", role="specialist")
+
+
+def test_the_lead_nudge_no_longer_asks_for_required_skills(raw):
+    raw["agent"].update(kind="lead", role="lead")
+    raw["task"].update(kind="planning", title="Management run: project assigned")
+    nudge = build_completion_nudge(parse_spec(raw))
+    assert "required_skills" not in nudge
+    assert "company_plan_project" in nudge and "never plan a project that already has tasks" in nudge
+
+
+def test_specialists_create_subtasks_rarely(raw):
+    ident = _identity(raw, kind="specialist", role="specialist")
+    assert "rarely" in ident and "parent_task_id" in ident
+
+
+def test_workspace_section_renders_the_project_repository(raw):
+    raw["workspace"] = {"kind": "project", "project_name": "Landing page", "files": ["index.html", "css/site.css"]}
+    task = build_task_prompt(parse_spec(raw))
+    assert "PROJECT WORKSPACE" in task and "Landing page" in task and "shared repository" in task
+    assert "index.html, css/site.css" in task
+    raw["workspace"]["files"] = []
+    assert "you are first" in build_task_prompt(parse_spec(raw))
+    raw["workspace"] = {"kind": "review", "project_name": "Landing page", "files": ["index.html"]}
+    assert "Read-only copy" in build_task_prompt(parse_spec(raw))
+    raw["workspace"] = {"kind": "project", "project_name": "P", "files": [f"f{i}.txt" for i in range(60)]}
+    task = build_task_prompt(parse_spec(raw))
+    assert "(+20 more)" in task and "f59.txt" not in task
+
+
+def test_no_workspace_section_without_a_workspace(raw):
+    assert "PROJECT WORKSPACE" not in build_task_prompt(parse_spec(raw))
+
+
+@pytest.mark.parametrize("agent", [{"kind": "founder", "role": "founder"}, {"kind": "lead", "role": "lead"},
+                                   {"kind": "specialist", "role": "specialist"}])
+def test_the_identity_prefix_is_stable_across_runs(raw, tmp_path, agent):
+    """Prompt caching: the identity prompt (SOUL.md, the stable system prefix) must not depend on anything that
+    changes per run: task, run id, workspace path, project files or the time. Those live in the task prompt."""
+    raw["agent"].update(agent)
+    first = build_identity_prompt(parse_spec(raw))
+    raw["run_id"] = "another-run"
+    raw["task"].update(id="task-other", title="A different task", description="other", kind="planning")
+    raw["workspace_dir"] = str(tmp_path / "elsewhere")
+    raw["workspace"] = {"kind": "project", "project_name": "Other", "files": ["x.py"]}
+    second = build_identity_prompt(parse_spec(raw))
+    assert first == second
+    for volatile in ("task-other", "another-run", "elsewhere", "x.py", "A different task"):
+        assert volatile not in second
+    task_prompt = build_task_prompt(parse_spec(raw))
+    assert "task-other" in task_prompt and "x.py" in task_prompt  # ...and they are all in the task prompt
+    import re
+
+    assert not re.search(r"\b20\d\d-\d\d-\d\d\b|\d\d:\d\d:\d\d", first)  # no date or clock in the prefix

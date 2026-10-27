@@ -945,6 +945,10 @@ def cancel_lead_hiring(db: Session, project: Project, principal: Principal | Non
     )
     if task is None or task.status in TERMINAL_TASK_STATUSES:
         return
+    if principal is not None and principal.is_agent and principal.id == task.assignee_agent_id:
+        # The hiring agent made this hire from inside its own run: let it finish (and complete
+        # the task) instead of cancelling the run under it, which would lose its later steps.
+        return
     tasks.transition(
         db, task, TaskStatus.CANCELLED, principal=principal, reason="the project has a lead"
     )

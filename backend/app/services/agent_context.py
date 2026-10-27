@@ -279,5 +279,7 @@ def build_context(
             own_monthly_budget_micros=agent.monthly_budget_micros,
             max_open_tasks=limits.max_open_tasks,
             role=role,
+            max_work_tasks_per_project=limits.max_work_tasks_per_project,
+            max_subtasks_per_task=limits.max_subtasks_per_task,
         ),
     )

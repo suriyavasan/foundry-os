@@ -353,12 +353,16 @@ def test_exhausted_attempts_hand_the_failure_to_the_lead_who_can_retry(
         if task.kind == "review":
             target = call.api.ok("GET", "/context")["task"]["review_target"]
             assert target["mode"] == "failure" and "model exploded" in target["error"]["message"]
-            out = call.api.ok(
-                "POST",
-                f"/tasks/{target['task_id']}/retry",
-                json={"reason": "try Sam again, fixed", "assignee_agent_id": w.specialist["id"]},
-            )
-            retried.append(out["id"])
+            if len(retried) < 2:  # (M12: an agent may retry a task twice, then it must escalate)
+                out = call.api.ok(
+                    "POST",
+                    f"/tasks/{target['task_id']}/retry",
+                    json={
+                        "reason": "try Sam again, fixed",
+                        "assignee_agent_id": w.specialist["id"],
+                    },
+                )
+                retried.append(out["id"])
             call.api.ok("POST", f"/tasks/{task.id}/complete", json={"result_summary": "retried"})
 
     scripted.handlers["Lena"] = lena

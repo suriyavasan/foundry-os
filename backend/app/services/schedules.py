@@ -32,7 +32,7 @@ from app.models.schedule import Schedule, ScheduleFire
 from app.models.work import Task
 from app.schemas.schedule import ScheduleCreate, ScheduleUpdate
 from app.schemas.work import TaskCreate
-from app.services import agent_roles, ai_setup, audit, events, tasks, wakes
+from app.services import agent_roles, ai_setup, audit, digest, events, tasks, wakes
 from app.services.common import get_agent_or_404
 from app.services.pagination import paginate
 
@@ -297,10 +297,20 @@ def _skip_reason(db: Session, schedule: Schedule, template: dict, now: datetime)
                 Task.status.notin_([s.value for s in TERMINAL_TASK_STATUSES]),
             )
         )
+        # (M12: an empty or finished-but-open project is the watchdog's D4 / D5: wake the lead,
+        # then the Co-founder, then complete or alert - bounded and audited.)
         if template.get("skip_when_idle") and not open_work:
             return "the project has nothing in flight"
-    elif template.get("skip_when_idle") and not wakes.has_work(db, schedule.company_id):
-        return "nothing to review"
+    elif template.get("skip_when_idle"):
+        if schedule.kind == ScheduleKind.HEARTBEAT:
+            reason = wakes.heartbeat_skip_reason(db, schedule.company_id, now)
+            if reason:
+                return reason
+        elif not (
+            wakes.needs_attention(db, schedule.company_id, now)
+            or wakes.has_open_work(db, schedule.company_id)
+        ):
+            return "nothing to review"
     is_planning = template.get("kind") == "planning" or (
         template.get("kind") is None and schedule.kind == ScheduleKind.HEARTBEAT
     )
@@ -406,9 +416,12 @@ def _fire_one(factory: sessionmaker[Session], schedule_id: str, now: datetime) -
             default_kind = (
                 TaskKind.PLANNING if schedule.kind == ScheduleKind.HEARTBEAT else TaskKind.ROUTINE
             )
+            description = template.get("description")
+            if template.get("digest"):  # M12: the platform's deterministic standup digest
+                description = f"{description or ''}\n\n{digest.build(db, schedule.company_id, now)}"
             data = TaskCreate(
                 title=template.get("title") or schedule.name,
-                description=template.get("description"),
+                description=description,
                 acceptance_criteria=template.get("acceptance_criteria"),
                 kind=template.get("kind") or default_kind.value,
                 priority=template.get("priority", "normal"),
@@ -417,6 +430,8 @@ def _fire_one(factory: sessionmaker[Session], schedule_id: str, now: datetime) -
             )
             task, _ = tasks.create_system_task(db, schedule.company_id, data, now=now)
             task_id = task.id
+            if schedule.kind == ScheduleKind.HEARTBEAT and template.get("skip_when_idle"):
+                wakes.record_heartbeat(db, schedule.company_id, now)
             if fire is not None:
                 fire.task_id = task.id
         audit.record(

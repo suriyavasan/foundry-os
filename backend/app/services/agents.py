@@ -302,6 +302,9 @@ def create_agent(db: Session, ctx: CompanyContext, data: AgentCreate) -> Agent:
         data = data.model_copy(update={"tool_permissions": list(defaults.default_toolsets)})
 
     validate_runtime_config(data.runtime_config)
+    if ctx.principal.is_agent and {"pin_runtime", "pin_model"} & set(data.runtime_config or {}):
+        # pins take an agent out of the company's model/runtime routing: an owner decision
+        raise Forbidden("Only humans can pin an agent's runtime or model")
     runtime, model_provider, model_name = data.runtime, data.model_provider, data.model_name
     if "runtime" not in fields:
         # A company with a working default model runs its new employees on the company agent

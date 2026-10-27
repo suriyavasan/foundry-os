@@ -8,6 +8,7 @@ the company event land in the same transaction as the state change.
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -59,6 +60,7 @@ from app.services import (
     notifications,
     org,
     policy,
+    retry_policy,
 )
 from app.services.common import (
     creator_of,
@@ -69,6 +71,14 @@ from app.services.common import (
 from app.services.pagination import paginate
 
 S = TaskStatus
+
+
+class ReviewDecisionRequired(Conflict):
+    """A review task cannot be completed while the task it reviews still waits for a decision."""
+
+    code = "review_decision_required"
+    default_message = "Record your review decision before completing the review task"
+
 
 EDGES: dict[TaskStatus, frozenset[TaskStatus]] = {
     S.BACKLOG: frozenset({S.READY, S.BLOCKED, S.CANCELLED}),
@@ -81,6 +91,10 @@ EDGES: dict[TaskStatus, frozenset[TaskStatus]] = {
     S.DONE: frozenset(),
     S.CANCELLED: frozenset(),
 }
+
+# System-only edge: a run's work could not be merged after its task was already finished
+# (``reopen_after_merge_conflict``). Never reachable through the public API.
+REOPEN_EDGES: dict[TaskStatus, frozenset[TaskStatus]] = {S.DONE: frozenset({S.REVISION_REQUESTED})}
 
 _AUDIT_ACTION = {
     S.BACKLOG: "task.backlogged",
@@ -145,11 +159,15 @@ def transition(
     error: Any = _UNSET,
     now: datetime | None = None,
     extra: dict[str, Any] | None = None,
+    reopen: bool = False,
 ) -> None:
-    """Move ``task`` along the state machine (no commit). Invalid edges -> 409."""
+    """Move ``task`` along the state machine (no commit). Invalid edges -> 409. ``reopen`` adds
+    the system-only ``REOPEN_EDGES`` (a finished task whose work could not be merged)."""
     current = TaskStatus(task.status)
     target = TaskStatus(to)
-    if target not in EDGES[current]:
+    if target not in EDGES[current] and not (
+        reopen and target in REOPEN_EDGES.get(current, frozenset())
+    ):
         raise InvalidTransition(
             f"Cannot move a task from {current.value} to {target.value}",
             details={"from": current.value, "to": target.value},
@@ -165,6 +183,8 @@ def transition(
         task.completed_at = now
     elif current in TERMINAL_TASK_STATUSES:
         task.completed_at = None
+    if target in (S.IN_PROGRESS, S.IN_REVIEW, *TERMINAL_TASK_STATUSES):
+        task.next_attempt_at = None  # a backoff only holds a task that waits to run again
     if error is not _UNSET:
         task.error = error
     data: dict[str, Any] = {"from": current.value, "to": target.value, **(extra or {})}
@@ -398,6 +418,8 @@ def finish_success(
     open subtasks waits for them first (``waiting_on_subtasks``). No commit."""
     if task.status != S.IN_PROGRESS:
         return False
+    task.transient_failures = 0  # a success ends any run of transient failures
+    task.next_attempt_at = None
     if summary is not None:
         task.result_summary = summary
     if output_refs:
@@ -418,6 +440,7 @@ def finish_success(
 
 
 MAX_RUNS_BEFORE_NO_MORE_WAITING = 6
+MAX_AGENT_RETRIES = 2  # an agent may retry a failed task this often; a human retry resets it
 
 
 def _park_for_subtasks(
@@ -465,15 +488,55 @@ def finish_failure(
     principal: Principal | None,
     now: datetime | None = None,
 ) -> bool:
-    """A run failed/timed out: retry (-> ready) while attempts remain, else failed. No commit."""
+    """A run failed/timed out. No commit.
+
+    * **transient** (429, overloaded, dropped connection, lost worker ...): the attempt is refunded,
+      the task goes back to ``ready`` but not before ``next_attempt_at`` (exponential backoff), and
+      the circuit breaker ignores the run. After ``MAX_TRANSIENT_FAILURES`` in a row it is treated
+      as permanent;
+    * **permanent**: retry (-> ready, after the permanent backoff) while attempts remain, else
+      ``failed``."""
     if task.status != S.IN_PROGRESS:
         return False
+    now = now or utcnow()
     limits = policy.load_policy(db, task.company_id)
     error = {"code": code, "message": message, "run_id": run_id}
-    if task.attempt_count < limits.max_attempts_per_task:
+    kind = retry_policy.classify(code, message)
+    if (
+        kind == retry_policy.TRANSIENT
+        and code not in retry_policy.ATTEMPT_CONSUMING_CODES
+        and task.transient_failures < retry_policy.MAX_TRANSIENT_FAILURES
+    ):
+        task.attempt_count = max(0, task.attempt_count - 1)  # not the task's fault: refund
+        task.transient_failures += 1
+        delay = retry_policy.backoff(retry_policy.TRANSIENT, task.transient_failures)
         transition(
-            db, task, S.READY, principal=principal, now=now, error=error, reason=f"retry: {code}"
+            db,
+            task,
+            S.READY,
+            principal=principal,
+            now=now,
+            error=error,
+            reason=f"transient failure ({code}); next attempt in {delay}s",
+            extra={"transient": True, "retry_in_seconds": delay},
         )
+        task.next_attempt_at = now + timedelta(seconds=delay)  # after transition() clears it
+        recompute_readiness(db, task.company_id, task_ids=[task.id], principal=principal, now=now)
+        return True
+    task.transient_failures = 0
+    if task.attempt_count < limits.max_attempts_per_task:
+        delay = retry_policy.backoff(retry_policy.PERMANENT, task.attempt_count)
+        transition(
+            db,
+            task,
+            S.READY,
+            principal=principal,
+            now=now,
+            error=error,
+            reason=f"retry: {code}" + (f" (in {delay}s)" if delay else ""),
+            extra={"retry_in_seconds": delay} if delay else None,
+        )
+        task.next_attempt_at = now + timedelta(seconds=delay) if delay else None
         recompute_readiness(db, task.company_id, task_ids=[task.id], principal=principal, now=now)
     else:
         transition(
@@ -485,6 +548,72 @@ def finish_failure(
             error=error,
             reason=f"no attempts left: {code}",
         )
+    return True
+
+
+def reopen_after_merge_conflict(
+    db: Session,
+    task: Task,
+    *,
+    run_id: str | None,
+    message: str,
+    now: datetime | None = None,
+) -> bool:
+    """A run failed with ``merge_conflict`` but its task already moved on to ``done`` or
+    ``in_review`` (CLI and company-agent runs finish the task through the company tools before the
+    run ends), so ``finish_failure`` never sees it. Reopen the task so the work is redone on top of
+    the new project files: any open review task is closed, the task goes through
+    ``revision_requested`` back to ``ready`` (after the permanent backoff) while attempts remain,
+    else it fails permanently. Returns False for any other task state. System path; no commit."""
+    if task.status not in (S.DONE, S.IN_REVIEW):
+        return False
+    from app.services import alerts, reviews
+
+    now = now or utcnow()
+    limits = policy.load_policy(db, task.company_id)
+    previous = task.status
+    error = {"code": retry_policy.MERGE_CONFLICT, "message": message, "run_id": run_id}
+    exhausted = task.attempt_count >= limits.max_attempts_per_task
+    audit.record(
+        db,
+        company_id=task.company_id,
+        principal=None,
+        action="task.reopened_merge_conflict",
+        target_type="task",
+        target_id=task.id,
+        summary=f"Task '{task.title}' was {previous} but its work conflicts with the project "
+        + ("repository; no attempts left" if exhausted else "repository; it runs again"),
+        data={"from": previous, "run_id": run_id, "attempt_count": task.attempt_count},
+    )
+    transition(
+        db,
+        task,
+        S.REVISION_REQUESTED,
+        principal=None,
+        now=now,
+        error=error,
+        reason="merge conflict: the finished work is not in the project",
+        extra={"run_id": run_id},
+        reopen=True,
+    )
+    reviews.close_for_task(db, task, None)  # no-op when the transition hook already closed it
+    if exhausted:
+        transition(
+            db,
+            task,
+            S.FAILED,
+            principal=None,
+            now=now,
+            error=error,
+            reason="no attempts left: merge_conflict",
+        )
+    else:
+        delay = retry_policy.backoff(retry_policy.PERMANENT, task.attempt_count)
+        recompute_readiness(db, task.company_id, task_ids=[task.id], principal=None, now=now)
+        task.next_attempt_at = now + timedelta(seconds=delay) if delay else None
+    # The executor's "finished work is not in the project" alert is only for tasks that cannot
+    # be reopened; this one is handled (retrying, or failed with its own alert and analysis).
+    alerts.resolve_by_key(db, task.company_id, f"merge_conflict:{task.id}", None)
     return True
 
 
@@ -713,6 +842,150 @@ def _note_duplicate(db: Session, company_id: str, agent: Agent, existing: Task) 
         )
 
 
+# ---------------------------------------------------------------- decomposition limits (M12)
+
+DUPLICATE_SIMILARITY = 0.85
+DUPLICATE_DONE_WINDOW = timedelta(days=7)
+_STOPWORDS = frozenset(
+    [
+        "a",
+        "an",
+        "the",
+        "and",
+        "or",
+        "of",
+        "to",
+        "for",
+        "in",
+        "on",
+        "at",
+        "by",
+        "with",
+        "from",
+        "into",
+        "as",
+        "is",
+        "are",
+        "be",
+        "this",
+        "that",
+        "it",
+        "its",
+    ]
+)
+_WORD = re.compile(r"[a-z0-9]+")
+
+
+def _title_tokens(title: str) -> frozenset[str]:
+    """Lower-case words without punctuation, stopwords and a plural 's'."""
+    words = []
+    for word in _WORD.findall((title or "").lower()):
+        if word in _STOPWORDS:
+            continue
+        if len(word) > 3 and word.endswith("s") and not word.endswith("ss"):
+            word = word[:-1]
+        words.append(word)
+    return frozenset(words or _WORD.findall((title or "").lower()))
+
+
+def title_similarity(a: str, b: str) -> float:
+    """Token overlap (Jaccard) of two normalised titles; 1.0 when they normalise identically."""
+    ta, tb = _title_tokens(a), _title_tokens(b)
+    if not ta or not tb:
+        return 0.0
+    return len(ta & tb) / len(ta | tb)
+
+
+def find_similar_task(
+    db: Session, company_id: str, project_id: str, title: str, *, now: datetime
+) -> Task | None:
+    """A task of ``project_id`` that is open, or done within the last seven days, whose title
+    normalises to the same words or overlaps at least ``DUPLICATE_SIMILARITY``."""
+    stmt = select(Task).where(
+        Task.company_id == company_id,
+        Task.project_id == project_id,
+        Task.kind == TaskKind.WORK,
+        (Task.status.in_(OPEN_STATUSES))
+        | ((Task.status == S.DONE) & (Task.completed_at >= now - DUPLICATE_DONE_WINDOW)),
+    )
+    best: tuple[float, Task] | None = None
+    for other in db.scalars(stmt.order_by(Task.created_at).limit(1000)):
+        score = title_similarity(title, other.title)
+        if score >= DUPLICATE_SIMILARITY and (best is None or score > best[0]):
+            best = (score, other)
+    return best[1] if best else None
+
+
+def _check_decomposition_limits(
+    db: Session,
+    company_id: str,
+    limits: Any,
+    data: TaskCreate,
+    project_id: str | None,
+    parent: Task | None,
+    creator: Agent | None,
+    now: datetime | None,
+) -> None:
+    """Agent-created work is bounded per project and per parent, and near-duplicates of open or
+    recently finished tasks are refused (the agent gets the existing task's id)."""
+    if data.kind != TaskKind.WORK:
+        return
+    now = now or utcnow()
+    if project_id:
+        similar = find_similar_task(db, company_id, project_id, data.title, now=now)
+        if similar is not None:
+            if creator is not None:
+                _note_duplicate(db, company_id, creator, similar)
+                db.commit()  # the audit trail of a refusal must survive the error
+            state = "done recently" if similar.status == S.DONE else f"already {similar.status}"
+            raise Conflict(
+                f"A similar task exists in this project: '{similar.title}' [id {similar.id}], "
+                f"{state}. Use or extend it instead of creating another.",
+                details={
+                    "limit": "duplicate_task",
+                    "existing_task_id": similar.id,
+                    "existing_status": similar.status,
+                },
+            )
+        in_project = db.scalar(
+            select(func.count(Task.id)).where(
+                Task.company_id == company_id,
+                Task.project_id == project_id,
+                Task.kind == TaskKind.WORK,
+                Task.created_by_type == "agent",
+                Task.status != S.CANCELLED,
+            )
+        )
+        if (in_project or 0) >= limits.max_work_tasks_per_project:
+            raise LimitExceeded(
+                f"This project already has {in_project} agent-created work tasks (limit "
+                f"{limits.max_work_tasks_per_project}). Finish or cancel existing tasks, or ask "
+                "a human to raise the limit; do not plan more work for it.",
+                details={
+                    "limit": "max_work_tasks_per_project",
+                    "max": limits.max_work_tasks_per_project,
+                },
+            )
+    if parent is not None:
+        children = db.scalar(
+            select(func.count(Task.id)).where(
+                Task.company_id == company_id,
+                Task.parent_task_id == parent.id,
+                Task.status != S.CANCELLED,
+            )
+        )
+        if (children or 0) >= limits.max_subtasks_per_task:
+            raise LimitExceeded(
+                f"Task '{parent.title}' already has {children} subtasks (limit "
+                f"{limits.max_subtasks_per_task}). Do the remaining work yourself or merge it into "
+                "an existing subtask.",
+                details={
+                    "limit": "max_subtasks_per_task",
+                    "max": limits.max_subtasks_per_task,
+                },
+            )
+
+
 def _hold_for_plan_approval(db: Session, task: Task, agent: Agent, run: TaskRun) -> None:
     """Supervised mode: what a manager plans waits for a human (one approval per run)."""
     from app.models.governance import Approval
@@ -926,6 +1199,7 @@ def _create_task_core(
             assert creator is not None
             _note_duplicate(db, company_id, creator, duplicate)
             return duplicate, False
+        _check_decomposition_limits(db, company_id, limits, data, project_id, parent, creator, now)
         if data.kind not in (TaskKind.REVIEW, TaskKind.HIRING, TaskKind.PLANNING):
             open_total = db.scalar(
                 select(func.count(Task.id)).where(
@@ -1210,6 +1484,7 @@ def update_task(db: Session, ctx: CompanyContext, task_id: str, data: TaskUpdate
         events.emit(db, ctx.company_id, "task.updated", task_event_payload(task))
         if assignee_changed:
             task.blocked_reason = None
+            task.next_attempt_at = None  # a new owner starts at once
             recompute_readiness(db, ctx.company_id, task_ids=[task.id], principal=ctx.principal)
             notify_assigned(db, task, ctx.principal)
         if "reviewer_member_id" in changed and task.status == S.IN_REVIEW:
@@ -1356,10 +1631,24 @@ def retry_as_agent(
             f"Only failed tasks can be retried (task is {task.status})",
             details={"from": task.status, "to": "backlog"},
         )
+    if task.agent_retry_count >= MAX_AGENT_RETRIES:
+        raise LimitExceeded(
+            f"Agents may retry a task at most {MAX_AGENT_RETRIES} times and this one was already "
+            "retried that often. Do not retry it again: escalate to the Co-founder or a human "
+            "(company_escalate), or create a different task.",
+            details={
+                "limit": "max_agent_retries",
+                "max": MAX_AGENT_RETRIES,
+                "retries": task.agent_retry_count,
+            },
+        )
     if assignee_id:
         get_agent_or_404(db, ctx.company_id, assignee_id, label="Assignee")
         task.assignee_agent_id = assignee_id
+    task.agent_retry_count += 1
     task.attempt_count = 0
+    task.transient_failures = 0
+    task.next_attempt_at = None
     transition(db, task, S.BACKLOG, principal=ctx.principal, error=None, reason=reason or "retry")
     recompute_readiness(db, ctx.company_id, task_ids=[task.id], principal=ctx.principal)
     db.commit()
@@ -1416,6 +1705,7 @@ def _unblock(db: Session, task: Task, principal: Principal | None) -> None:
             f"Cannot unblock a task that is {task.status}",
             details={"from": task.status, "to": "backlog"},
         )
+    task.next_attempt_at = None
     transition(db, task, S.BACKLOG, principal=principal, error=None, reason="unblocked")
     recompute_readiness(db, task.company_id, task_ids=[task.id], principal=principal)
 
@@ -1473,6 +1763,9 @@ def retry_task(db: Session, ctx: CompanyContext, task_id: str) -> Task:
             details={"from": task.status, "to": "backlog"},
         )
     task.attempt_count = 0
+    task.agent_retry_count = 0  # a human retry resets every counter
+    task.transient_failures = 0
+    task.next_attempt_at = None
     transition(db, task, S.BACKLOG, principal=ctx.principal, error=None, reason="manual retry")
     recompute_readiness(db, ctx.company_id, task_ids=[task.id], principal=ctx.principal)
     db.commit()
@@ -1685,6 +1978,18 @@ def complete_task_as_agent(
             f"Only in-progress tasks can be completed (task is {task.status})",
             details={"from": task.status},
         )
+    if task.kind == TaskKind.REVIEW:
+        from app.services import reviews
+
+        target_id = reviews.target_id_of(task)
+        target = get_task_or_404(db, ctx.company_id, target_id) if target_id else None
+        if target is not None and target.status == S.IN_REVIEW:
+            raise ReviewDecisionRequired(
+                f"Task '{target.title}' [id {target.id}] is still waiting for your review "
+                "decision. Record it first with company_review_task (decision accept or "
+                "request_revision, with a note); then complete this review task.",
+                details={"target_task_id": target.id, "target_status": target.status},
+            )
     finish_success(
         db,
         task,

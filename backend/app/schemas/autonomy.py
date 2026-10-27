@@ -336,6 +336,9 @@ class StateGoal(ApiModel):
     priority: str
     description: str | None = None
     owner_agent_id: str | None = None
+    # M12: how many projects of this goal are open / ended, so "no open project" is visible.
+    open_projects: int = 0
+    ended_projects: int = 0
 
 
 class StateProject(ApiModel):
@@ -429,6 +432,8 @@ class StateStandard(ApiModel):
 
 class AgentState(ApiModel):
     role: str
+    # M12: "compact" for a local model or a context under 32K (fewer rows, shorter texts).
+    profile: str = "full"
     company: dict[str, Any]
     goals: list[StateGoal]
     projects: list[StateProject]

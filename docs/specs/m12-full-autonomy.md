@@ -7,7 +7,7 @@ own. Two first-class modes: **API only**, and **Hybrid** (a model API for manage
 Codex / OpenCode on the same machine for the heavy work). Cloud APIs are optimised first, local
 models second. The human stays the Founder: limits, budgets and approvals remain theirs.
 
-Status: in progress. Work packages WP0 to WP5 below; WP0 (schema, policy, docs) is the shared base.
+Status: done (2026-10-27), verified with scripted runtimes and fake CLIs only (section 5). Work packages WP0 to WP5 and the end-to-end tests below.
 
 ## 1. Gaps found (ranked) and what closes them
 
@@ -132,6 +132,41 @@ Without git the engine falls back to per-run directories and reports `{"availabl
 Planning is bounded at three levels: per run (`max_tasks_per_planning_cycle`), per parent
 (`max_subtasks_per_task`) and per project (`max_work_tasks_per_project`), with fuzzy duplicate
 detection so a re-planning lead cannot re-create finished work. A lead plans a project once.
+
+### 2.7 As implemented (2026-10-27)
+
+Differences from the design above, and details the design left open:
+
+- `company_plan_project` accepts at most 8 tasks per call (the prompt asks for 3 to 6), resolves
+  dependency keys to ids and stops at the first limit error, returning what it created plus the error.
+  Leads are told to plan once and never re-plan a project that already has tasks.
+- Owner pins: `runtime_config.pin_model: true` keeps an agent on its own model (beside M10's
+  `pin_runtime`). Only humans can set either pin; an agent hiring a colleague gets 403.
+- A paid management model the owner chose in AI setup is never a "paid fallback needing approval";
+  budgets still apply. Work runs follow the paid-fallback rule as before.
+- D6 only handles goals whose projects have all ended; goals with no project at all keep the M5
+  nudge. D8 also routes an unowned project task to the project lead when there is one.
+- Watchdog alerts wake the Co-founder like every other alert.
+- Migration `0012_builtin_digest` (data only) sets `"digest": true` on existing companies' Co-founder
+  `daily-standup` and `weekly-strategy-review` schedules whose template does not mention `digest`;
+  an explicit `false` is kept. `TaskTemplate.digest` is accepted by the schedule API.
+- The agent state uses a compact profile (15 tasks, 12 agents, 120-character clips) when the run's
+  provider is local or its context is under 32K tokens; the state says which profile it used.
+- Prompt caching: the company agent's system prompt (identity plus tool guidance) holds nothing that
+  changes per run, so providers can cache it; task, run, workspace and dates are in the task prompt.
+  A test pins this. Hit rates are not measured.
+- Project workspaces: `ExecutionRequest.workspace_kind` is `project`, `review` or `run_dir`; only
+  the first two send `spec["workspace"]` (`{kind, project_name, files}` with at most 60 files) and
+  render a "PROJECT WORKSPACE" prompt section. `workspace_ref` also carries `branch`, `merge_commit`,
+  `conflict_files`, `branch_kept`, `discarded` (reviews), and `available: false` with a reason when a
+  project run fell back to a per-run directory. Audit actions: `workspace.merged`,
+  `workspace.merge_conflict`, `workspace.error`. A review run waits up to 30 s for the reviewed run's
+  merge. Failure codes: `merge_conflict`, `workspace_too_large`, `workspace_error`.
+- Merge conflicts after completion: CLI and company-agent runs usually finish their task (`done` or
+  `in_review`) before the run ends. When the merge then conflicts, the task is reopened so the retry
+  starts from the new `main` (see section 4 for the test).
+- Orphaned worktrees of a killed process are only pruned (`git worktree prune`) at the next prepare;
+  old per-run directories are not cleaned up yet.
 
 ## 3. Work packages
 

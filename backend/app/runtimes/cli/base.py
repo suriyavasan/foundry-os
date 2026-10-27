@@ -33,6 +33,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import Settings
@@ -40,10 +41,11 @@ from app.core.crypto import CredentialCipher, CredentialDecryptError
 from app.core.errors import AppError
 from app.core.keys import SecretKeyProvider
 from app.models.agent import Agent
+from app.models.artifact import Artifact
 from app.models.company import Company
 from app.models.enums import CostKind, TaskStatus
 from app.models.provider import ModelProvider
-from app.models.work import Task
+from app.models.work import Project, Task, TaskDependency
 from app.runtimes.base import (
     ArtifactRef,
     CancelToken,
@@ -65,8 +67,9 @@ from app.runtimes.cli import prompt as prompt_builder
 from app.runtimes.cli import store, workspace
 from app.runtimes.cli.catalog import CliSpec, assert_safe_argv
 from app.runtimes.cli.env import CliEnvironment, base_env
-from app.services import credentials, standards
+from app.services import credentials, standards, task_briefs
 from app.services import memory as memory_service
+from app.storage.local import LocalFileStorage
 
 logger = logging.getLogger("company_os.runtime.cli")
 
@@ -127,6 +130,7 @@ class RunPrep:
     mcp_python: Path | None = None
     runtime_dir: Path | None = None
     secrets: list[str] = field(default_factory=list)
+    workspace_kind: str = "run_dir"  # "project" | "review" | "run_dir" (M12)
 
     @property
     def local_model(self) -> bool:
@@ -376,6 +380,9 @@ class CliAdapter(RuntimeAdapter):
                 memory_service.relevant_for(db, company.id, agent)
             )
             description = request.task.description
+            project = db.get(Project, task.project_id) if task.project_id else None
+            project_name = project.name if project and project.company_id == company.id else None
+            dependencies = self._dependency_briefs(db, task)
             prompt = prompt_builder.build(
                 prompt_builder.PromptInputs(
                     company_name=company.name,
@@ -394,6 +401,10 @@ class CliAdapter(RuntimeAdapter):
                     standards=standard_lines,
                     memory=memory_lines,
                     tool_prefix=self.tool_prefix,
+                    workspace_kind=request.workspace_kind,
+                    project_name=project_name,
+                    workspace_files=list(request.workspace_files),
+                    dependencies=dependencies,
                 )
             )
             budget = request.limits.budget_micros
@@ -425,10 +436,48 @@ class CliAdapter(RuntimeAdapter):
             run_id=request.run_id,
             task_id=request.task.id,
             task_kind=request.task.kind,
+            workspace_kind=request.workspace_kind,
             mcp_python=settings.resolved_runtime_python,
             runtime_dir=settings.resolved_runtime_dir,
             secrets=secrets,
         )
+
+    def _dependency_briefs(self, db: Session, task: Task) -> list[prompt_builder.DependencyBrief]:
+        """Briefs of the (up to two) newest finished tasks this task depends on, so the CLI knows
+        what was delivered before it starts (the repository holds their files)."""
+        deps = db.scalars(
+            select(Task)
+            .join(TaskDependency, TaskDependency.depends_on_task_id == Task.id)
+            .where(
+                TaskDependency.task_id == task.id,
+                TaskDependency.company_id == task.company_id,
+                Task.company_id == task.company_id,
+                Task.status == TaskStatus.DONE,
+            )
+            .order_by(Task.completed_at.desc(), Task.id)
+            .limit(prompt_builder.MAX_DEPENDENCY_BRIEFS)
+        ).all()
+        storage = LocalFileStorage(self._settings.artifacts_dir)
+        briefs: list[prompt_builder.DependencyBrief] = []
+        for dep in deps:
+            lines = []
+            for art in task_briefs.artifact_briefs(
+                db, storage, task.company_id, dep.id, max_artifacts=3, chars=400
+            ):
+                excerpt = clip(art.get("excerpt"), 300)
+                lines.append(f"'{art['title']}'" + (f": {excerpt}" if excerpt else ""))
+            briefs.append(
+                prompt_builder.DependencyBrief(
+                    title=dep.title, summary=dep.result_summary, artifacts=lines
+                )
+            )
+        return briefs
+
+    def _run_has_artifact(self, run_id: str) -> bool:
+        with self._session_factory() as db:
+            return (
+                db.scalar(select(Artifact.id).where(Artifact.run_id == run_id).limit(1)) is not None
+            )
 
     # ------------------------------------------------------------ MCP wiring
 
@@ -490,7 +539,12 @@ class CliAdapter(RuntimeAdapter):
         scan = [a for i, a in enumerate(invocation.argv) if i != invocation.prompt_index]
         assert_safe_argv(scan)
         assert_safe_argv([invocation.config_text] if invocation.config_text else [])
-        before = workspace.snapshot(prep.workspace)
+        # Only a plain per-run directory needs a snapshot; a project worktree is diffed by git.
+        before = (
+            workspace.snapshot(prep.workspace)
+            if prep.workspace_kind == "run_dir"
+            else workspace.Snapshot({})
+        )
         parsed = Parsed()
         stderr_tail: collections.deque[str] = collections.deque(maxlen=STDERR_TAIL_LINES)
         parser = self.parser_class(prep, parsed)
@@ -729,10 +783,20 @@ class CliAdapter(RuntimeAdapter):
             emit(
                 "run.completed", {"summary": summary or "Task completed through the company tools"}
             )
-            return ExecutionResult(status="succeeded", summary=summary, usage=usage)
+            # A plain per-run directory is not a repository: files the CLI wrote but never
+            # submitted would be lost with it, so they become artifacts (a project worktree gets
+            # its "Changes" artifact from the control plane instead).
+            kept: list[ArtifactRef] = []
+            if prep.workspace_kind == "run_dir" and not self._run_has_artifact(prep.run_id):
+                kept = workspace.changed_files(prep.workspace, before)
+            return ExecutionResult(status="succeeded", summary=summary, usage=usage, artifacts=kept)
 
         # The CLI never called complete_task: keep what it made, then apply the M5 rules.
-        artifacts: list[ArtifactRef] = workspace.changed_files(prep.workspace, before)
+        artifacts: list[ArtifactRef] = (
+            workspace.changed_files(prep.workspace, before)
+            if prep.workspace_kind == "run_dir"
+            else []  # a project worktree is committed (and kept on a branch) by the control plane
+        )
         if parsed.final_text.strip():
             artifacts.append(
                 ArtifactRef(

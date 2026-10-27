@@ -4,6 +4,9 @@ specialist executes -> review tasks -> project completed -> everyone reported.""
 
 from __future__ import annotations
 
+from sqlalchemy import select
+
+from app.models.audit import AuditEvent
 from tests.autonomy_helpers import (
     pending_wakes,
     run_world,
@@ -161,3 +164,74 @@ def test_note_to_finished_project_through_every_layer(
     assert summary["plan"]["summary"].startswith("Handled:")
     first = get_task(client, cid, work[0].id)
     assert first["created_by_type"] == "agent" and first["created_by_id"] == w.lead["id"]
+
+
+def test_a_project_nobody_closes_is_completed_by_the_watchdog_and_the_goal_is_reviewed(
+    app, client, anon_client, scripted, scheduler, worker, clock
+):
+    """M12: the lead is woken when the work is finished but never closes the project; the
+    Co-founder is woken next; finally the system completes it and the Co-founder reviews the goal."""
+    w = scripted_world(client, scripted, anon_client)
+    cid = w.cid
+    founder_wakes: list[str] = []
+    lead_wakes: list[str] = []
+
+    def done(call, summary="ok"):
+        call.api.ok(
+            "POST", f"/tasks/{call.request.task.id}/complete", json={"result_summary": summary}
+        )
+
+    def founder(call):
+        founder_wakes.append(call.request.task.description or "")
+        done(call)
+
+    def lead(call):
+        if call.request.task.kind == "planning":
+            lead_wakes.append(call.request.task.description or "")
+            done(call)  # ...and never closes the project
+
+    def specialist(call):
+        done(call, "Done")
+
+    scripted.handlers.update({"Atlas": founder, "Lena": lead, "Sam": specialist})
+    goal = client.post(api(cid, "/goals"), json={"title": "Launch", "status": "active"}).json()
+    project = client.post(
+        api(cid, "/projects"),
+        json={
+            "name": "Landing page",
+            "goal_id": goal["id"],
+            "lead_agent_id": w.lead["id"],
+            "status": "active",
+        },
+    ).json()
+    for title in ("Write positioning", "Write page copy"):
+        r = client.post(
+            api(cid, "/tasks"),
+            json={
+                "title": title,
+                "project_id": project["id"],
+                "assignee_agent_id": w.specialist["id"],
+            },
+        )
+        assert r.status_code == 201, r.text
+    run_world(app, scheduler, worker, clock)
+    assert [t.status for t in tasks_of(app, cid, kind="work")] == ["done", "done"]
+    assert any("is finished" in text for text in lead_wakes)  # the hook woke the lead at once
+    assert client.get(api(cid, f"/projects/{project['id']}")).json()["status"] == "active"
+    founder_wakes.clear()
+    for _ in range(200):  # the lead did nothing: the watchdog takes over
+        clock.advance(30)
+        scheduler.tick()
+        worker.drain()
+        status = client.get(api(cid, f"/projects/{project['id']}")).json()["status"]
+        if status == "completed" and any("has no open projects" in t for t in founder_wakes):
+            break
+    assert scripted.errors == [], scripted.errors
+    assert client.get(api(cid, f"/projects/{project['id']}")).json()["status"] == "completed"
+    assert any("is finished and the project is still open" in t for t in founder_wakes)
+    assert any(
+        "has no open projects" in t and goal["id"] in t for t in founder_wakes
+    )  # the goal review
+    with app.state.session_factory() as db:
+        actions = {e.action for e in db.scalars(select(AuditEvent))}
+    assert {"project.auto_completed", "autonomy.intervened"} <= actions

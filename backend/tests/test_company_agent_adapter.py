@@ -407,6 +407,41 @@ def test_home_is_per_agent_and_outside_the_workspace_and_the_data_root_files(env
     assert not (data / OWNER_TOKEN_FILENAME).is_relative_to(seen["workspace_dir"])
 
 
+def test_spec_carries_the_project_workspace_only_for_a_project_or_review_run(env):
+    plain = _inspect(env)
+    assert plain["workspace"] is None  # a plain per-run directory sends nothing
+    files = [f"src/f{i}.py" for i in range(75)]
+    seen = _inspect(env, "t scenario:inspect p", workspace_kind="project", workspace_files=files)
+    assert seen["workspace"]["kind"] == "project" and seen["workspace"]["project_name"] is None
+    assert seen["workspace"]["files"] == files[:60]  # at most 60 paths
+    review = _inspect(
+        env, "t scenario:inspect r", workspace_kind="review", workspace_files=["index.html"]
+    )
+    assert review["workspace"] == {"kind": "review", "project_name": None, "files": ["index.html"]}
+
+
+def test_the_workspace_names_the_project_of_the_task(env, engine):
+    """Through the engine, the spec holds the real project name and the files of the shared repo."""
+    import shutil as _shutil
+
+    if _shutil.which("git") is None:
+        pytest.skip("git is not installed")
+    project = env.client.post(
+        api(env.cid, "/projects"), json={"name": "Landing page", "status": "active"}
+    ).json()
+    task = make_task(env, "inspect", project_id=project["id"])
+    settle(engine.scheduler, engine.worker)
+    run = run_of(env, task["id"])
+    progress = next(e for e in events_of(env, run["id"]) if e["type"] == "progress")
+    assert progress["payload"]["workspace"] == {
+        "kind": "project",
+        "project_name": "Landing page",
+        "files": [],
+    }
+    assert run["id"] in progress["payload"]["workspace_dir"]
+    assert get_task(env.client, env.cid, task["id"])["status"] == "done"
+
+
 def test_spec_carries_identity_model_limits_and_org(env):
     seen = _inspect(env)
     assert seen["model"] == {
@@ -699,8 +734,16 @@ def test_a_zero_project_budget_does_not_block_a_local_model(env, engine):
 
 
 def test_engine_failure_retries_then_fails_the_task(env, engine):
+    from sqlalchemy import update
+
+    from app.models.work import Task
+
     task = make_task(env, "failure")
-    settle(engine.scheduler, engine.worker, rounds=30)
+    for _ in range(6):
+        settle(engine.scheduler, engine.worker, rounds=30)
+        with env.app.state.session_factory() as db:  # skip the retry backoff (M12), not the retries
+            db.execute(update(Task).where(Task.id == task["id"]).values(next_attempt_at=None))
+            db.commit()
     final = get_task(env.client, env.cid, task["id"])
     assert final["status"] == "failed"  # max_attempts_per_task (3) used up, each a real failed run
     runs = env.client.get(api(env.cid, f"/tasks/{task['id']}/runs")).json()["items"]

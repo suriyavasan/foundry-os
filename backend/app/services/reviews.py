@@ -5,6 +5,9 @@
   The reviewer accepts or requests a revision with ``company_review_task`` on the *reviewed* task
   (a review task's own id is accepted too and resolved to the target). Recording the review closes
   the review task: it is completed when the reviewer is running it, cancelled when it never started.
+* M12: a review task that ends without a decision (or fails) leaves its target ``in_review``; the
+  autonomy watchdog re-issues it (``reissue_review``, key ``review:<task>:<rev>:r<n>``), then moves
+  it to the Co-founder, then alerts. Leaving ``in_review`` closes every open review task of it.
 * When a task fails for good (attempts or revisions exhausted) a **failure-analysis** task (also
   kind ``review``, key ``failure:<task>``) goes to the project lead, else the assignee's manager,
   else the AI Co-founder, with the error history and the options.
@@ -66,6 +69,52 @@ def _assignee_name(db: Session, task: Task) -> str:
 # ---------------------------------------------------------------- review tasks
 
 
+def _review_lines(db: Session, task: Task, extra: list[str] | None = None) -> str:
+    lines = [
+        f'Review the work of {_assignee_name(db, task)} on task "{task.title}" '
+        f"[task id {task.id}] (revision {task.revision_count}).",
+        "",
+        "Acceptance criteria:",
+        (task.acceptance_criteria or "(none)").strip(),
+    ]
+    if task.result_summary:
+        lines += ["", f"Result summary from the assignee: {task.result_summary.strip()}"]
+    if extra:
+        lines += ["", *extra]
+    lines += [
+        "",
+        f"The deliverables are shown below your task. Decide now: call company_review_task with "
+        f"task_id={task.id} and decision=accept (the work meets every criterion) or "
+        "decision=request_revision with a specific note on what to change. Then stop.",
+    ]
+    return "\n".join(lines)
+
+
+def _create_review(
+    db: Session,
+    task: Task,
+    reviewer_id: str,
+    key: str,
+    principal: Principal | None,
+    now: datetime | None,
+    extra: list[str] | None = None,
+) -> Task:
+    from app.services import tasks
+
+    data = TaskCreate(
+        title=f"Review: {task.title}"[:300],
+        description=_review_lines(db, task, extra),
+        kind=TaskKind.REVIEW.value,
+        priority=task.priority,
+        project_id=task.project_id,
+        assignee_agent_id=reviewer_id,
+        input_refs=[f"{TARGET_REF}{task.id}"],
+        idempotency_key=key,
+    )
+    review, _ = tasks._create_task_core(db, task.company_id, principal, data, run=None, now=now)
+    return review
+
+
 def ensure_review_task(
     db: Session, task: Task, principal: Principal | None, now: datetime | None = None
 ) -> Task | None:
@@ -79,58 +128,107 @@ def ensure_review_task(
     existing = _by_key(db, task.company_id, key)
     if existing is not None:
         return existing
-    lines = [
-        f'Review the work of {_assignee_name(db, task)} on task "{task.title}" '
-        f"[task id {task.id}] (revision {task.revision_count}).",
-        "",
-        "Acceptance criteria:",
-        (task.acceptance_criteria or "(none)").strip(),
+    return _create_review(db, task, reviewer_id, key, principal, now)
+
+
+def open_review_tasks(db: Session, task: Task) -> list[Task]:
+    """Every open review task that targets ``task`` (the original and any re-issue, any revision;
+    never the failure-analysis task, which has its own key prefix)."""
+    from app.services import tasks
+
+    return [
+        review
+        for review in db.scalars(
+            select(Task).where(
+                Task.company_id == task.company_id,
+                Task.kind == TaskKind.REVIEW,
+                Task.idempotency_key.like(f"{REVIEW_PREFIX}{task.id}:%"),
+            )
+        )
+        if TaskStatus(review.status) not in tasks.TERMINAL_TASK_STATUSES
     ]
-    if task.result_summary:
-        lines += ["", f"Result summary from the assignee: {task.result_summary.strip()}"]
-    lines += [
-        "",
-        f"The deliverables are shown below your task. Decide now: call company_review_task with "
-        f"task_id={task.id} and decision=accept (the work meets every criterion) or "
-        "decision=request_revision with a specific note on what to change. Then stop.",
+
+
+def reissue_review(
+    db: Session,
+    task: Task,
+    n: int,
+    principal: Principal | None = None,
+    *,
+    reviewer_id: str | None = None,
+    now: datetime | None = None,
+) -> Task | None:
+    """M12: a new review task for a task still ``in_review`` whose earlier review task ended
+    without a decision. Key ``review:<task>:<revision>:r<n>`` (idempotent per attempt).
+    ``reviewer_id`` names another reviewer (the Co-founder): it is recorded on the task, since only
+    the resolved reviewer may record a decision. Returns None when nobody can review it. No
+    commit."""
+    from app.services import audit, tasks
+
+    if task.status != TaskStatus.IN_REVIEW:
+        return None
+    chosen = reviewer_id or tasks.resolve_reviewer(db, task)
+    if chosen is None or chosen == task.assignee_agent_id:
+        return None
+    agent = db.get(Agent, chosen)
+    if (
+        agent is None
+        or agent.company_id != task.company_id
+        or agent.status in (AgentStatus.RETIRED, AgentStatus.REJECTED)
+    ):
+        return None
+    key = f"{review_key(task)}:r{n}"
+    existing = _by_key(db, task.company_id, key)
+    if existing is not None:
+        return existing
+    if reviewer_id is not None and tasks.resolve_reviewer(db, task) != reviewer_id:
+        previous = task.reviewer_agent_id
+        task.reviewer_agent_id = reviewer_id
+        task.reviewer_member_id = None
+        task.updated_at = now or task.updated_at
+        audit.record(
+            db,
+            company_id=task.company_id,
+            principal=principal,
+            action="task.reviewer_changed",
+            target_type="task",
+            target_id=task.id,
+            summary=f"Review of '{task.title}' moved to {agent.name}",
+            data={"from": previous, "to": reviewer_id, "auto": True},
+        )
+    extra = [
+        "An earlier review task for this work ended without a decision, so the work is still "
+        "waiting. Record the decision this time; do not finish without it."
     ]
-    data = TaskCreate(
-        title=f"Review: {task.title}"[:300],
-        description="\n".join(lines),
-        kind=TaskKind.REVIEW.value,
-        priority=task.priority,
-        project_id=task.project_id,
-        assignee_agent_id=reviewer_id,
-        input_refs=[f"{TARGET_REF}{task.id}"],
-        idempotency_key=key,
-    )
-    review, _ = tasks._create_task_core(db, task.company_id, principal, data, run=None, now=now)
-    return review
+    return _create_review(db, task, chosen, key, principal, now, extra)
 
 
 def close_for_task(
     db: Session, task: Task, principal: Principal | None, note: str | None = None
 ) -> None:
-    """The reviewed task left ``in_review`` (review recorded, cancelled, blocked): finish its open
-    review task. No commit."""
+    """The reviewed task left ``in_review`` (review recorded, cancelled, blocked): finish every
+    open review task that targets it. No commit."""
     from app.services import runs as run_service
     from app.services import tasks
 
-    review = _by_key(db, task.company_id, review_key(task))
-    if review is None or TaskStatus(review.status) in tasks.TERMINAL_TASK_STATUSES:
-        return
     summary = note or "The review was recorded on the reviewed task."
-    if review.status == TaskStatus.IN_PROGRESS:
-        review.result_summary = summary
-        tasks.transition(
-            db, review, TaskStatus.DONE, principal=principal, error=None, reason="review recorded"
-        )
-        tasks.recompute_dependents(db, review, principal=principal)
-    else:  # not started: nothing left to do
-        tasks.transition(
-            db, review, TaskStatus.CANCELLED, principal=principal, reason="review recorded"
-        )
-        run_service.request_cancel_for_task(db, review, "task_cancelled", principal)
+    for review in open_review_tasks(db, task):
+        if review.status == TaskStatus.IN_PROGRESS:
+            review.result_summary = summary
+            tasks.transition(
+                db,
+                review,
+                TaskStatus.DONE,
+                principal=principal,
+                error=None,
+                reason="review recorded",
+            )
+            tasks.recompute_dependents(db, review, principal=principal)
+        else:  # not started: nothing left to do
+            tasks.transition(
+                db, review, TaskStatus.CANCELLED, principal=principal, reason="review recorded"
+            )
+            run_service.request_cancel_for_task(db, review, "task_cancelled", principal)
 
 
 # ---------------------------------------------------------------- failure analysis

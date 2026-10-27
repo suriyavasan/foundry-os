@@ -388,6 +388,9 @@ def test_agent_cannot_change_enforced_fields_or_lifecycle_of_others(client, clie
     assert r.status_code == 403
     r = ac.post(agents_url(cid), json={"name": "N", "role_title": "R", "kind": "founder"})
     assert r.status_code == 403
+    for pin in ("pin_model", "pin_runtime"):  # pins bypass the company's routing: owner only
+        body = {"name": "N", "role_title": "R", "runtime_config": {pin: True}}
+        assert ac.post(agents_url(cid), json=body).status_code == 403
     assert ac.post(f"/api/companies/{cid}/departments", json={"name": "D"}).status_code == 403
 
 

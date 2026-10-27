@@ -30,7 +30,7 @@ from app.models.ledger import BudgetReservation
 from app.models.run import RunEvent, TaskRun
 from app.models.work import Task
 from app.runtimes.base import ArtifactRef, UsageReport
-from app.services import audit, events, ledger, safety, tasks
+from app.services import audit, events, ledger, retry_policy, safety, tasks
 from app.services.pagination import paginate
 
 CANCEL_BY_USER = "cancelled_by_user"
@@ -408,6 +408,19 @@ def _finalize_locked(
     # ---- task state machine
     if task is not None and task.status == TaskStatus.IN_PROGRESS:
         _apply_to_task(db, task, run, outcome, artifact_ids, principal, now)
+    elif (
+        task is not None
+        and outcome.status == RunStatus.FAILED
+        and (outcome.error or {}).get("code") == retry_policy.MERGE_CONFLICT
+    ):
+        # The task finished (done / in review) before its work failed to merge: reopen it.
+        tasks.reopen_after_merge_conflict(
+            db,
+            task,
+            run_id=run.id,
+            message=str((outcome.error or {}).get("message") or "merge conflict"),
+            now=now,
+        )
 
     if outcome.status in (RunStatus.FAILED, RunStatus.TIMED_OUT):
         safety.check_circuit_breaker(db, company_id, now)

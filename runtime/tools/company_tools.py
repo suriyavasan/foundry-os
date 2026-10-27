@@ -8,6 +8,8 @@ Work (every employee):
     company_get_context, company_create_task, company_update_task, company_complete_task,
     company_review_task, company_submit_artifact, company_report_progress,
     company_record_decision, company_request_approval, company_decide_approval
+Planning (M12; leads and managers): company_plan_project -- create a project's whole first task
+    list (<= 8 tasks, dependencies by key) in one call.
 Colleagues and hiring (M4):
     company_find_colleagues, company_request_hire
     HR-only on the server (a non-HR token gets 403, whatever the model tries):
@@ -196,13 +198,17 @@ def company_get_context(args: dict[str, Any], **_: Any) -> str:
     return _out(tagged)
 
 
+def _task_idempotency_key(title: str) -> str:
+    """Stable per (run, title): a retried/duplicated call returns the existing task, not a second one."""
+    normalized = re.sub(r"\s+", " ", title.lower())
+    return f"{ctx.config().run_id}:{hashlib.sha256(normalized.encode()).hexdigest()[:24]}"
+
+
 def company_create_task(args: dict[str, Any], **_: Any) -> str:
     if (bad := _need(args, "title")):
         return bad
     title = str(args["title"]).strip()
-    normalized = re.sub(r"\s+", " ", title.lower())
-    # Stable per (run, title): a retried/duplicated call returns the existing task, not a second one.
-    idem = f"{ctx.config().run_id}:{hashlib.sha256(normalized.encode()).hexdigest()[:24]}"
+    idem = _task_idempotency_key(title)
     try:
         budget = _usd_to_micros(args["budget_usd"], "budget_usd") if args.get("budget_usd") is not None else None
     except ValueError as exc:
@@ -223,6 +229,136 @@ def company_create_task(args: dict[str, Any], **_: Any) -> str:
         "idempotency_key": idem,
     })
     return _call("POST", "/tasks", json=body)
+
+
+MAX_PLAN_TASKS = 8
+# Errors that mean "no more tasks can be created now": the planner stops at the first one.
+LIMIT_ERROR_CODES = frozenset({"limit_exceeded", "rate_limited", "budget_exceeded", "guardrail_denied"})
+
+
+def _obj_list(value: Any) -> Optional[list[Any]]:
+    """A list argument that Hermes' coercion may have turned into its string form."""
+    if isinstance(value, str) and value.strip()[:1] in "[{":
+        import ast
+
+        for parse in (json.loads, ast.literal_eval):
+            try:
+                value = parse(value.strip())
+                break
+            except (ValueError, SyntaxError):
+                continue
+    return value if isinstance(value, list) else None
+
+
+def _plan_order(items: list[dict[str, Any]]) -> Optional[list[dict[str, Any]]]:
+    """Items ordered so every task comes after the tasks it depends on (stable); None on a cycle."""
+    by_key = {i["key"]: i for i in items}
+    ordered: list[dict[str, Any]] = []
+    done: set[str] = set()
+    pending = list(items)
+    while pending:
+        ready = [i for i in pending if all(d in done or d not in by_key for d in i["depends_on_keys"])]
+        if not ready:
+            return None
+        for i in ready:
+            ordered.append(i)
+            done.add(i["key"])
+        pending = [i for i in pending if i["key"] not in done]
+    return ordered
+
+
+def company_plan_project(args: dict[str, Any], **_: Any) -> str:
+    """Create a project's first task list in one call (leads/managers): at most 8 tasks, ``depends_on_keys``
+    resolved to the ids of tasks created earlier in the same call. Stops at the first limit error and
+    returns what was created plus the error, so a re-plan never loops against a cap."""
+    if (bad := _need(args, "project_id")):
+        return bad
+    project_id = str(args["project_id"]).strip()
+    raw = _obj_list(args.get("tasks"))
+    if not raw:
+        return _err("invalid_arguments", "tasks must be a non-empty list of {key, title, ...} objects")
+    if len(raw) > MAX_PLAN_TASKS:
+        return _err("invalid_arguments",
+                    f"Plan at most {MAX_PLAN_TASKS} tasks per call (got {len(raw)}). Plan the first "
+                    f"{MAX_PLAN_TASKS} and plan the rest when they are done. Nothing was created.")
+    items: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for n, entry in enumerate(raw, 1):
+        if not isinstance(entry, dict) or not str(entry.get("title") or "").strip():
+            return _err("invalid_arguments", f"tasks[{n - 1}] needs a title. Nothing was created.")
+        key = str(entry.get("key") or f"t{n}").strip()
+        if key in seen:
+            return _err("invalid_arguments", f"Duplicate task key {key!r}. Nothing was created.")
+        seen.add(key)
+        items.append({**entry, "key": key, "title": str(entry["title"]).strip(),
+                      "depends_on_keys": _str_list(entry.get("depends_on_keys")) or []})
+    for item in items:
+        unknown = [d for d in item["depends_on_keys"] if d not in seen]
+        if unknown:
+            return _err("invalid_arguments",
+                        f"Task {item['key']!r} depends on unknown key(s): {', '.join(unknown)}. Nothing was created.")
+    ordered = _plan_order(items)
+    if ordered is None:
+        return _err("invalid_arguments", "depends_on_keys form a cycle. Nothing was created.")
+
+    ids: dict[str, str] = {}
+    created: list[dict[str, Any]] = []
+    failed: list[dict[str, Any]] = []
+    stopped: Optional[dict[str, Any]] = None
+    for item in ordered:
+        if stopped is not None:
+            failed.append({"key": item["key"], "title": item["title"], "error": "not_attempted",
+                           "message": "Planning stopped before this task."})
+            continue
+        missing = [d for d in item["depends_on_keys"] if d not in ids]
+        if missing:
+            failed.append({"key": item["key"], "title": item["title"], "error": "dependency_not_created",
+                           "message": f"Depends on {', '.join(missing)}, which was not created."})
+            continue
+        try:
+            budget = _usd_to_micros(item["budget_usd"], "budget_usd") if item.get("budget_usd") is not None else None
+        except ValueError as exc:
+            failed.append({"key": item["key"], "title": item["title"], "error": "invalid_arguments",
+                           "message": str(exc)})
+            continue
+        body = _clean({
+            "title": item["title"],
+            "description": item.get("description"),
+            "acceptance_criteria": item.get("acceptance_criteria"),
+            "priority": item.get("priority"),
+            "assignee_agent_id": item.get("assignee_agent_id"),
+            "project_id": project_id,
+            "depends_on": [ids[d] for d in item["depends_on_keys"]] or None,
+            "budget_micros": budget,
+            "idempotency_key": _task_idempotency_key(item["title"]),
+        })
+        result = _call("POST", "/tasks", json=body)
+        parsed = _json_of(result)
+        if isinstance(parsed, dict) and not _is_error(parsed) and not _is_pending(parsed) and parsed.get("id"):
+            ids[item["key"]] = str(parsed["id"])
+            created.append({"key": item["key"], "id": str(parsed["id"]), "title": item["title"],
+                            "status": parsed.get("status")})
+            continue
+        problem = {"key": item["key"], "title": item["title"]}
+        if _is_pending(parsed):
+            failed.append({**problem, "error": "pending_approval",
+                           "message": "A guardrail parked this task behind an approval."})
+        elif isinstance(parsed, dict) and isinstance(parsed.get("error"), str):
+            problem |= {"error": parsed["error"], "message": parsed.get("message")}
+            if parsed["error"] in LIMIT_ERROR_CODES or parsed["error"] in ("not_configured", "agent_api_unreachable",
+                                                                          "agent_api_timeout", "unauthenticated"):
+                stopped = problem
+            else:
+                failed.append(problem)
+        else:
+            failed.append({**problem, "error": "unexpected_response", "message": result[:300]})
+    out: dict[str, Any] = {"project_id": project_id, "created": created, "failed": failed}
+    if stopped is not None:
+        out |= {"error": stopped["error"], "message": f"Planning stopped at {stopped['key']!r}: {stopped['message']}",
+                "stopped_at": stopped["key"]}
+    elif failed and not created:
+        out |= {"error": failed[0]["error"], "message": failed[0]["message"]}
+    return _out(out)
 
 
 def company_update_task(args: dict[str, Any], **_: Any) -> str:
@@ -1008,6 +1144,25 @@ _TOOLS: dict[str, tuple[dict[str, Any], Callable[..., str], str]] = {
                  "budget_usd": {"type": "number", "description": "Spending cap for the task in US dollars"}},
                 ["title"]),
         company_create_task, "➕"),
+    "company_plan_project": (
+        _schema("company_plan_project",
+                "Plan a project in ONE call (project leads and managers): create its first 3-6 tasks (never more "
+                "than 8) with dependencies by key. Do this once per project, never when it already has tasks. "
+                "Stops at the first limit and tells you what was created.",
+                {"project_id": _str("The project to plan"),
+                 "tasks": {"type": "array", "description": "The tasks, in a sensible order",
+                           "items": {"type": "object", "properties": {
+                               "key": _str("Short unique label used by depends_on_keys, e.g. 't1'"),
+                               "title": _str("Short task title"),
+                               "description": _str("What needs to be done"),
+                               "acceptance_criteria": _str("How a reviewer can check the result"),
+                               "depends_on_keys": {"type": "array", "items": _S,
+                                                   "description": "Keys of tasks in this list that must finish first"},
+                               "assignee_agent_id": _str("Agent id (optional; omit to let the system route it)"),
+                               "priority": {"type": "string", "enum": PRIORITIES}},
+                               "required": ["title"]}}},
+                ["project_id", "tasks"]),
+        company_plan_project, "🗂️"),
     "company_update_task": (
         _schema("company_update_task",
                 "Block/unblock a task (with a reason), reassign one you manage (or hand your own running task to "

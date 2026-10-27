@@ -9,12 +9,21 @@ from app.engine import recovery
 from app.engine.context import EngineContext
 from app.engine.dispatcher import DispatchReport, dispatch_tick
 from app.guardrails import ratelimit
-from app.services import command_center, emergency, events, jobs, schedules, wakes
+from app.services import (
+    autonomy_watchdog,
+    command_center,
+    emergency,
+    events,
+    jobs,
+    schedules,
+    wakes,
+)
 
 logger = logging.getLogger("company_os.scheduler")
 
 TICK_SECONDS = 2.0
 PRUNE_INTERVAL_SECONDS = 3600
+WATCHDOG_INTERVAL_SECONDS = autonomy_watchdog.INTERVAL_SECONDS
 
 
 @dataclass
@@ -23,15 +32,18 @@ class TickReport:
     woke_task_ids: list[str] = field(default_factory=list)
     dispatch: DispatchReport = field(default_factory=DispatchReport)
     recovery: recovery.RecoveryReport | None = None
+    watchdog: dict[str, int] = field(default_factory=dict)  # interventions per detector (M12)
 
 
 class Scheduler:
-    """One ``tick`` = fire due schedules, dispatch ready tasks, and (every 30 s) recover."""
+    """One ``tick`` = fire due schedules, dispatch ready tasks, run the autonomy watchdog (every
+    60 s) and recover (every 30 s)."""
 
     def __init__(self, ctx: EngineContext) -> None:
         self.ctx = ctx
         self._last_recovery: datetime | None = None
         self._last_prune: datetime | None = None
+        self._last_watchdog: datetime | None = None
 
     def start(self, now: datetime | None = None) -> recovery.RecoveryReport:
         """Startup recovery (also fires any schedule that came due while we were down)."""
@@ -57,6 +69,14 @@ class Scheduler:
                 command_center.sweep(self.ctx.session_factory, now)
             except Exception:  # a sweep problem must not stop dispatching
                 logger.exception("command center sweep failed")
+            if self._last_watchdog is None or now - self._last_watchdog >= timedelta(
+                seconds=WATCHDOG_INTERVAL_SECONDS
+            ):
+                self._last_watchdog = now
+                try:  # before the wakes: its wake requests materialize in this very tick
+                    report.watchdog = autonomy_watchdog.run_all(self.ctx.session_factory, now)
+                except Exception:  # the watchdog must never stop dispatching
+                    logger.exception("autonomy watchdog failed")
             report.woke_task_ids = wakes.materialize_due(self.ctx.session_factory, now)
             report.dispatch = dispatch_tick(self.ctx, now)
         if self._last_recovery is None or now - self._last_recovery >= timedelta(

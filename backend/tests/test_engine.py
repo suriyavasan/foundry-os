@@ -186,7 +186,7 @@ def test_revision_loop_is_bounded_by_max_revisions(client, company, scheduler, w
 # ------------------------------------------------------------------ failure / retry
 
 
-def test_failed_runs_retry_then_succeed(client, company, scheduler, worker):
+def test_failed_runs_retry_then_succeed(client, company, scheduler, worker, clock):
     cid = company["id"]
     agent = new_agent(client, cid, script={"fail_first_attempts": 2, "error_message": "flaky"})
     task = new_task(client, cid, assignee_agent_id=agent["id"])
@@ -195,6 +195,11 @@ def test_failed_runs_retry_then_succeed(client, company, scheduler, worker):
     after_first = get_task(client, cid, task["id"])
     assert after_first["status"] == "ready" and after_first["attempt_count"] == 1
     assert after_first["error"]["code"] == "failed" and after_first["error"]["message"] == "flaky"
+    scheduler.tick()  # the first retry is immediate ...
+    worker.drain()
+    assert get_task(client, cid, task["id"])["attempt_count"] == 2
+    assert scheduler.tick().dispatch.queued_run_ids == []  # ... the second waits 60 s (M12)
+    clock.advance(60)
     settle(scheduler, worker)
     assert get_task(client, cid, task["id"])["status"] == "done"
     statuses = [r["status"] for r in runs_of(client, cid, task["id"])]
@@ -447,7 +452,7 @@ def test_exhausted_task_budget_blocks_a_retry(client, company, scheduler, worker
 
 def test_max_concurrent_runs_is_respected(app, client, company, scheduler, worker):
     cid = company["id"]
-    set_policy(client, cid, max_concurrent_runs=2)
+    set_policy(client, cid, max_concurrent_runs=2, management_reserved_slots=0)
     agents = [new_agent(client, cid, name=f"A{i}") for i in range(4)]
     tasks = [
         new_task(client, cid, title=f"t{i}", assignee_agent_id=a["id"])

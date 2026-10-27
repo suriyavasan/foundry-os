@@ -149,6 +149,11 @@ class ExecutionRequest:
     run_token: str  # secret: pass to the agent API only; never log or echo into events
     agent_api_url: str
     workspace_dir: str
+    # M12: "project" (a worktree of the project's shared repository, on the run's own branch),
+    # "review" (a read-only copy of it; changes are discarded) or "run_dir" (a plain per-run
+    # directory). ``workspace_files`` are up to 60 paths already in the repository.
+    workspace_kind: str = "run_dir"
+    workspace_files: list[str] = field(default_factory=list)
 
     def __repr__(self) -> str:  # the token must never reach logs
         return f"ExecutionRequest(run_id={self.run_id!r}, task_id={self.task.id!r})"

@@ -168,7 +168,7 @@ def test_pinned_and_quality_first_keep_or_pick_the_paid_model(
 ):
     cid = company["id"]
     cloud, local = providers
-    set_policy(client, cid, model_routing="pinned")
+    set_policy(client, cid, model_routing="pinned", management_reserved_slots=0)
     _, runs = routed(client, cid, cloud_agent(client, cid, cloud), "pinned")
     scheduler.tick()
     [run] = runs()

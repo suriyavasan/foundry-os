@@ -133,3 +133,20 @@ def test_version_flag_needs_no_stdin():
                        cwd=RUNTIME_ROOT, timeout=30, stdin=subprocess.DEVNULL)
     info = json.loads(p.stdout)
     assert p.returncode == 0 and info["protocol"] == 1 and info["upstream_hermes_commit"].startswith("db1fa153")
+
+
+def test_workspace_section_is_optional_and_validated(good):
+    assert parse_spec(good).workspace is None
+    good["workspace"] = {"kind": "project", "project_name": "Site", "files": ["README.md", "src/app.py"]}
+    assert parse_spec(good).workspace["files"] == ["README.md", "src/app.py"]
+    good["workspace"] = "nope"
+    with pytest.raises(SpecError, match="workspace must be an object"):
+        parse_spec(good)
+    good["workspace"] = {"kind": "project", "files": [1, 2]}
+    with pytest.raises(SpecError, match="workspace.files"):
+        parse_spec(good)
+
+
+def test_the_plan_project_tool_is_a_known_company_tool(good):
+    good["company_tools"] = ["company_get_state", "company_plan_project"]
+    assert parse_spec(good).company_tools == ["company_get_state", "company_plan_project"]

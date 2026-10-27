@@ -145,6 +145,30 @@ over the same agent API as `company_agent`, so risk tiers, rate limits, DLP and 
 **Completion.** The task is complete when the CLI called `complete_task` (the adapter checks the task state, not the CLI's words). Otherwise the adapter keeps new/changed text files (≤ 20, ≤ 1 MB) and the final message as artifacts and
 returns a retryable failure `task_not_completed`, so the M5 retry/fail rules apply.
 
+## Shared project repository (M12)
+
+A work task that belongs to a project no longer starts in an empty per-run directory. Each project has
+one git repository (`<workspaces>/<company>/projects/<project>/main`, branch `main`), and each run gets
+its own worktree on branch `run/<run id>`. When the run succeeds, its changes are committed as the agent
+and merged into `main` (`--no-ff`, under a per-project lock), so the next task starts from everything
+the earlier tasks built. A review task gets a read-only, detached worktree of the code it reviews. Tasks
+outside a project keep the per-run directory described above.
+
+- A merge conflict fails the run as `merge_conflict`. That failure is retryable, and the retry starts
+  from the new `main`. The failed run's branch is kept for inspection.
+- Every run attaches a "Changes" artifact (diffstat plus patch, at most 200 KB).
+- Git runs without hooks, GPG signing or fsmonitor, with a minimal environment, a 60 s timeout and no
+  shell. Paths that escape the worktree, symlinks into it, nested `.git` directories and oversized
+  workspaces are refused (`workspace_error`, `workspace_too_large`).
+- Without `git` (or `fcntl`), runs fall back to per-run directories, and `workspace_ref` reports
+  `available: false`.
+- The prompt gets a "PROJECT WORKSPACE" section listing up to 60 files of the repository.
+
+In hybrid mode, `cli_role_families` (owner policy) limits which role families' work tasks go to the
+CLI. Other families, such as research roles that need the web, stay on the company agent runtime.
+Planning, standups and reviews by the Co-founder and leads always run on the company agent with the
+management model. Not verified: real CLI behaviour inside git worktrees.
+
 ## Terms of use — read before using `own_login`
 
 Using a personal subscription login (Claude Pro/Max, ChatGPT plans) for automated, unattended work may not be permitted by the provider's terms; some providers require API keys for that. Company OS does not decide this for you:

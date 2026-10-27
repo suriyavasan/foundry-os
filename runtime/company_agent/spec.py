@@ -46,6 +46,8 @@ COMPANY_TOOL_NAMES = (
     "company_decide_peer_review", "company_provider_action",
     # M10: reflections for the Founder (AI Co-founder only on the server).
     "company_post_reflection", "company_reply_reflection", "company_revise_reflection",
+    # M12: plan a project's first task list in one call (leads and managers).
+    "company_plan_project",
 )
 
 MIN_CONTEXT_LENGTH = 8192
@@ -95,6 +97,10 @@ class RunSpec:
     # M6 guardrails block (docs/specs/m6): tool tiers, which tiers the control plane is asked about,
     # which tools return untrusted content. None = a control plane older than Milestone 6.
     guardrails: Optional[dict[str, Any]] = None
+    # M12: where the work lives, when the control plane gives the run a shared project repository:
+    # {"kind": "project_repo" | "review" | "run_dir", "project_name": str, "files": [relative paths]}.
+    # None = a plain per-run directory (or a control plane older than M12).
+    workspace: Optional[dict[str, Any]] = None
 
     @property
     def secrets(self) -> list[str]:
@@ -245,6 +251,19 @@ def parse_spec(raw: Any) -> RunSpec:
             if not (isinstance(untrusted, dict) and all(isinstance(k, str) and isinstance(v, str) for k, v in untrusted.items())):
                 problems.append("guardrails.untrusted_tools must map tool names to sources")
 
+    workspace_info = raw.get("workspace")
+    if workspace_info is not None:
+        if not isinstance(workspace_info, dict):
+            problems.append("workspace must be an object")
+            workspace_info = None
+        else:
+            files = workspace_info.get("files", [])
+            if not (isinstance(files, list) and all(isinstance(f, str) for f in files)):
+                problems.append("workspace.files must be a list of paths")
+            for key in ("kind", "project_name"):
+                if workspace_info.get(key) is not None and not isinstance(workspace_info.get(key), str):
+                    problems.append(f"workspace.{key} must be a string")
+
     limits = raw.get("limits")
     if not isinstance(limits, dict):
         problems.append("limits is required and must be an object")
@@ -306,6 +325,7 @@ def parse_spec(raw: Any) -> RunSpec:
         docker_network=network,
         company_tools=list(dict.fromkeys(company_tools)) if company_tools is not None else None,
         guardrails=guardrails if isinstance(guardrails, dict) else None,
+        workspace=workspace_info if isinstance(workspace_info, dict) else None,
     )
 
 

@@ -11,7 +11,16 @@ from app.api import sse
 from app.models.run import CompanyEvent
 from app.services import events
 from tests.conftest import human
-from tests.helpers import api, get_task, new_agent, new_task, run_in_thread, settle, wait_until
+from tests.helpers import (
+    api,
+    get_task,
+    new_agent,
+    new_task,
+    run_in_thread,
+    set_policy,
+    settle,
+    wait_until,
+)
 
 # ------------------------------------------------------------------ SSE
 
@@ -210,6 +219,7 @@ def test_pause_cancels_queued_and_running_runs_without_penalty(
     app, client, company, scheduler, worker
 ):
     cid = company["id"]
+    set_policy(client, cid, management_reserved_slots=0)  # both work runs dispatch at once
     running_agent = new_agent(client, cid, name="Runner", script={"block_until_cancel": True})
     queued_agent = new_agent(client, cid, name="Waiter")
     t_run = new_task(client, cid, title="running", assignee_agent_id=running_agent["id"])
