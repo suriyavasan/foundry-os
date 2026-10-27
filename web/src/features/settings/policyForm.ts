@@ -1,4 +1,4 @@
-import type { ApprovalKind, AutonomyMode, CompanyPolicy, ModelRouting, UpdatePolicyRequest } from '@/api/types'
+import type { ApprovalKind, AutonomyMode, CompanyPolicy, ModelRouting, RoleFamily, UpdatePolicyRequest } from '@/api/types'
 import { microsToUsdString, parseBudgetInput } from '@/lib/money'
 
 export const APPROVAL_KINDS: Array<{ kind: ApprovalKind; label: string; hint: string }> = [
@@ -157,6 +157,110 @@ function diffM6(m: M6FormValues, p: CompanyPolicy): UpdatePolicyRequest {
   return out
 }
 
+/* ------------------------------ Milestone 12 fields ------------------------------ */
+
+/** The role families the backend accepts in `cli_role_families` (the `RoleFamily` union), in the order they are listed. */
+export const ROLE_FAMILIES: Array<{ value: RoleFamily; label: string }> = [
+  { value: 'founder', label: 'Founder' },
+  { value: 'hr', label: 'HR' },
+  { value: 'engineering', label: 'Engineering' },
+  { value: 'design', label: 'Design' },
+  { value: 'marketing', label: 'Marketing' },
+  { value: 'sales', label: 'Sales' },
+  { value: 'customer_success', label: 'Customer success' },
+  { value: 'research', label: 'Research' },
+  { value: 'qa', label: 'QA' },
+  { value: 'operations', label: 'Operations' },
+  { value: 'finance', label: 'Finance' },
+  { value: 'generic', label: 'Generic' },
+]
+
+export type M12NumberKey =
+  | 'management_reserved_slots'
+  | 'max_parallel_runs_per_agent'
+  | 'max_work_tasks_per_project'
+  | 'max_subtasks_per_task'
+  | 'circuit_breaker_cooldown_seconds'
+  | 'initiative_interval_seconds'
+
+/** Whole-number M12 policy fields with the bounds the backend enforces (`schemas/policy.py`). */
+export const M12_NUMBER_FIELDS: Array<{ key: M12NumberKey; label: string; hint: string; min: number; max: number }> = [
+  { key: 'management_reserved_slots', label: 'Slots reserved for management', hint: 'Of the max concurrent runs, how many work runs may never use, so planning and reviews are not starved. Must be lower than max concurrent runs.', min: 0, max: 99 },
+  { key: 'max_parallel_runs_per_agent', label: 'Parallel runs per agent', hint: 'How many runs one agent may have at once (coding CLI work tasks inside a project only).', min: 1, max: 10 },
+  { key: 'max_work_tasks_per_project', label: 'Max work tasks per project', hint: 'Work tasks agents may create in one project.', min: 1, max: 200 },
+  { key: 'max_subtasks_per_task', label: 'Max subtasks per task', hint: 'Child tasks one parent task may have.', min: 1, max: 50 },
+  { key: 'circuit_breaker_cooldown_seconds', label: 'Circuit breaker cooldown (seconds)', hint: 'A company paused by the circuit breaker resumes itself after this long. 0 means only a human resumes it.', min: 0, max: 604_800 },
+  { key: 'initiative_interval_seconds', label: 'Initiative interval (seconds)', hint: 'How long the company must be idle before the AI Co-founder is asked to start new work.', min: 600, max: 2_592_000 },
+]
+
+/**
+ * M12 values as typed, only for the fields the backend reported (same rule as M6). `cli_role_families` is `null` for "every
+ * role family" (the default) or the chosen families.
+ */
+export interface M12FormValues extends Partial<Record<M12NumberKey, string>> {
+  cli_role_families?: RoleFamily[] | null
+  cli_run_reservation_micros?: string
+  initiative_enabled?: boolean
+  project_auto_complete?: boolean
+}
+
+export const hasM12Fields = (m12: M12FormValues): boolean => Object.keys(m12).length > 0
+
+function m12ToForm(p: CompanyPolicy): M12FormValues {
+  const m: M12FormValues = {}
+  if (p.cli_role_families !== undefined) m.cli_role_families = p.cli_role_families === null ? null : [...p.cli_role_families]
+  if (p.cli_run_reservation_micros !== undefined) m.cli_run_reservation_micros = microsToUsdString(p.cli_run_reservation_micros)
+  for (const f of M12_NUMBER_FIELDS) if (p[f.key] !== undefined) m[f.key] = String(p[f.key])
+  if (p.initiative_enabled !== undefined) m.initiative_enabled = p.initiative_enabled
+  if (p.project_auto_complete !== undefined) m.project_auto_complete = p.project_auto_complete
+  return m
+}
+
+function validateM12(m: M12FormValues, limits: Record<LimitKey, string>, saved?: CompanyPolicy): PolicyFormErrors {
+  const e: PolicyFormErrors = {}
+  if (m.cli_run_reservation_micros !== undefined) {
+    const r = parseBudgetInput(m.cli_run_reservation_micros)
+    if (r.error || r.value === null) e.cli_run_reservation_micros = r.error ?? 'A reservation per coding CLI run is required'
+  }
+  for (const f of M12_NUMBER_FIELDS) {
+    const raw = m[f.key]
+    if (raw === undefined) continue
+    const t = raw.trim()
+    if (!/^\d+$/.test(t) || !Number.isSafeInteger(Number(t))) e[f.key] = 'Enter a whole number'
+    else if (Number(t) < f.min) e[f.key] = `At least ${f.min}`
+    else if (Number(t) > f.max) e[f.key] = `At most ${f.max.toLocaleString('en-US')}`
+  }
+  // The server refuses a reservation that leaves no slot for work, but only when the reservation itself is being changed.
+  const slots = m.management_reserved_slots
+  const maxRuns = Number(limits.max_concurrent_runs)
+  if (!e.management_reserved_slots && slots !== undefined && Number.isFinite(maxRuns) && /^\d+$/.test(limits.max_concurrent_runs.trim()) && Number(slots) >= maxRuns) {
+    if (!saved || saved.management_reserved_slots === undefined || Number(slots) !== saved.management_reserved_slots) e.management_reserved_slots = 'Must be lower than max concurrent runs'
+  }
+  return e
+}
+
+function diffM12(m: M12FormValues, p: CompanyPolicy): UpdatePolicyRequest {
+  const out: UpdatePolicyRequest = {}
+  if (m.cli_role_families !== undefined && p.cli_role_families !== undefined) {
+    const a = m.cli_role_families
+    const b = p.cli_role_families
+    if (a === null || b === null ? a !== b : !sameSet(a, b)) out.cli_role_families = a === null ? null : [...a]
+  }
+  if (m.cli_run_reservation_micros !== undefined && p.cli_run_reservation_micros !== undefined) {
+    const v = parseBudgetInput(m.cli_run_reservation_micros).value
+    if (v !== null && v !== p.cli_run_reservation_micros) out.cli_run_reservation_micros = v
+  }
+  for (const f of M12_NUMBER_FIELDS) {
+    const raw = m[f.key]
+    if (raw === undefined || p[f.key] === undefined) continue
+    const n = Number(raw)
+    if (Number.isFinite(n) && n !== p[f.key]) out[f.key] = n
+  }
+  if (m.initiative_enabled !== undefined && p.initiative_enabled !== undefined && m.initiative_enabled !== p.initiative_enabled) out.initiative_enabled = m.initiative_enabled
+  if (m.project_auto_complete !== undefined && p.project_auto_complete !== undefined && m.project_auto_complete !== p.project_auto_complete) out.project_auto_complete = m.project_auto_complete
+  return out
+}
+
 export interface PolicyFormValues {
   autonomy_mode: AutonomyMode
   human_approval_required_for: ApprovalKind[]
@@ -166,6 +270,7 @@ export interface PolicyFormValues {
   limits: Record<LimitKey, string>
   allowed_model_providers: string[]
   m6: M6FormValues
+  m12: M12FormValues
 }
 
 export type PolicyFormErrors = Partial<Record<string, string>>
@@ -182,10 +287,12 @@ export function policyToForm(p: CompanyPolicy): PolicyFormValues {
     limits,
     allowed_model_providers: [...p.allowed_model_providers],
     m6: m6ToForm(p),
+    m12: m12ToForm(p),
   }
 }
 
-export function validatePolicyForm(v: PolicyFormValues): PolicyFormErrors {
+/** `saved` lets cross-field rules apply only to what the person is actually changing, as the server does. */
+export function validatePolicyForm(v: PolicyFormValues, saved?: CompanyPolicy): PolicyFormErrors {
   const e: PolicyFormErrors = {}
   const d = parseBudgetInput(v.daily_budget)
   if (d.error) e.daily_budget = d.error
@@ -200,7 +307,7 @@ export function validatePolicyForm(v: PolicyFormValues): PolicyFormErrors {
     else if (Number(raw) < f.min) e[f.key] = `At least ${f.min}`
     else if (!Number.isSafeInteger(Number(raw))) e[f.key] = 'Too large'
   }
-  return { ...e, ...validateM6(v.m6) }
+  return { ...e, ...validateM6(v.m6), ...validateM12(v.m12, v.limits, saved) }
 }
 
 const sameSet = (a: string[], b: string[]) => a.length === b.length && [...a].sort().join('|') === [...b].sort().join('|')
@@ -223,5 +330,5 @@ export function diffPolicy(v: PolicyFormValues, p: CompanyPolicy): UpdatePolicyR
   }
   const providers = v.allowed_model_providers.map((s) => s.trim()).filter(Boolean)
   if (!sameList(providers, p.allowed_model_providers)) out.allowed_model_providers = providers
-  return { ...out, ...diffM6(v.m6, p) }
+  return { ...out, ...diffM6(v.m6, p), ...diffM12(v.m12, p) }
 }

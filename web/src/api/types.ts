@@ -391,6 +391,20 @@ export interface CompanyPolicy {
   allow_paid_fallback?: boolean
   auto_spend_limit_micros?: number
   stall_seconds?: number
+  /**
+   * Milestone 12 fields (docs/specs/m12 section 2.1). Optional for the same reason as M6: a backend without M12 does not
+   * send them and the Settings form hides them. Owner-only on the server. `cli_role_families: null` = every role family.
+   */
+  cli_role_families?: RoleFamily[] | null
+  cli_run_reservation_micros?: number
+  management_reserved_slots?: number
+  max_parallel_runs_per_agent?: number
+  max_work_tasks_per_project?: number
+  max_subtasks_per_task?: number
+  circuit_breaker_cooldown_seconds?: number
+  initiative_enabled?: boolean
+  initiative_interval_seconds?: number
+  project_auto_complete?: boolean
 }
 
 export type ModelRouting = 'free_first' | 'pinned' | 'quality_first'
@@ -928,6 +942,8 @@ export interface ModelProvider {
   /** Micro-USD per 1M tokens. null = unknown (never shown as $0). */
   input_price_per_mtok_micros: number | null
   output_price_per_mtok_micros: number | null
+  /** The latest provider test; absent on a backend that predates it. */
+  last_test?: ProviderTest | null
   created_at?: Timestamp
   updated_at?: Timestamp
 }
@@ -2122,6 +2138,8 @@ export interface ProviderTestCheck {
 }
 export interface ProviderTest {
   ok: boolean
+  /** The model the test ran against (M12: a work model must be one a provider tested). */
+  model?: string | null
   checks: ProviderTestCheck[]
   served_context: number | null
   latency_ms: number | null
@@ -2178,6 +2196,8 @@ export interface AiSetupStatus {
   ready: boolean
   blocking_reason: AiBlockingReason | null
   management: AiSetupManagement
+  /** M12: the optional separate model for heavy work runs; null/absent = work runs follow the routing mode. */
+  work_model?: AiSetupManagement | null
   work_mode: WorkMode
   work_runtime: WorkRuntime | null
   clis: CliRuntimeStatus[]
@@ -2189,6 +2209,9 @@ export interface AiSetupUpdate {
   management_model: string
   work_mode: WorkMode
   work_runtime: WorkRuntime | null
+  /** M12. Omit = unchanged; both null = cleared; otherwise both set and the provider's latest test passed for that model. */
+  work_model_provider_id?: Uuid | null
+  work_model_name?: string | null
 }
 
 export interface CliAuthUpdate {

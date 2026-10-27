@@ -7,8 +7,11 @@ import { formatUsd } from '@/lib/money'
 import {
   APPROVAL_KINDS,
   LIMIT_FIELDS,
+  M12_NUMBER_FIELDS,
   MODEL_ROUTING_OPTIONS,
+  ROLE_FAMILIES,
   diffPolicy,
+  hasM12Fields,
   hasM6Fields,
   policyToForm,
   validatePolicyForm,
@@ -53,7 +56,16 @@ function PolicyForm({ companyId, policy }: { companyId: string; policy: CompanyP
     setValues((v) => ({ ...v, m6: { ...v.m6, ...p } }))
     setErrors({})
   }
+  const setM12 = (p: Partial<PolicyFormValues['m12']>) => {
+    setValues((v) => ({ ...v, m12: { ...v.m12, ...p } }))
+    setErrors({})
+  }
   const m6 = values.m6
+  const m12 = values.m12
+  const toggleFamily = (family: (typeof ROLE_FAMILIES)[number]['value']) => {
+    const cur = m12.cli_role_families ?? []
+    setM12({ cli_role_families: cur.includes(family) ? cur.filter((f) => f !== family) : [...cur, family] })
+  }
   const toggleKind = (kind: PolicyFormValues['human_approval_required_for'][number]) =>
     patch({
       human_approval_required_for: values.human_approval_required_for.includes(kind)
@@ -64,7 +76,7 @@ function PolicyForm({ companyId, policy }: { companyId: string; policy: CompanyP
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setFormError(null)
-    const ce = validatePolicyForm(values)
+    const ce = validatePolicyForm(values, policy)
     setErrors(ce)
     if (Object.keys(ce).length) return
     try {
@@ -200,6 +212,83 @@ function PolicyForm({ companyId, policy }: { companyId: string; policy: CompanyP
                 </span>
               </label>
             )}
+          </section>
+        )}
+
+        {hasM12Fields(m12) && (
+          <section className="space-y-3" aria-label="Full autonomy">
+            <SectionLabel>Full autonomy</SectionLabel>
+            <p className="text-[12px] text-fg-3">How the company keeps itself busy, how work is split up, and which work may use a coding CLI. Only you can change these; agents never can.</p>
+            {m12.cli_role_families !== undefined && (
+              <fieldset>
+                <legend className="mb-1 text-[12px] font-medium text-fg-2">Role families that may use a coding CLI (hybrid mode)</legend>
+                <label className="flex cursor-pointer items-start gap-2 rounded-md border border-line bg-raised px-2.5 py-2 text-[13px] hover:bg-hover">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 size-3.5 accent-(--accent)"
+                    checked={m12.cli_role_families === null}
+                    onChange={(e) => setM12({ cli_role_families: e.target.checked ? null : ROLE_FAMILIES.map((f) => f.value) })}
+                  />
+                  <span>
+                    <span className="block text-fg">Every role family (default)</span>
+                    <span className="block text-[12px] text-fg-3">Work tasks of any role may run on the coding CLI chosen in AI settings.</span>
+                  </span>
+                </label>
+                {m12.cli_role_families !== null && (
+                  <div className="mt-1.5 grid gap-1.5 sm:grid-cols-3" role="group" aria-label="Role families">
+                    {ROLE_FAMILIES.map((f) => (
+                      <label key={f.value} className="flex cursor-pointer items-center gap-2 rounded-md border border-line bg-raised px-2.5 py-1.5 text-[13px] hover:bg-hover">
+                        <input type="checkbox" className="size-3.5 accent-(--accent)" checked={m12.cli_role_families?.includes(f.value) ?? false} onChange={() => toggleFamily(f.value)} />
+                        <span className="text-fg">{f.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <p className="mt-1.5 text-[12px] text-fg-3">
+                  {m12.cli_role_families === null
+                    ? 'Untick it to narrow the list; the other roles then work through the model API, which has web tools.'
+                    : m12.cli_role_families.length === 0
+                      ? 'No role family uses the coding CLI: all work stays on the model API.'
+                      : 'Other role families stay on the model API, which has web tools (research, for example).'}
+                </p>
+              </fieldset>
+            )}
+            <div className="grid gap-4 sm:grid-cols-2">
+              {m12.cli_run_reservation_micros !== undefined && (
+                <Field
+                  label="Reserved per coding CLI run (USD)"
+                  error={errors.cli_run_reservation_micros}
+                  hint={`Held before a coding CLI run; its own spend cap derives from it. Now ${formatUsd(policy.cli_run_reservation_micros, 'not set')}.`}
+                >
+                  {({ id, invalid, describedBy }) => <Input id={id} inputMode="decimal" value={m12.cli_run_reservation_micros} invalid={invalid} aria-describedby={describedBy} onChange={(e) => setM12({ cli_run_reservation_micros: e.target.value })} />}
+                </Field>
+              )}
+              {M12_NUMBER_FIELDS.filter((f) => m12[f.key] !== undefined).map((f) => (
+                <Field key={f.key} label={f.label} error={errors[f.key]} hint={f.hint}>
+                  {({ id, invalid, describedBy }) => <Input id={id} inputMode="numeric" value={m12[f.key]} invalid={invalid} aria-describedby={describedBy} onChange={(e) => setM12({ [f.key]: e.target.value })} />}
+                </Field>
+              ))}
+            </div>
+            <div className="grid gap-1.5 sm:grid-cols-2">
+              {m12.initiative_enabled !== undefined && (
+                <label className="flex cursor-pointer items-start gap-2 rounded-md border border-line bg-raised px-2.5 py-2 text-[13px] hover:bg-hover">
+                  <input type="checkbox" className="mt-0.5 size-3.5 accent-(--accent)" checked={m12.initiative_enabled} onChange={(e) => setM12({ initiative_enabled: e.target.checked })} />
+                  <span>
+                    <span className="block text-fg">Start new work on its own</span>
+                    <span className="block text-[12px] text-fg-3">When the company is idle, the AI Co-founder looks for the next goal and project (within your budgets).</span>
+                  </span>
+                </label>
+              )}
+              {m12.project_auto_complete !== undefined && (
+                <label className="flex cursor-pointer items-start gap-2 rounded-md border border-line bg-raised px-2.5 py-2 text-[13px] hover:bg-hover">
+                  <input type="checkbox" className="mt-0.5 size-3.5 accent-(--accent)" checked={m12.project_auto_complete} onChange={(e) => setM12({ project_auto_complete: e.target.checked })} />
+                  <span>
+                    <span className="block text-fg">Complete finished projects automatically</span>
+                    <span className="block text-[12px] text-fg-3">A project whose work tasks are all finished (at least one done) is closed without waiting for a person.</span>
+                  </span>
+                </label>
+              )}
+            </div>
           </section>
         )}
 

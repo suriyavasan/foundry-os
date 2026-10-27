@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { jsonResponse, mockApi, page } from '@/test/factories'
-import { makeCli, readyAiSetup } from '@/test/m10'
+import { makeCli, makeProviderTest, readyAiSetup } from '@/test/m10'
 import { baseRoutes, loc, renderCanvas } from '@/test/m5'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -103,6 +103,102 @@ describe('Settings → AI panel (?panel=ai)', () => {
     expect(await within(dialog).findByText('Settings are down', {}, { timeout: 9000 })).toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: 'Retry' })).toBeInTheDocument()
   }, 25_000)
+})
+
+const provider = (id: string, name: string, model: string, over: Record<string, unknown> = {}) => ({
+  id,
+  name,
+  kind: 'openrouter',
+  base_url: null,
+  credential_id: null,
+  default_model: model,
+  context_length: 65_536,
+  is_local: false,
+  enabled: true,
+  input_price_per_mtok_micros: null,
+  output_price_per_mtok_micros: null,
+  last_test: { ...makeProviderTest(), model },
+  ...over,
+})
+const providers = page([provider('p1', 'OpenRouter', 'anthropic/claude-sonnet-4.5'), provider('p2', 'Local', 'qwen3:32b'), provider('p3', 'Untested', 'x/y', { last_test: null }), provider('p4', 'Off', 'a/b', { enabled: false })])
+const workModelSection = (dialog: HTMLElement) => within(dialog).getByRole('region', { name: 'Work model (heavy lifting)' })
+
+describe('Settings → AI panel: the optional work model (M12)', () => {
+  it('explains the split, defaults to the main model, and lists only tested, enabled providers', async () => {
+    vi.stubGlobal('fetch', mockApi(routes({ '/companies/c1/model-providers': providers })).impl)
+    renderCanvas('/c/c1?panel=ai')
+    const dialog = await screen.findByRole('dialog', { name: 'AI settings' })
+    const section = await waitFor(() => workModelSection(dialog))
+    expect(within(section).getByText('Optional')).toBeInTheDocument()
+    expect(within(section).getByText(/Planning, standups and reviews always use the main model/)).toBeInTheDocument()
+    expect(within(section).getByText(/In hybrid mode, work goes to the coding CLI/)).toBeInTheDocument()
+    const select = await within(section).findByLabelText('Model for heavy work')
+    await waitFor(() => expect(within(select).getAllByRole('option')).toHaveLength(3))
+    expect(select).toHaveValue('')
+    expect(within(select).getByRole('option', { name: 'Same as the main model' })).toBeInTheDocument()
+    expect(within(select).getByRole('option', { name: 'Local · qwen3:32b' })).toBeInTheDocument()
+    expect(within(select).queryByRole('option', { name: /Untested/ })).not.toBeInTheDocument()
+    expect(within(select).queryByRole('option', { name: /Off/ })).not.toBeInTheDocument()
+    expect(within(section).queryByRole('button', { name: 'Clear work model' })).not.toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Save' })).toBeDisabled()
+  })
+
+  it('saves a chosen work model with the one Save, alongside the management model', async () => {
+    const api = mockApi(routes({ '/companies/c1/model-providers': providers, 'PUT /companies/c1/ai-setup': readyAiSetup() }))
+    vi.stubGlobal('fetch', api.impl)
+    renderCanvas('/c/c1?panel=ai')
+    const dialog = await screen.findByRole('dialog', { name: 'AI settings' })
+    const select = await within(dialog).findByLabelText('Model for heavy work')
+    await waitFor(() => expect(within(select).getAllByRole('option')).toHaveLength(3))
+    await userEvent.selectOptions(select, 'Local · qwen3:32b')
+    const save = within(dialog).getByRole('button', { name: 'Save' })
+    await waitFor(() => expect(save).toBeEnabled())
+    await userEvent.click(save)
+    await waitFor(() => expect(api.calls.filter((c) => c.method === 'PUT')).toHaveLength(1))
+    expect(api.calls.find((c) => c.method === 'PUT')?.body).toEqual({
+      management_provider_id: 'p1',
+      management_model: 'anthropic/claude-sonnet-4.5',
+      work_mode: 'api',
+      work_runtime: 'company_agent',
+      work_model_provider_id: 'p2',
+      work_model_name: 'qwen3:32b',
+    })
+  })
+
+  it('shows the saved work model and clears it by sending both fields as null', async () => {
+    const saved = { provider_id: 'p2', provider_name: 'Local', kind: 'ollama', model: 'qwen3:32b', last_test: makeProviderTest() }
+    const api = mockApi(routes({ '/companies/c1/model-providers': providers, '/companies/c1/ai-setup': readyAiSetup({ work_model: saved }), 'PUT /companies/c1/ai-setup': readyAiSetup() }))
+    vi.stubGlobal('fetch', api.impl)
+    renderCanvas('/c/c1?panel=ai')
+    const dialog = await screen.findByRole('dialog', { name: 'AI settings' })
+    const select = await within(dialog).findByLabelText('Model for heavy work')
+    await waitFor(() => expect(select).toHaveValue('p2::qwen3:32b'))
+    expect(within(dialog).getByRole('button', { name: 'Save' })).toBeDisabled() // untouched: nothing to save
+    await userEvent.click(within(workModelSection(dialog)).getByRole('button', { name: 'Clear work model' }))
+    expect(select).toHaveValue('')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(api.calls.find((c) => c.method === 'PUT')?.body).toMatchObject({ work_model_provider_id: null, work_model_name: null }))
+  })
+
+  it('keeps a saved work model visible even when no provider is tested for it any more', async () => {
+    const saved = { provider_id: 'pz', provider_name: 'Gone', kind: 'openrouter', model: 'old/model', last_test: null }
+    vi.stubGlobal('fetch', mockApi(routes({ '/companies/c1/ai-setup': readyAiSetup({ work_model: saved }) })).impl)
+    renderCanvas('/c/c1?panel=ai')
+    const dialog = await screen.findByRole('dialog', { name: 'AI settings' })
+    const select = await within(dialog).findByLabelText('Model for heavy work')
+    await waitFor(() => expect(within(select).getByRole('option', { name: 'Gone · old/model (current)' })).toBeInTheDocument())
+    expect(select).toHaveValue('pz::old/model')
+    expect(within(select).getAllByRole('option')).toHaveLength(2) // the main-model default and the saved one
+  })
+
+  it('is read-only for someone who cannot change the AI setup', async () => {
+    vi.stubGlobal('fetch', mockApi(routes({ '/companies/c1/model-providers': providers, '/me': { user: { id: 'u', email: 'o@x', display_name: 'Sam' }, memberships: [{ company_id: 'c1', company_name: 'Acme', role: 'member' }] } })).impl)
+    renderCanvas('/c/c1?panel=ai')
+    const dialog = await screen.findByRole('dialog', { name: 'AI settings' })
+    const select = await within(dialog).findByLabelText('Model for heavy work')
+    expect(select).toBeDisabled()
+    expect(within(dialog).getByText(/Only an owner or admin can change the work model/)).toBeInTheDocument()
+  })
 })
 
 describe('Settings and the account menu lead to the AI panel', () => {

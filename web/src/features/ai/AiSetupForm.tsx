@@ -1,10 +1,11 @@
 import { useCallback, useId, useState, type ReactNode } from 'react'
 import { isNotDeployed, useAiSetup, useUpdateAiSetup } from '@/api'
 import { Badge, Button, FormError } from '@/components/ui'
-import { COMPANY_AGENT_WORK_RUNTIME, aiSetupUpdate, putFailure } from '@/lib/aiSetup'
+import { COMPANY_AGENT_WORK_RUNTIME, aiSetupUpdate, putFailure, savedWorkModel, workModelKey, type WorkModelSelection } from '@/lib/aiSetup'
 import { canContinue } from '@/lib/onboarding'
 import { ConnectAiSection } from './ConnectAiSection'
 import { WorkModeSection, type WorkChoice } from './WorkModeSection'
+import { WorkModelSection } from './WorkModelSection'
 
 function Section({ title, badge, tone, purpose, children }: { title: string; badge: string; tone: 'accent' | 'neutral'; purpose: string; children: ReactNode }) {
   const id = useId()
@@ -25,8 +26,9 @@ function Section({ title, badge, tone, purpose, children }: { title: string; bad
 /**
  * The whole AI setup in one form with one save, used by the onboarding step and the AI settings panel:
  *   1. Model API (required): runs the company; it must pass a real test. Testing saves nothing.
- *   2. Coding CLIs (optional): who does the hands-on work, with the CLIs on this computer always visible.
- * The one button writes both parts in a single `PUT /ai-setup`, and only when something changed.
+ *   2. Work model (optional, M12): a separate model for heavy work runs; planning and standups keep the main model.
+ *   3. Coding CLIs (optional): who does the hands-on work, with the CLIs on this computer always visible.
+ * The one button writes all parts in a single `PUT /ai-setup`, and only when something changed.
  */
 export function AiSetupForm({
   companyId,
@@ -47,6 +49,8 @@ export function AiSetupForm({
   const ai = useAiSetup(companyId)
   const save = useUpdateAiSetup(companyId)
   const [tested, setTested] = useState<{ providerId: string; model: string } | null>(null)
+  // Pending work model: undefined = untouched (the PUT leaves it alone), null = cleared, a selection = chosen.
+  const [workSel, setWorkSel] = useState<WorkModelSelection | null | undefined>(undefined)
   const [choice, setChoice] = useState<WorkChoice>({ mode: 'api', runtime: null, problem: null })
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -58,7 +62,8 @@ export function AiSetupForm({
   const apiOk = !!tested || status?.ready === true
   const managementChanged = !!status && !!tested && (tested.providerId !== status.management.provider_id || tested.model !== status.management.model)
   const workChanged = !!status && (choice.mode !== status.work_mode || (choice.mode === 'hybrid' && choice.runtime !== status.work_runtime))
-  const changed = managementChanged || workChanged
+  const workModelChanged = !!status && workSel !== undefined && workModelKey(workSel) !== workModelKey(savedWorkModel(status))
+  const changed = managementChanged || workChanged || workModelChanged
   // Also save when the server does not yet call the setup ready, so that it is the one to check readiness.
   const needsPut = changed || status?.ready !== true
 
@@ -71,7 +76,7 @@ export function AiSetupForm({
     setBusy(true)
     try {
       if (!unavailable && status && needsPut) {
-        const body = aiSetupUpdate(status, choice.mode, choice.mode === 'api' ? COMPANY_AGENT_WORK_RUNTIME : choice.runtime, tested)
+        const body = aiSetupUpdate(status, choice.mode, choice.mode === 'api' ? COMPANY_AGENT_WORK_RUNTIME : choice.runtime, tested, workModelChanged ? workSel : undefined)
         if (!body) {
           setError('Test the model API first.')
           return
@@ -79,6 +84,7 @@ export function AiSetupForm({
         await save.mutateAsync(body)
       }
       setTested(null)
+      setWorkSel(undefined)
       await onSaved?.()
     } catch (e) {
       setError(putFailure(e))
@@ -92,6 +98,17 @@ export function AiSetupForm({
       <Section title="Model API" badge="Required" tone="accent" purpose="Runs the company: your AI Co-founder, HR, leads and reviews think through it. It must pass a real test.">
         <ConnectAiSection companyId={companyId} canEdit={canEdit} deferSave onTested={onTested} />
       </Section>
+
+      {!unavailable && (
+        <Section
+          title="Work model (heavy lifting)"
+          badge="Optional"
+          tone="neutral"
+          purpose="Planning, standups and reviews always use the main model above. Work tasks use this one, so you can put a stronger or cheaper model on the heavy lifting. In hybrid mode, work goes to the coding CLI instead. Leave it unset and work follows the main model."
+        >
+          <WorkModelSection companyId={companyId} canEdit={canEdit} value={workSel} onChange={setWorkSel} />
+        </Section>
+      )}
 
       <Section
         title="Coding CLIs"

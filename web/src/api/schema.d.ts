@@ -4141,6 +4141,11 @@ export interface components {
         AgentState: {
             /** Role */
             role: string;
+            /**
+             * Profile
+             * @default full
+             */
+            profile: string;
             /** Company */
             company: {
                 [key: string]: unknown;
@@ -4309,6 +4314,7 @@ export interface components {
             /** Blocking Reason */
             blocking_reason: ("no_tested_provider" | "provider_test_failed" | "no_default_model") | null;
             management: components["schemas"]["AiSetupManagement"];
+            work_model: components["schemas"]["AiSetupManagement"] | null;
             /**
              * Work Mode
              * @enum {string}
@@ -4333,6 +4339,10 @@ export interface components {
             work_mode?: "api" | "hybrid";
             /** Work Runtime */
             work_runtime?: ("company_agent" | "cli:claude_code" | "cli:codex" | "cli:opencode" | "cli:antigravity") | null;
+            /** Work Model Provider Id */
+            work_model_provider_id?: string | null;
+            /** Work Model Name */
+            work_model_name?: string | null;
         };
         /** Alert */
         Alert: {
@@ -5658,6 +5668,16 @@ export interface components {
              * @default
              */
             role?: string;
+            /**
+             * Max Work Tasks Per Project
+             * @default 15
+             */
+            max_work_tasks_per_project?: number;
+            /**
+             * Max Subtasks Per Task
+             * @default 5
+             */
+            max_subtasks_per_task?: number;
         };
         /** CtxProject */
         CtxProject: {
@@ -9333,6 +9353,16 @@ export interface components {
             description: string | null;
             /** Owner Agent Id */
             owner_agent_id: string | null;
+            /**
+             * Open Projects
+             * @default 0
+             */
+            open_projects: number;
+            /**
+             * Ended Projects
+             * @default 0
+             */
+            ended_projects: number;
         };
         /** StateMemory */
         StateMemory: {
@@ -9667,6 +9697,8 @@ export interface components {
             skip_when_idle?: boolean | null;
             /** Project Id */
             project_id?: string | null;
+            /** Digest */
+            digest?: boolean | null;
         };
         /** TaskUpdate */
         TaskUpdate: {

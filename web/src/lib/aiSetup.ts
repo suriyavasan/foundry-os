@@ -1,11 +1,13 @@
 import type {
   AiBlockingReason,
   AiSetupStatus,
+  AiSetupManagement,
   AiSetupUpdate,
   CliAuthMode,
   CliInstallLog,
   CliLastTest,
   CliRuntimeStatus,
+  ModelProvider,
   ProviderCheckName,
   ProviderKind,
   ProviderTest,
@@ -62,16 +64,19 @@ export function normalizeAiSetup(raw: unknown): AiSetupStatus | null {
   if (!o || typeof o.ready !== 'boolean') return null
   const m = obj(o.management) ?? {}
   const mode = o.work_mode === 'hybrid' ? 'hybrid' : 'api'
+  const model = (raw: Record<string, unknown>): AiSetupManagement => ({
+    provider_id: str(raw.provider_id),
+    provider_name: str(raw.provider_name),
+    kind: str(raw.kind),
+    model: str(raw.model),
+    last_test: raw.last_test ? normalizeProviderTest(raw.last_test) : null,
+  })
+  const w = obj(o.work_model)
   return {
     ready: o.ready,
     blocking_reason: (str(o.blocking_reason) as AiBlockingReason | null) ?? null,
-    management: {
-      provider_id: str(m.provider_id),
-      provider_name: str(m.provider_name),
-      kind: str(m.kind),
-      model: str(m.model),
-      last_test: m.last_test ? normalizeProviderTest(m.last_test) : null,
-    },
+    management: model(m),
+    work_model: w && str(w.provider_id) && str(w.model) ? model(w) : null,
     work_mode: mode,
     work_runtime: (str(o.work_runtime) as WorkRuntime | null) ?? null,
     clis: Array.isArray(o.clis) ? o.clis.map(normalizeCli).filter((c): c is CliRuntimeStatus => c !== null) : [],
@@ -335,6 +340,8 @@ export function aiSetupUpdate(
   runtime: WorkRuntime | null,
   /** A management selection that is not saved yet (a provider that just passed its test); it wins over the saved one. */
   management?: { providerId: string; model: string } | null,
+  /** M12 work model: undefined leaves it unchanged on the server, null clears it, a selection sets it. */
+  workModel?: WorkModelSelection | null,
 ): AiSetupUpdate | null {
   const provider_id = management?.providerId ?? ai.management.provider_id
   const model = management?.model ?? ai.management.model
@@ -344,7 +351,46 @@ export function aiSetupUpdate(
     management_model: model,
     work_mode: mode,
     work_runtime: mode === 'api' ? COMPANY_AGENT_WORK_RUNTIME : runtime,
+    ...(workModel === undefined ? {} : { work_model_provider_id: workModel?.providerId ?? null, work_model_name: workModel?.model ?? null }),
   }
+}
+
+/* ------------------------------ M12 work model (heavy lifting) ------------------------------ */
+
+export interface WorkModelSelection {
+  providerId: string
+  model: string
+}
+
+export interface WorkModelOption extends WorkModelSelection {
+  key: string
+  label: string
+}
+
+export const workModelKey = (sel: WorkModelSelection | null | undefined): string => (sel ? `${sel.providerId}::${sel.model}` : '')
+
+/** The saved work model of an AI-setup status as a selection, or null when none is set. */
+export function savedWorkModel(ai: Pick<AiSetupStatus, 'work_model'> | null | undefined): WorkModelSelection | null {
+  const w = ai?.work_model
+  return w?.provider_id && w.model ? { providerId: w.provider_id, model: w.model } : null
+}
+
+/**
+ * The models the owner can pick as the work model: an enabled provider whose latest test passed, paired with the model that
+ * test ran against (the server only accepts exactly that pair, so nothing here can be refused for being untested). The saved
+ * work model is always listed, so it stays visible even if its provider was re-tested for another model or switched off.
+ */
+export function workModelOptions(providers: ModelProvider[] | undefined, saved: WorkModelSelection | null, savedName?: string | null): WorkModelOption[] {
+  const out: WorkModelOption[] = []
+  for (const p of providers ?? []) {
+    const model = p.last_test?.model
+    if (!p.enabled || p.last_test?.ok !== true || !model) continue
+    out.push({ providerId: p.id, model, key: workModelKey({ providerId: p.id, model }), label: `${p.name} · ${model}` })
+  }
+  if (saved && !out.some((o) => o.key === workModelKey(saved))) {
+    out.unshift({ ...saved, key: workModelKey(saved), label: `${savedName ?? 'Provider'} · ${saved.model} (current)` })
+  }
+  return out
 }
 
 /** What a failed `PUT /ai-setup` said, including the readiness reason the server attaches to a 409 `ai_not_ready`. */
