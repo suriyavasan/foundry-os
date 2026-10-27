@@ -109,7 +109,8 @@ def test_read_public_url_reads_the_data_dir_file(env):  # noqa: F811
     info = lifecycle.read_public_url(settings)
     assert info and info["url"] == "https://a.example" and info["provider"] == "cloudflare-quick"
     assert info["previous_url"] == "https://old.example" and info["state"] == "up"
-    assert "run" not in str(env.data / "public-url.json")  # next to the data, not under run/
+    assert (env.data / "public-url.json").is_file()  # next to the data, not under run/
+    assert not (env.data / "run" / "public-url.json").exists()
 
 
 @pytest.mark.parametrize("text", ["{not json", "[]", '{"url": 5}', '{"url": "ftp://x"}', "{}"])

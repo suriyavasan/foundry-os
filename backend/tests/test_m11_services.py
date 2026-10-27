@@ -494,11 +494,14 @@ def test_linger_state_reads_loginctl(linux):
     assert services.linger_state() is None
 
 
-def test_linger_state_is_unknown_off_linux_and_without_loginctl(env, monkeypatch):
+def test_linger_state_is_unknown_off_linux_and_without_loginctl(env, monkeypatch, tmp_path):
     monkeypatch.setattr(install, "current_os", lambda: "darwin")
     assert services.linger_state() is None
     monkeypatch.setattr(install, "current_os", lambda: "linux")
-    assert services.linger_state() is None  # no loginctl on the (fake) PATH
+    empty = tmp_path / "empty-bin"
+    empty.mkdir()
+    monkeypatch.setenv("PATH", str(empty))  # a real Linux runner has /usr/bin/loginctl
+    assert services.linger_state() is None  # no loginctl on the PATH
 
 
 def test_enable_linger_success_and_failure_never_uses_sudo(linux):
