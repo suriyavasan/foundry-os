@@ -56,6 +56,8 @@ class Agent(TimestampMixin, Base):
     tool_permissions: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     monthly_budget_micros: Mapped[int | None] = mapped_column(BigInteger)
     daily_budget_micros: Mapped[int | None] = mapped_column(BigInteger)
+    # M15: this agent's monthly purchase cap (NULL = inherit the company policy). Human-only.
+    purchase_monthly_limit_micros: Mapped[int | None] = mapped_column(BigInteger)
     # M4: the role template this employee was created from (built-in or company-custom slug)
     # and the avatar family the canvas draws (founder -> founder, else generic by default).
     role_template: Mapped[str | None] = mapped_column(String(64))

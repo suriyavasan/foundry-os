@@ -68,6 +68,8 @@
     "company_verify_memory": {"action": "memory.verify"},
     "company_post_reflection": {"action": "reflection.post"},
     "company_reply_reflection": {"action": "reflection.reply"},
-    "company_revise_reflection": {"action": "reflection.revise"}
+    "company_revise_reflection": {"action": "reflection.revise"},
+    "company_request_purchase": {"action": "purchase.request"},
+    "company_review_subscription": {"action": "subscription.review"}
   }
 }

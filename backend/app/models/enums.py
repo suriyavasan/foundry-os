@@ -357,3 +357,133 @@ class ModelRouting(StrEnum):
     FREE_FIRST = "free_first"
     PINNED = "pinned"
     QUALITY_FIRST = "quality_first"
+
+
+# ---------------------------------------------------------- Milestone 15: agent cards & purchasing
+
+
+class CardProviderId(StrEnum):
+    """Which adapter issues (or, for ``manual``, merely tracks) the company's cards. ``fake`` exists
+    for the test suite only and is never registered in production."""
+
+    MANUAL = "manual"
+    STRIPE_ISSUING = "stripe_issuing"
+    MERCURY = "mercury"
+    FAKE = "fake"
+
+
+class CardAccountStatus(StrEnum):
+    SETUP = "setup"
+    ACTIVE = "active"
+    ATTENTION = "attention"  # the last provider check failed, or cards were frozen
+    DISABLED = "disabled"
+
+
+class CardMode(StrEnum):
+    LIVE = "live"
+    TEST = "test"
+
+
+class CardKind(StrEnum):
+    SINGLE_USE = "single_use"
+    SUBSCRIPTION = "subscription"
+
+
+class CardStatus(StrEnum):
+    ACTIVE = "active"
+    FROZEN = "frozen"
+    CLOSED = "closed"
+    EXPIRED = "expired"
+
+
+class PurchaseStatus(StrEnum):
+    REQUESTED = "requested"
+    PENDING_APPROVAL = "pending_approval"
+    APPROVED = "approved"
+    ISSUING = "issuing"
+    ISSUE_FAILED = "issue_failed"
+    CARD_ISSUED = "card_issued"
+    AWAITING_CHECKOUT = "awaiting_checkout"
+    AUTHORIZED = "authorized"
+    SETTLED = "settled"
+    HUMAN_TASK = "human_task"  # tier D: purchasing is off, the request became a human task
+    REJECTED = "rejected"
+    EXPIRED = "expired"
+    CANCELLED = "cancelled"
+
+
+# Statuses whose ``held_micros`` still counts toward the purchase totals (a hold, not a charge).
+PURCHASE_HOLD_STATUSES = (
+    PurchaseStatus.APPROVED,
+    PurchaseStatus.ISSUING,
+    PurchaseStatus.ISSUE_FAILED,
+    PurchaseStatus.CARD_ISSUED,
+    PurchaseStatus.AWAITING_CHECKOUT,
+    PurchaseStatus.AUTHORIZED,
+)
+TERMINAL_PURCHASE_STATUSES = frozenset(
+    {
+        PurchaseStatus.SETTLED,
+        PurchaseStatus.HUMAN_TASK,
+        PurchaseStatus.REJECTED,
+        PurchaseStatus.EXPIRED,
+        PurchaseStatus.CANCELLED,
+    }
+)
+
+
+class PurchaseDecision(StrEnum):
+    """Who approved a purchase (the band the deterministic policy picked)."""
+
+    AUTO = "auto"
+    COFOUNDER = "cofounder"
+    HUMAN = "human"
+    REPORT_ONLY = "report_only"
+
+
+class CheckoutPath(StrEnum):
+    PROGRAMMATIC = (
+        "programmatic"  # M16: token rails; answers {"available": false, "milestone": "M16"}
+    )
+    HUMAN_CHECKOUT = "human_checkout"  # a system-issued card; a human clicks Pay
+    HUMAN_BUYS = "human_buys"  # the owner's own card (manual mode) or purchasing disabled
+
+
+class CardTxnKind(StrEnum):
+    AUTHORIZATION = "authorization"
+    CAPTURE = "capture"
+    REFUND = "refund"
+    DECLINE = "decline"
+    REVERSAL = "reversal"
+
+
+class CardTxnStatus(StrEnum):
+    PENDING = "pending"
+    SETTLED = "settled"
+    REVERSED = "reversed"
+    DECLINED = "declined"
+
+
+class CardTxnMatch(StrEnum):
+    MATCHED = "matched"
+    UNMATCHED = "unmatched"
+    MISMATCH = "mismatch"
+
+
+class CardTxnSource(StrEnum):
+    PROVIDER = "provider"
+    HUMAN = "human"  # manual mode: "confirmed by you"
+
+
+class ExpenseSource(StrEnum):
+    HUMAN = "human"
+    CARD = "card"
+    PROVIDER_ACTION = "provider_action"
+
+
+class SubscriptionStatus(StrEnum):
+    ACTIVE = "active"
+    REVIEW_DUE = "review_due"
+    CANCEL_REQUESTED = "cancel_requested"
+    CANCELLED = "cancelled"
+    LAPSED = "lapsed"

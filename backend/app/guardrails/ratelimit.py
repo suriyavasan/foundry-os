@@ -41,6 +41,7 @@ LIMITS: dict[str, Limit] = {
         Limit(registry.SKILL_INSTALLS, DAY, per_agent=10, per_company=30),
         Limit(registry.WEB_FETCHES, HOUR, per_agent=120, per_company=600),
         Limit(registry.SYSTEM_EMAILS, DAY, per_agent=200, per_company=200),
+        Limit(registry.PURCHASE_REQUESTS, DAY, per_agent=5, per_company=20),
     )
 }
 RETENTION = timedelta(days=2)

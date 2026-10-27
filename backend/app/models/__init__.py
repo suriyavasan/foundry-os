@@ -27,6 +27,13 @@ from app.models.guardrails import (
 from app.models.ledger import BudgetReservation, UsageRecord
 from app.models.policy import CompanyPolicy
 from app.models.provider import Credential, ModelProvider
+from app.models.purchasing import (
+    AgentCard,
+    CardAccount,
+    CardTransaction,
+    PurchaseRequest,
+    Subscription,
+)
 from app.models.reachability import (
     CompanyDomain,
     ConnectedAccount,
@@ -46,6 +53,7 @@ from app.models.work import Goal, Project, Task, TaskDependency
 
 __all__ = [
     "Agent",
+    "AgentCard",
     "Alert",
     "AgentSkill",
     "ApiToken",
@@ -61,6 +69,8 @@ __all__ = [
     "AuditEvent",
     "BudgetAlertMark",
     "BudgetReservation",
+    "CardAccount",
+    "CardTransaction",
     "Company",
     "CommandExchange",
     "CompanyStandard",
@@ -89,6 +99,7 @@ __all__ = [
     "ModelProvider",
     "NoteReply",
     "Project",
+    "PurchaseRequest",
     "RateLimitHit",
     "RunEvent",
     "RoleTemplate",
@@ -96,6 +107,7 @@ __all__ = [
     "ScheduleFire",
     "Skill",
     "SkillBlob",
+    "Subscription",
     "Task",
     "TaskDependency",
     "SystemState",

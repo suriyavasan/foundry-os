@@ -28,6 +28,7 @@ HIRES = "hires_per_day"
 SKILL_INSTALLS = "skill_installs_per_day"
 WEB_FETCHES = "web_fetches_per_hour"
 SYSTEM_EMAILS = "system_emails_per_day"  # M8: invitations / notification e-mails
+PURCHASE_REQUESTS = "purchase_requests_per_day"  # M15: agent purchase requests
 
 
 @dataclass(frozen=True)
@@ -93,6 +94,17 @@ _API_ACTIONS = [
     _a("reflection.post", T.INTERNAL_WRITE, "Post a reflection for the Founder"),
     _a("reflection.reply", T.INTERNAL_WRITE, "Reply to the Founder on a reflection"),
     _a("reflection.revise", T.INTERNAL_WRITE, "Revise one of your reflections"),
+    # M15: an agent can only REQUEST a purchase (it commits nothing); approval, card issuance
+    # and the money moment are the platform's (``purchase.make`` / ``subscription.start`` /
+    # ``card.issue``).
+    _a(
+        "purchase.request",
+        T.INTERNAL_WRITE,
+        "Request a purchase (commits nothing; a policy and an approval decide)",
+        rate_keys=(PURCHASE_REQUESTS,),
+    ),
+    _a("purchase.read", T.READ, "Read your own purchase request"),
+    _a("subscription.review", T.INTERNAL_WRITE, "Keep or cancel a subscription you own"),
     _a("hire.request", T.ORG_CHANGE, "Ask HR for a hire"),
     _a("hire.create", T.ORG_CHANGE, "Hire an employee", rate_keys=(HIRES,)),
     _a("skills.catalog", T.EXTERNAL_READ, "Search the skill catalog (incl. GitHub)"),
@@ -259,6 +271,44 @@ _HUMAN_ONLY_ACTIONS = [
         kind="human_only",
         human_only=True,
     ),
+    # M15: the company's cards and its purchasing limits are the Founder's. An agent can request a
+    # purchase; it can never connect a card account, unfreeze or raise a card, see where a card
+    # number can be revealed, or change the purchasing policy or its own purchase limit.
+    _a(
+        "card_account.connect",
+        T.IDENTITY,
+        "Connect, check or disable a card account",
+        kind="human_only",
+        human_only=True,
+    ),
+    _a(
+        "card.unfreeze",
+        T.IDENTITY,
+        "Unfreeze an agent card",
+        kind="human_only",
+        human_only=True,
+    ),
+    _a(
+        "card.limit_raise",
+        T.IDENTITY,
+        "Raise the limit of an agent card",
+        kind="human_only",
+        human_only=True,
+    ),
+    _a(
+        "card.reveal",
+        T.IDENTITY,
+        "Open a card on the provider's own page to read its number",
+        kind="human_only",
+        human_only=True,
+    ),
+    _a(
+        "purchase_policy.update",
+        T.IDENTITY,
+        "Change the purchasing policy, the approval bands or an agent's purchase limit",
+        kind="human_only",
+        human_only=True,
+    ),
 ]
 HUMAN_ONLY: dict[str, ActionSpec] = {s.name: s for s in _HUMAN_ONLY_ACTIONS}
 
@@ -268,6 +318,19 @@ _INTERNAL_ACTIONS = [
         "model.paid_fallback",
         T.SPEND,
         "Run on a paid model because no free model is available",
+        kind="internal",
+    ),
+    # M15: the platform issues the card after the approval; not reachable from the agent API.
+    _a(
+        "card.issue",
+        T.SPEND,
+        "Issue a single-use or subscription card for an approved purchase",
+        kind="internal",
+    ),
+    _a(
+        "card.freeze",
+        T.INTERNAL_WRITE,
+        "Freeze an agent card (anomaly, stop, pause)",
         kind="internal",
     ),
 ]
@@ -325,6 +388,17 @@ _ROUTES = [
 ]
 
 
+# M15 agent-API routes. NOT in ``ROUTES`` yet: the endpoints do not exist until the purchasing
+# service lands, and a registered route without an endpoint fails
+# ``test_no_registered_route_is_stale``.
+# WP1 adds ``*_M15_ROUTES`` to ``_ROUTES`` in the same change that adds the endpoints.
+_M15_ROUTES = [
+    RouteSpec("POST", "/purchases", "purchase.request"),
+    RouteSpec("GET", "/purchases/{purchase_id}", "purchase.read"),
+    RouteSpec("POST", "/subscriptions/{subscription_id}/review", "subscription.review"),
+]
+
+
 @lru_cache(maxsize=1)
 def tool_registry() -> dict[str, Any]:
     return json.loads(TOOLS_FILE.read_text(encoding="utf-8"))
@@ -356,6 +430,7 @@ ACTIONS: dict[str, ActionSpec] = {
 }
 PROVIDER_ACTIONS: dict[str, ActionSpec] = {s.name: s for s in _PROVIDER_ACTIONS}
 ROUTES: dict[tuple[str, str], RouteSpec] = {(r.method, r.path): r for r in _ROUTES}
+M15_ROUTES: dict[tuple[str, str], RouteSpec] = {(r.method, r.path): r for r in _M15_ROUTES}
 
 TIERS: tuple[str, ...] = tuple(t.value for t in T)
 
