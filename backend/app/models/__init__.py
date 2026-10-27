@@ -38,6 +38,7 @@ from app.models.reachability import (
     NotificationPreference,
 )
 from app.models.reflections import CompanyStandard, Reflection, ReflectionResponse
+from app.models.repository import ProjectRepository, RepoItem, RepoPullRequest
 from app.models.run import CompanyEvent, Job, RunEvent, TaskRun
 from app.models.schedule import Schedule, ScheduleFire
 from app.models.skill import AgentSkill, RoleTemplate, Skill, SkillBlob
@@ -89,7 +90,10 @@ __all__ = [
     "ModelProvider",
     "NoteReply",
     "Project",
+    "ProjectRepository",
     "RateLimitHit",
+    "RepoItem",
+    "RepoPullRequest",
     "RunEvent",
     "RoleTemplate",
     "Schedule",

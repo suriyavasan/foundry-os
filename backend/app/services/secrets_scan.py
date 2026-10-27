@@ -9,6 +9,7 @@ import re
 _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("api key (sk-...)", re.compile(r"\bsk-[A-Za-z0-9_\-]{16,}")),
     ("github token", re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}")),
+    ("github fine-grained token", re.compile(r"\bgithub_pat_[A-Za-z0-9_]{22,}")),
     ("aws access key", re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")),
     ("slack token", re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}")),
     ("private key block", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),

@@ -59,6 +59,7 @@ UPDATABLE = (
     "initiative_enabled",
     "initiative_interval_seconds",
     "project_auto_complete",
+    "new_project_repository",
 )
 _BUDGET_FIELDS = {"daily_budget_micros", "monthly_budget_micros", "default_run_reservation_micros"}
 # Changing these re-evaluates tasks the dispatcher parked behind the paid-model approval.

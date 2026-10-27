@@ -15,6 +15,7 @@ from sqlalchemy import inspect, select
 from app.api.routes import (
     activity,
     agent_api,
+    agent_repo,
     agents,
     ai_setup,
     alerts,
@@ -39,6 +40,7 @@ from app.api.routes import (
     providers,
     reachability,
     reflections,
+    repositories,
     runtimes,
     schedules,
     skills,
@@ -294,8 +296,10 @@ def create_app(
         finance.router,
         reachability.router,
         identity.router,
+        repositories.router,
         webhooks.router,
         agent_api.router,
+        agent_repo.router,
     ):
         app.include_router(router, prefix="/api")
     return app

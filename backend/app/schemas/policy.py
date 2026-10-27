@@ -10,6 +10,7 @@ from app.schemas.common import ApiModel, RequestModel, Timestamp
 AutonomyModeLiteral = Literal["autonomous", "supervised"]
 SandboxBackendLiteral = Literal["auto", "none", "docker"]
 ModelRoutingLiteral = Literal["free_first", "pinned", "quality_first"]
+NewProjectRepositoryLiteral = Literal["local", "company_repo"]
 ApprovalKindLiteral = Literal[
     "external_purchase",
     "budget_increase",
@@ -76,6 +77,8 @@ class Policy(ApiModel):
     initiative_enabled: bool = True
     initiative_interval_seconds: int = 21_600
     project_auto_complete: bool = True
+    # M14 (only humans can change it).
+    new_project_repository: NewProjectRepositoryLiteral = "local"
     created_at: Timestamp
     updated_at: Timestamp
 
@@ -127,6 +130,8 @@ class PolicyUpdate(RequestModel):
     initiative_enabled: bool | None = None
     initiative_interval_seconds: int | None = Field(default=None, ge=600, le=2_592_000)
     project_auto_complete: bool | None = None
+    # M14.
+    new_project_repository: NewProjectRepositoryLiteral | None = None
 
     @field_validator(
         "autonomy_mode",
@@ -165,6 +170,7 @@ class PolicyUpdate(RequestModel):
         "initiative_enabled",
         "initiative_interval_seconds",
         "project_auto_complete",
+        "new_project_repository",
     )
     @classmethod
     def _not_null(cls, v):  # only the two budget caps are nullable (null = no limit)

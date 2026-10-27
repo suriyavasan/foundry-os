@@ -3000,6 +3000,253 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/companies/{company_id}/repositories/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Repositories Status
+         * @description Whether projects can be backed by a repository on this machine (git, file locking).
+         */
+        get: operations["repositories_status_api_companies__company_id__repositories_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/github/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Inspect Github
+         * @description What the connected GitHub token can do, and (optionally) what it can do on one repository.
+         *     Never returns the token.
+         */
+        post: operations["inspect_github_api_companies__company_id__github_inspect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/repositories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Repositories */
+        get: operations["list_repositories_api_companies__company_id__repositories_get"];
+        put?: never;
+        /** Create Repository */
+        post: operations["create_repository_api_companies__company_id__repositories_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/repositories/{repository_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Repository */
+        get: operations["get_repository_api_companies__company_id__repositories__repository_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Repository */
+        patch: operations["update_repository_api_companies__company_id__repositories__repository_id__patch"];
+        trace?: never;
+    };
+    "/api/companies/{company_id}/repositories/{repository_id}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sync Repository */
+        post: operations["sync_repository_api_companies__company_id__repositories__repository_id__sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/repositories/{repository_id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pause Repository */
+        post: operations["pause_repository_api_companies__company_id__repositories__repository_id__pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/repositories/{repository_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resume Repository */
+        post: operations["resume_repository_api_companies__company_id__repositories__repository_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/repositories/{repository_id}/disconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Disconnect Repository */
+        post: operations["disconnect_repository_api_companies__company_id__repositories__repository_id__disconnect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/repositories/{repository_id}/integration/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reset Integration */
+        post: operations["reset_integration_api_companies__company_id__repositories__repository_id__integration_reset_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/repositories/{repository_id}/pull-requests/resume-opening": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resume Pr Opening */
+        post: operations["resume_pr_opening_api_companies__company_id__repositories__repository_id__pull_requests_resume_opening_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/repositories/{repository_id}/webhook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Webhook */
+        put: operations["set_webhook_api_companies__company_id__repositories__repository_id__webhook_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/repositories/{repository_id}/pull-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Pull Requests */
+        get: operations["list_pull_requests_api_companies__company_id__repositories__repository_id__pull_requests_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/repositories/{repository_id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Items */
+        get: operations["list_items_api_companies__company_id__repositories__repository_id__items_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/repositories/{repository_id}/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Repository Activity */
+        get: operations["repository_activity_api_companies__company_id__repositories__repository_id__activity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/webhooks/email/{company_id}/{source}": {
         parameters: {
             query?: never;
@@ -3016,6 +3263,27 @@ export interface paths {
          *     answer the same 401. The mail is stored as untrusted data and routed to the mailbox owner.
          */
         post: operations["inbound_email_api_webhooks_email__company_id___source__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/webhooks/github/{repository_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Github Webhook
+         * @description An optional GitHub webhook (M14). It only pokes a sync: the payload is never trusted or
+         *     used. An unknown repository, no secret and a bad ``X-Hub-Signature-256`` answer the same 401.
+         */
+        post: operations["github_webhook_api_webhooks_github__repository_id__post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3828,6 +4096,27 @@ export interface paths {
          *     reaction. The status becomes ``revised``; a standard still needs the Founder's endorsement.
          */
         post: operations["revise_reflection_api_agent_v1_reflections__reflection_id__revise_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/v1/repo/pulls/{pull_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Review Pull
+         * @description Record the verdict (``accept`` | ``request_changes``) of the review task assigned to you.
+         *     A verdict only counts for the head SHA that was reviewed.
+         */
+        post: operations["review_pull_api_agent_v1_repo_pulls__pull_id__review_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5953,6 +6242,14 @@ export interface components {
              */
             recommended: boolean;
         };
+        /** DisconnectBody */
+        DisconnectBody: {
+            /**
+             * Confirm
+             * @default false
+             */
+            confirm?: boolean;
+        };
         /**
          * DlpFinding
          * @description A finding of the outbound DLP scan. The matched text is never part of it.
@@ -6636,6 +6933,53 @@ export interface components {
             /** Steps */
             steps: string[];
         };
+        /** GithubInspectRequest */
+        GithubInspectRequest: {
+            /** Connected Account Id */
+            connected_account_id: string;
+            /** Full Name */
+            full_name?: string | null;
+            /** Owner */
+            owner?: string | null;
+            /**
+             * Mode
+             * @default connect
+             * @enum {string}
+             */
+            mode?: "create" | "connect";
+        };
+        /**
+         * GithubInspectResult
+         * @description What the onboarding step shows after the token is entered. Never contains the token.
+         */
+        GithubInspectResult: {
+            /** Connected Account Id */
+            connected_account_id: string;
+            /** Login */
+            login: string | null;
+            /**
+             * Token Kind
+             * @default other
+             * @enum {string}
+             */
+            token_kind: "fine_grained" | "classic" | "other";
+            /** Token Expires At */
+            token_expires_at: string | null;
+            /** Owners */
+            owners: components["schemas"]["OwnerCandidate"][];
+            repository: components["schemas"]["RepoInspect"] | null;
+            /** Missing Permissions */
+            missing_permissions: string[];
+            /** Warnings */
+            warnings: string[];
+            /** Sso Url */
+            sso_url: string | null;
+            /**
+             * Organisation Approval Pending
+             * @default false
+             */
+            organisation_approval_pending: boolean;
+        };
         /** Goal */
         Goal: {
             /** Id */
@@ -6960,6 +7304,19 @@ export interface components {
             source?: string | null;
             /** Categories */
             categories?: string[];
+        };
+        /** IntegrationReset */
+        IntegrationReset: {
+            /**
+             * To
+             * @enum {string}
+             */
+            to: "remote_work_branch" | "default_branch";
+            /**
+             * Confirm
+             * @default false
+             */
+            confirm?: boolean;
         };
         /** Invitation */
         Invitation: {
@@ -7664,6 +8021,16 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** OwnerCandidate */
+        OwnerCandidate: {
+            /** Login */
+            login: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "user" | "org";
+        };
         /** Page[AgentNote] */
         Page_AgentNote_: {
             /** Items */
@@ -7888,6 +8255,13 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /** Page[ProjectRepository] */
+        Page_ProjectRepository_: {
+            /** Items */
+            items: components["schemas"]["ProjectRepository"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
         /** Page[Project] */
         Page_Project_: {
             /** Items */
@@ -7899,6 +8273,20 @@ export interface components {
         Page_Reflection_: {
             /** Items */
             items: components["schemas"]["Reflection"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** Page[RepoItem] */
+        Page_RepoItem_: {
+            /** Items */
+            items: components["schemas"]["RepoItem"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** Page[RepoPullRequest] */
+        Page_RepoPullRequest_: {
+            /** Items */
+            items: components["schemas"]["RepoPullRequest"][];
             /** Next Cursor */
             next_cursor: string | null;
         };
@@ -8227,6 +8615,12 @@ export interface components {
              * @default true
              */
             project_auto_complete: boolean;
+            /**
+             * New Project Repository
+             * @default local
+             * @enum {string}
+             */
+            new_project_repository: "local" | "company_repo";
             /** Created At */
             created_at: string;
             /** Updated At */
@@ -8324,6 +8718,8 @@ export interface components {
             initiative_interval_seconds?: number | null;
             /** Project Auto Complete */
             project_auto_complete?: boolean | null;
+            /** New Project Repository */
+            new_project_repository?: ("local" | "company_repo") | null;
         };
         /** ProgressBody */
         ProgressBody: {
@@ -8388,6 +8784,121 @@ export interface components {
             lead_agent_id?: string | null;
             /** Budget Micros */
             budget_micros?: number | null;
+        };
+        /**
+         * ProjectRepository
+         * @description A repository binding. Never includes the token, the ETags, the sync lease or the webhook
+         *     secret's credential id.
+         */
+        ProjectRepository: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string;
+            /** Project Id */
+            project_id: string;
+            /** Project Name */
+            project_name: string | null;
+            /** Provider */
+            provider: string;
+            /** Auth Kind */
+            auth_kind: string;
+            /** Connected Account Id */
+            connected_account_id: string | null;
+            /** Owner */
+            owner: string;
+            /** Name */
+            name: string;
+            /** Full Name */
+            full_name: string;
+            /** Html Url */
+            html_url: string | null;
+            /** Remote Url */
+            remote_url: string;
+            /**
+             * Visibility
+             * @enum {string}
+             */
+            visibility: "private" | "public" | "internal";
+            /** Default Branch */
+            default_branch: string;
+            /** Work Branch */
+            work_branch: string;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "created" | "connected" | "published";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "creating" | "cloning" | "active" | "paused" | "auth_failed" | "error" | "disconnected";
+            /** Status Reason */
+            status_reason: string | null;
+            /**
+             * Sync State
+             * @enum {string}
+             */
+            sync_state: "idle" | "upstream_conflict" | "upstream_rewritten" | "push_blocked" | "rate_limited" | "awaiting_approval";
+            policy: components["schemas"]["RepoPolicy"];
+            /** Capabilities */
+            capabilities: {
+                [key: string]: unknown;
+            };
+            /** Protection */
+            protection: {
+                [key: string]: unknown;
+            };
+            /** Last Synced At */
+            last_synced_at: string | null;
+            /** Next Sync At */
+            next_sync_at: string | null;
+            /** Last Issues Sync At */
+            last_issues_sync_at: string | null;
+            /** Last Alerts Sync At */
+            last_alerts_sync_at: string | null;
+            /** Last Cleanup At */
+            last_cleanup_at: string | null;
+            /** Token Expires At */
+            token_expires_at: string | null;
+            /** Rate Limit Reset At */
+            rate_limit_reset_at: string | null;
+            /** Sync Failures */
+            sync_failures: number;
+            /** Rate Limit Remaining */
+            rate_limit_remaining: number | null;
+            /** Last Fetched Default Sha */
+            last_fetched_default_sha: string | null;
+            /** Last Pushed Sha */
+            last_pushed_sha: string | null;
+            /** Integration Head Sha */
+            integration_head_sha: string | null;
+            /** Webhook Id */
+            webhook_id: string | null;
+            /** Webhook Url */
+            webhook_url: string | null;
+            webhook: components["schemas"]["WebhookState"];
+            /**
+             * Onboarding Status
+             * @enum {string}
+             */
+            onboarding_status: "not_needed" | "pending" | "running" | "done" | "failed";
+            /** Onboarding Task Id */
+            onboarding_task_id: string | null;
+            /** Is Company Default */
+            is_company_default: boolean;
+            /** Pr Opening Paused */
+            pr_opening_paused: boolean;
+            open_pull_request: components["schemas"]["RepoPullRequestSummary"] | null;
+            /** Created By Type */
+            created_by_type: string | null;
+            /** Created By Id */
+            created_by_id: string | null;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
         };
         /** ProjectUpdate */
         ProjectUpdate: {
@@ -8560,6 +9071,40 @@ export interface components {
              * @default false
              */
             allow_private_network?: boolean;
+        };
+        /**
+         * PullReviewBody
+         * @description The internal reviewer's verdict (``POST /api/agent/v1/repo/pulls/{pull_id}/review``).
+         */
+        PullReviewBody: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "accept" | "request_changes";
+            /**
+             * Note
+             * @default
+             */
+            note?: string;
+            /** Head Sha */
+            head_sha?: string | null;
+        };
+        /** PullReviewResult */
+        PullReviewResult: {
+            /** Pull Id */
+            pull_id: string;
+            /** Number */
+            number: number;
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "accepted" | "changes_requested";
+            /** Verdict Sha */
+            verdict_sha: string | null;
+            /** Fix Task Id */
+            fix_task_id: string | null;
         };
         /** RateLimitList */
         RateLimitList: {
@@ -8737,6 +9282,483 @@ export interface components {
             reaction: "endorse" | "challenge" | "refine" | "comment";
             /** Body */
             body?: string | null;
+        };
+        /**
+         * RepoAvailability
+         * @description ``available: false`` means git (or file locking) is missing here; nothing is faked.
+         */
+        RepoAvailability: {
+            /** Available */
+            available: boolean;
+            /** Reason */
+            reason: string | null;
+            /** Git Version */
+            git_version: string | null;
+            /**
+             * Milestone
+             * @default M14
+             */
+            milestone: string;
+        };
+        /** RepoInspect */
+        RepoInspect: {
+            /** Full Name */
+            full_name: string;
+            /** Exists */
+            exists: boolean;
+            /** Accessible */
+            accessible: boolean;
+            /**
+             * Archived
+             * @default false
+             */
+            archived: boolean;
+            /**
+             * Empty
+             * @default false
+             */
+            empty: boolean;
+            /** Size Kb */
+            size_kb: number | null;
+            /** Visibility */
+            visibility: ("private" | "public" | "internal") | null;
+            /** Default Branch */
+            default_branch: string | null;
+            /** Html Url */
+            html_url: string | null;
+            /**
+             * Protected
+             * @default false
+             */
+            protected: boolean;
+            /** Protection */
+            protection: {
+                [key: string]: unknown;
+            };
+            /**
+             * Has Workflows
+             * @default false
+             */
+            has_workflows: boolean;
+            /**
+             * Can Push
+             * @default false
+             */
+            can_push: boolean;
+            /** Capabilities */
+            capabilities: {
+                [key: string]: boolean;
+            };
+        };
+        /**
+         * RepoItem
+         * @description GitHub content that became (or may become) a task. Bodies are clipped excerpts and always
+         *     untrusted: ``untrusted`` is true on every item and clients must never present them as ours.
+         */
+        RepoItem: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string;
+            /** Repository Id */
+            repository_id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "issue" | "review" | "internal_review" | "check_failure" | "alert";
+            /** External Id */
+            external_id: string;
+            /** Number */
+            number: number | null;
+            /** Title */
+            title: string | null;
+            /** Url */
+            url: string | null;
+            /** Author */
+            author: string | null;
+            /** Author Association */
+            author_association: string | null;
+            /** Remote State */
+            remote_state: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "new" | "queued" | "tasked" | "ignored" | "done";
+            /** Ignore Reason */
+            ignore_reason: string | null;
+            /** Task Id */
+            task_id: string | null;
+            /** Pull Request Id */
+            pull_request_id: string | null;
+            /** Revision */
+            revision: number | null;
+            /** Severity */
+            severity: string | null;
+            /** Body Excerpt */
+            body_excerpt: string | null;
+            /** Injection Flags */
+            injection_flags: string[];
+            /** Data */
+            data: {
+                [key: string]: unknown;
+            };
+            /**
+             * Untrusted
+             * @default true
+             */
+            untrusted: boolean;
+            /** Remote Updated At */
+            remote_updated_at: string | null;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /**
+         * RepoPolicy
+         * @description The owner's repository policy (``project_repositories.policy``).
+         */
+        RepoPolicy: {
+            /**
+             * Merge Mode
+             * @default pr_human_merge
+             * @enum {string}
+             */
+            merge_mode: "pr_human_merge" | "pr_auto_merge" | "direct_push";
+            /**
+             * Pr Merge Method
+             * @default squash
+             * @enum {string}
+             */
+            pr_merge_method: "squash" | "merge" | "rebase";
+            /**
+             * Pr Internal Review
+             * @default true
+             */
+            pr_internal_review: boolean;
+            /**
+             * Ci Mode
+             * @default if_present
+             * @enum {string}
+             */
+            ci_mode: "required" | "if_present" | "ignore";
+            /**
+             * Ci Wait Seconds
+             * @default 600
+             */
+            ci_wait_seconds: number;
+            /**
+             * Pr Batch Quiet Seconds
+             * @default 600
+             */
+            pr_batch_quiet_seconds: number;
+            /**
+             * Max Pr Revisions
+             * @default 3
+             */
+            max_pr_revisions: number;
+            /**
+             * Max Ci Fix Attempts
+             * @default 3
+             */
+            max_ci_fix_attempts: number;
+            /**
+             * Issue Intake
+             * @default collaborators
+             * @enum {string}
+             */
+            issue_intake: "off" | "collaborators" | "labeled" | "everyone";
+            /**
+             * Intake Label
+             * @default foundry
+             */
+            intake_label: string;
+            /**
+             * Max Open Intake Tasks
+             * @default 5
+             */
+            max_open_intake_tasks: number;
+            /**
+             * Respond To Reviews
+             * @default true
+             */
+            respond_to_reviews: boolean;
+            /**
+             * Review Authors
+             * @default collaborators
+             * @enum {string}
+             */
+            review_authors: "collaborators" | "everyone";
+            /**
+             * Fix Ci Failures
+             * @default true
+             */
+            fix_ci_failures: boolean;
+            /**
+             * Security Alerts
+             * @default high
+             * @enum {string}
+             */
+            security_alerts: "off" | "low" | "medium" | "high" | "critical";
+            /**
+             * Releases
+             * @default off
+             * @enum {string}
+             */
+            releases: "off" | "draft" | "publish";
+            /**
+             * Stale Branch Days
+             * @default 30
+             */
+            stale_branch_days: number;
+            /**
+             * Docs Upkeep
+             * @default false
+             */
+            docs_upkeep: boolean;
+            /**
+             * Allow Workflow Changes
+             * @default false
+             */
+            allow_workflow_changes: boolean;
+            /** Protected Paths */
+            protected_paths: string[];
+            /**
+             * Poll Interval Seconds
+             * @default 300
+             */
+            poll_interval_seconds: number;
+            /**
+             * Max File Bytes
+             * @default 10485760
+             */
+            max_file_bytes: number;
+            /**
+             * Max Push Bytes
+             * @default 104857600
+             */
+            max_push_bytes: number;
+        };
+        /**
+         * RepoPolicyInput
+         * @description The same fields, all optional: create and patch apply only what is given.
+         */
+        RepoPolicyInput: {
+            /** Merge Mode */
+            merge_mode?: ("pr_human_merge" | "pr_auto_merge" | "direct_push") | null;
+            /** Pr Merge Method */
+            pr_merge_method?: ("squash" | "merge" | "rebase") | null;
+            /** Pr Internal Review */
+            pr_internal_review?: boolean | null;
+            /** Ci Mode */
+            ci_mode?: ("required" | "if_present" | "ignore") | null;
+            /** Ci Wait Seconds */
+            ci_wait_seconds?: number | null;
+            /** Pr Batch Quiet Seconds */
+            pr_batch_quiet_seconds?: number | null;
+            /** Max Pr Revisions */
+            max_pr_revisions?: number | null;
+            /** Max Ci Fix Attempts */
+            max_ci_fix_attempts?: number | null;
+            /** Issue Intake */
+            issue_intake?: ("off" | "collaborators" | "labeled" | "everyone") | null;
+            /** Intake Label */
+            intake_label?: string | null;
+            /** Max Open Intake Tasks */
+            max_open_intake_tasks?: number | null;
+            /** Respond To Reviews */
+            respond_to_reviews?: boolean | null;
+            /** Review Authors */
+            review_authors?: ("collaborators" | "everyone") | null;
+            /** Fix Ci Failures */
+            fix_ci_failures?: boolean | null;
+            /** Security Alerts */
+            security_alerts?: ("off" | "low" | "medium" | "high" | "critical") | null;
+            /** Releases */
+            releases?: ("off" | "draft" | "publish") | null;
+            /** Stale Branch Days */
+            stale_branch_days?: number | null;
+            /** Docs Upkeep */
+            docs_upkeep?: boolean | null;
+            /** Allow Workflow Changes */
+            allow_workflow_changes?: boolean | null;
+            /** Protected Paths */
+            protected_paths?: string[] | null;
+            /** Poll Interval Seconds */
+            poll_interval_seconds?: number | null;
+            /** Max File Bytes */
+            max_file_bytes?: number | null;
+            /** Max Push Bytes */
+            max_push_bytes?: number | null;
+        };
+        /** RepoPullRequest */
+        RepoPullRequest: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string;
+            /** Repository Id */
+            repository_id: string;
+            /** Number */
+            number: number;
+            /** Url */
+            url: string | null;
+            /** Title */
+            title: string;
+            /** Head Branch */
+            head_branch: string;
+            /** Base Branch */
+            base_branch: string;
+            /** Head Sha */
+            head_sha: string | null;
+            /** Review Sha */
+            review_sha: string | null;
+            /** Verdict Sha */
+            verdict_sha: string | null;
+            /** Merged Sha */
+            merged_sha: string | null;
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "opening" | "reviewing" | "changes_requested" | "approved" | "merging" | "awaiting_human" | "merged" | "closed";
+            /** Revision */
+            revision: number;
+            /** Review Task Id */
+            review_task_id: string | null;
+            /** Verdict */
+            verdict: string | null;
+            /** Verdict Note */
+            verdict_note: string | null;
+            /** Verdict Agent Id */
+            verdict_agent_id: string | null;
+            /** Checks State */
+            checks_state: string;
+            /** Checks */
+            checks: {
+                [key: string]: unknown;
+            }[];
+            /** Checks Since */
+            checks_since: string | null;
+            /** Ci Fix Attempts */
+            ci_fix_attempts: number;
+            /** Mergeable State */
+            mergeable_state: string | null;
+            /** Human Review State */
+            human_review_state: string | null;
+            /** Last Review Seen At */
+            last_review_seen_at: string | null;
+            /** Approval Id */
+            approval_id: string | null;
+            /** Merged By */
+            merged_by: string | null;
+            /** Task Ids */
+            task_ids: string[];
+            /** Opened At */
+            opened_at: string | null;
+            /** Merged At */
+            merged_at: string | null;
+            /** Closed At */
+            closed_at: string | null;
+            /** Last Error */
+            last_error: string | null;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /** RepoPullRequestSummary */
+        RepoPullRequestSummary: {
+            /** Id */
+            id: string;
+            /** Number */
+            number: number;
+            /** Url */
+            url: string | null;
+            /** Title */
+            title: string;
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "opening" | "reviewing" | "changes_requested" | "approved" | "merging" | "awaiting_human" | "merged" | "closed";
+            /** Revision */
+            revision: number;
+            /** Head Sha */
+            head_sha: string | null;
+            /** Verdict */
+            verdict: string | null;
+            /** Checks State */
+            checks_state: string;
+            /** Mergeable State */
+            mergeable_state: string | null;
+            /** Opened At */
+            opened_at: string | null;
+        };
+        /** RepositoryCreate */
+        RepositoryCreate: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "create" | "connect";
+            /** Connected Account Id */
+            connected_account_id: string;
+            /** Project Id */
+            project_id?: string | null;
+            /** Project Name */
+            project_name?: string | null;
+            /** Project Description */
+            project_description?: string | null;
+            /** Owner */
+            owner?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Full Name */
+            full_name?: string | null;
+            /**
+             * Visibility
+             * @default private
+             * @enum {string}
+             */
+            visibility?: "private" | "public";
+            /**
+             * Confirm Public
+             * @default false
+             */
+            confirm_public?: boolean;
+            /** Description */
+            description?: string | null;
+            /** Default Branch */
+            default_branch?: string | null;
+            /** Work Branch */
+            work_branch?: string | null;
+            /**
+             * Initialize
+             * @default true
+             */
+            initialize?: boolean;
+            /**
+             * Publish Local
+             * @default false
+             */
+            publish_local?: boolean;
+            /**
+             * Company Default
+             * @default true
+             */
+            company_default?: boolean;
+            policy?: components["schemas"]["RepoPolicyInput"];
+        };
+        /** RepositoryUpdate */
+        RepositoryUpdate: {
+            policy?: components["schemas"]["RepoPolicyInput"] | null;
+            /** Default Branch */
+            default_branch?: string | null;
+            /** Is Company Default */
+            is_company_default?: boolean | null;
         };
         /** ReviewBody */
         ReviewBody: {
@@ -9469,6 +10491,14 @@ export interface components {
             /** Result Summary */
             result_summary: string | null;
         };
+        /** SyncQueued */
+        SyncQueued: {
+            /**
+             * Queued
+             * @default true
+             */
+            queued: boolean;
+        };
         /** SystemStatus */
         SystemStatus: {
             emergency_stop: components["schemas"]["EmergencyStopStatus"];
@@ -10007,6 +11037,34 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** WebhookAccepted */
+        WebhookAccepted: {
+            /**
+             * Accepted
+             * @default true
+             */
+            accepted: boolean;
+        };
+        /** WebhookState */
+        WebhookState: {
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /** Url */
+            url: string | null;
+            /**
+             * Stale
+             * @default false
+             */
+            stale: boolean;
+        };
+        /** WebhookUpdate */
+        WebhookUpdate: {
+            /** Enabled */
+            enabled: boolean;
         };
     };
     responses: never;
@@ -16787,6 +17845,553 @@ export interface operations {
             };
         };
     };
+    repositories_status_api_companies__company_id__repositories_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepoAvailability"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    inspect_github_api_companies__company_id__github_inspect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GithubInspectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GithubInspectResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_repositories_api_companies__company_id__repositories_get: {
+        parameters: {
+            query?: {
+                project_id?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_ProjectRepository_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_repository_api_companies__company_id__repositories_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RepositoryCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRepository"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_repository_api_companies__company_id__repositories__repository_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repository_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRepository"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_repository_api_companies__company_id__repositories__repository_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repository_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RepositoryUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRepository"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_repository_api_companies__company_id__repositories__repository_id__sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repository_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncQueued"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pause_repository_api_companies__company_id__repositories__repository_id__pause_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repository_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRepository"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_repository_api_companies__company_id__repositories__repository_id__resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repository_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRepository"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    disconnect_repository_api_companies__company_id__repositories__repository_id__disconnect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repository_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DisconnectBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRepository"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_integration_api_companies__company_id__repositories__repository_id__integration_reset_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repository_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IntegrationReset"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRepository"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_pr_opening_api_companies__company_id__repositories__repository_id__pull_requests_resume_opening_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repository_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRepository"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_webhook_api_companies__company_id__repositories__repository_id__webhook_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repository_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebhookUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRepository"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_pull_requests_api_companies__company_id__repositories__repository_id__pull_requests_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                repository_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_RepoPullRequest_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_items_api_companies__company_id__repositories__repository_id__items_get: {
+        parameters: {
+            query?: {
+                kind?: ("issue" | "review" | "internal_review" | "check_failure" | "alert") | null;
+                status?: ("new" | "queued" | "tasked" | "ignored" | "done") | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                repository_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_RepoItem_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    repository_activity_api_companies__company_id__repositories__repository_id__activity_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                repository_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_AuditEvent_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     inbound_email_api_webhooks_email__company_id___source__post: {
         parameters: {
             query?: never;
@@ -16806,6 +18411,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    github_webhook_api_webhooks_github__repository_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repository_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookAccepted"];
                 };
             };
             /** @description Validation Error */
@@ -18319,6 +19955,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Reflection"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_pull_api_agent_v1_repo_pulls__pull_id__review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pull_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PullReviewBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PullReviewResult"];
                 };
             };
             /** @description Validation Error */

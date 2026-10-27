@@ -79,6 +79,20 @@ class Settings(BaseSettings):
     github_api_url: str = "https://api.github.com"
     skill_scan_timeout_seconds: float = 120.0
 
+    # --- Milestone 14: GitHub-backed projects --------------------------------------------------
+    # The web host git talks to (clone/fetch/push URLs are ``<github_web_url>/<owner>/<repo>.git``).
+    # ``github_api_url`` above is the REST API. Both can point at GitHub Enterprise Server
+    # (untested). Plain http is refused for git unless ``github_allow_insecure_http`` is set; only
+    # the test suite does (a local smart-HTTP remote).
+    github_web_url: str = "https://github.com"
+    github_allow_insecure_http: bool = False
+    # Refuse to bind a repository bigger than this (MB, as GitHub reports it).
+    repo_max_size_mb: int = Field(default=1024, ge=1)
+    # Timeout of one network git call (clone / fetch / push).
+    git_network_timeout_seconds: int = Field(default=600, ge=10)
+    # How often the scheduler looks for repositories whose sync is due.
+    repo_sync_tick_seconds: int = Field(default=30, ge=1)
+
     # --- Milestone 3b: auth + company agent runtime ---------------------------------------------
     # Where the owner opens the app (used for the printed login link).
     public_url: str = "http://localhost:8700"

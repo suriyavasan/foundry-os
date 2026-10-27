@@ -82,6 +82,8 @@ class Resolution:
 
 
 def default_decision(spec: ActionSpec, limits: CompanyPolicy, facts: Facts) -> str:
+    if spec.default_decision is not None:  # M14: an action-level default replaces the tier's
+        return spec.default_decision
     if spec.tier == T.SPEND:
         amount = facts.amount_micros or 0
         return D.HUMAN_APPROVAL if amount > limits.auto_spend_limit_micros else D.COFOUNDER_APPROVAL

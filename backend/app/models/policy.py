@@ -171,6 +171,12 @@ class CompanyPolicy(Base):
     project_auto_complete: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=true(), nullable=False
     )
+    # M14 (human-only): what happens to later projects when the company has a GitHub repository.
+    # ``local`` keeps today's behaviour (a local repository per project); ``company_repo`` binds
+    # each new project to the company's default repository with its own work branch.
+    new_project_repository: Mapped[str] = mapped_column(
+        String(16), default="local", server_default="local", nullable=False
+    )
     budget_lock_version: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)

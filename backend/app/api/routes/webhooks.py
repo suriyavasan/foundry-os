@@ -1,4 +1,4 @@
-"""Public webhooks (no session: authenticated by signature only). Today: inbound e-mail."""
+"""Public webhooks (no session: authenticated by signature only): inbound e-mail and GitHub."""
 
 from __future__ import annotations
 
@@ -7,7 +7,8 @@ from starlette.concurrency import run_in_threadpool
 
 from app.api.deps import DbSession
 from app.core.errors import PayloadTooLarge
-from app.services import email_identity
+from app.schemas.repository import WebhookAccepted
+from app.services import email_identity, repositories
 
 router = APIRouter(tags=["webhooks"])
 
@@ -39,6 +40,22 @@ async def inbound_email(company_id: str, source: str, request: Request, db: DbSe
         request.app.state.integrations,
         company_id,
         source,
+        dict(request.headers),
+        body,
+    )
+
+
+@router.post("/webhooks/github/{repository_id}", status_code=202, response_model=WebhookAccepted)
+async def github_webhook(repository_id: str, request: Request, db: DbSession):
+    """An optional GitHub webhook (M14). It only pokes a sync: the payload is never trusted or
+    used. An unknown repository, no secret and a bad ``X-Hub-Signature-256`` answer the same 401."""
+    settings = request.app.state.settings
+    body = await _read_capped(request, settings.webhook_max_bytes)
+    return await run_in_threadpool(
+        repositories.receive_webhook,
+        db,
+        request.app.state.integrations,
+        repository_id,
         dict(request.headers),
         body,
     )

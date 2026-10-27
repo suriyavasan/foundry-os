@@ -15,6 +15,10 @@ from pathlib import Path
 from typing import Any
 
 from app.models.enums import ActionTier as T
+from app.models.enums import GuardrailDecision as D
+
+D_ALLOW = D.ALLOW.value
+D_HUMAN = D.HUMAN_APPROVAL.value
 
 TOOLS_FILE = Path(__file__).with_name("tools.json")
 AGENT_API_PREFIXES = ("/api/agent/v1", "/agent/v1")
@@ -28,6 +32,10 @@ HIRES = "hires_per_day"
 SKILL_INSTALLS = "skill_installs_per_day"
 WEB_FETCHES = "web_fetches_per_hour"
 SYSTEM_EMAILS = "system_emails_per_day"  # M8: invitations / notification e-mails
+# M14: GitHub. Agent GitHub writes do NOT count toward EXTERNAL_COMMS.
+GITHUB_COMMENTS = "github_comments_per_day"  # issue / PR comments, issues
+GITHUB_WRITES = "github_writes_per_hour"  # releases
+GITHUB_PUSHES = "github_pushes_per_hour"  # push, PR open/update, merge (system actions)
 
 
 @dataclass(frozen=True)
@@ -35,7 +43,7 @@ class ActionSpec:
     name: str
     tier: str
     description: str
-    kind: str = "api"  # api | tool | provider | internal
+    kind: str = "api"  # api | tool | provider | internal | system
     rate_keys: tuple[str, ...] = ()
     # Identity actions that touch domain / DNS ownership default to a human, not the Co-founder.
     human_default: bool = False
@@ -45,6 +53,9 @@ class ActionSpec:
     # M7: account management. No agent may ever do these and no rule can allow it: the engine
     # denies them before it looks at any rule.
     human_only: bool = False
+    # M14: an action-level default decision (a ``GuardrailDecision`` value) that replaces the
+    # tier default. A human rule still overrides it and the ``human_required`` floor still applies.
+    default_decision: str | None = None
 
 
 @dataclass(frozen=True)
@@ -89,6 +100,8 @@ _API_ACTIONS = [
     _a("memory.propose", T.INTERNAL_WRITE, "Propose a memory entry"),
     _a("memory.verify", T.INTERNAL_WRITE, "Verify a memory proposal"),
     _a("memory.reject", T.INTERNAL_WRITE, "Reject a memory proposal"),
+    # M14: the internal reviewer's verdict on a Foundry pull request
+    _a("repo.pr.review", T.INTERNAL_WRITE, "Record the verdict of an internal pull request review"),
     # M10: reflections (the AI Co-founder writes; only people turn a proposal into a standard)
     _a("reflection.post", T.INTERNAL_WRITE, "Post a reflection for the Founder"),
     _a("reflection.reply", T.INTERNAL_WRITE, "Reply to the Founder on a reflection"),
@@ -130,19 +143,14 @@ _PROVIDER_ACTIONS = [
         kind="provider",
         rate_keys=(EXTERNAL_COMMS,),
     ),
-    _a(
-        "github.pr.open",
-        T.EXTERNAL_COMMUNICATION,
-        "Open a pull request on an external repository",
-        kind="provider",
-        rate_keys=(EXTERNAL_COMMS,),
-    ),
+    # github.pr.open is a SYSTEM action since M14 (see _SYSTEM_ACTIONS): the control plane opens
+    # Foundry's pull requests itself; agents cannot call it through provider-actions.
     _a(
         "github.issue.comment",
         T.EXTERNAL_COMMUNICATION,
-        "Comment on an external issue",
+        "Comment on a GitHub issue",
         kind="provider",
-        rate_keys=(EXTERNAL_COMMS,),
+        rate_keys=(GITHUB_COMMENTS,),
     ),
     _a(
         "invite.send",
@@ -203,6 +211,126 @@ _PROVIDER_ACTIONS = [
     _a("tunnel.status", T.EXTERNAL_READ, "Read the public tunnel status", kind="provider"),
     _a("tunnel.start", T.IDENTITY, "Start the public tunnel", kind="provider"),
     _a("tunnel.stop", T.IDENTITY, "Stop the public tunnel", kind="provider"),
+    # --- Milestone 14: GitHub-backed projects (executors: integrations/github_executor.py) ---
+    _a("github.issue.read", T.EXTERNAL_READ, "Read issues of a bound repository", kind="provider"),
+    _a(
+        "github.pr.read",
+        T.EXTERNAL_READ,
+        "Read pull requests of a bound repository",
+        kind="provider",
+    ),
+    _a(
+        "github.checks.read",
+        T.EXTERNAL_READ,
+        "Read CI check runs and failed job logs of a bound repository",
+        kind="provider",
+    ),
+    _a(
+        "github.alerts.read",
+        T.EXTERNAL_READ,
+        "Read Dependabot security alerts of a bound repository",
+        kind="provider",
+    ),
+    _a(
+        "github.pr.comment",
+        T.EXTERNAL_COMMUNICATION,
+        "Comment on a pull request of a bound repository",
+        kind="provider",
+        rate_keys=(GITHUB_COMMENTS,),
+    ),
+    _a(
+        "github.issue.create",
+        T.EXTERNAL_COMMUNICATION,
+        "Open an issue in a bound repository",
+        kind="provider",
+        rate_keys=(GITHUB_COMMENTS,),
+    ),
+    _a(
+        "github.issue.update",
+        T.EXTERNAL_COMMUNICATION,
+        "Label, retitle or close an issue of a bound repository",
+        kind="provider",
+        rate_keys=(GITHUB_COMMENTS,),
+    ),
+    _a(
+        "github.release.draft",
+        T.EXTERNAL_COMMUNICATION,
+        "Draft a release (never published) in a bound repository",
+        kind="provider",
+        rate_keys=(GITHUB_WRITES,),
+    ),
+    _a(
+        "github.release.publish",
+        T.EXTERNAL_COMMITMENT,
+        "Publish a release (a public statement and a tag) in a bound repository",
+        kind="provider",
+        rate_keys=(GITHUB_WRITES,),
+    ),
+    _a(
+        "github.repo.create",
+        T.IDENTITY,
+        "Create a new GitHub repository for a project (always needs a human decision)",
+        kind="provider",
+        human_default=True,
+        human_required=True,
+        default_decision=D_HUMAN,
+    ),
+]
+
+# M14: operations the control plane performs on a bound repository ITSELF (sync loop), never an
+# agent: not in PROVIDER_ACTIONS, so ``provider-actions`` denies them (unknown provider action).
+# They are still checked with ``engine.check`` under the project lead's (else the AI Co-founder's)
+# context, so the emergency stop, human deny / approval rules, rate limits and the guardrail log
+# all apply. ``default_decision=allow``: consent was given in the repository policy
+# (``merge_mode``); a human rule can park or forbid any of them.
+_SYSTEM_ACTIONS = [
+    _a(
+        "github.pr.open",
+        T.EXTERNAL_COMMUNICATION,
+        "Open a pull request on a bound repository",
+        kind="system",
+        rate_keys=(GITHUB_PUSHES,),
+        default_decision=D_ALLOW,
+    ),
+    _a(
+        "github.pr.update",
+        T.EXTERNAL_COMMUNICATION,
+        "Update a pull request (fast-forward push of its head, body edit)",
+        kind="system",
+        rate_keys=(GITHUB_PUSHES,),
+        default_decision=D_ALLOW,
+    ),
+    _a(
+        "github.branch.push",
+        T.EXTERNAL_COMMUNICATION,
+        "Push the project's work branch to its repository",
+        kind="system",
+        rate_keys=(GITHUB_PUSHES,),
+        default_decision=D_ALLOW,
+    ),
+    _a(
+        "github.push.default",
+        T.EXTERNAL_COMMITMENT,
+        "Push to the default branch (merge_mode direct_push)",
+        kind="system",
+        rate_keys=(GITHUB_PUSHES,),
+        default_decision=D_ALLOW,
+    ),
+    _a(
+        "github.pr.merge",
+        T.EXTERNAL_COMMITMENT,
+        "Merge a pull request (merge_mode pr_auto_merge)",
+        kind="system",
+        rate_keys=(GITHUB_PUSHES,),
+        default_decision=D_ALLOW,
+    ),
+    _a(
+        "github.branch.delete",
+        T.DESTRUCTIVE,
+        "Delete a merged or stale foundry/* branch",
+        kind="system",
+        default_decision=D_ALLOW,
+    ),
 ]
 
 # M7 accounts & team. Tier `identity`, but unlike the provider actions above they cannot be
@@ -317,6 +445,8 @@ _ROUTES = [
     RouteSpec("POST", "/reflections", "reflection.post"),
     RouteSpec("POST", "/reflections/{reflection_id}/replies", "reflection.reply"),
     RouteSpec("POST", "/reflections/{reflection_id}/revise", "reflection.revise"),
+    # Milestone 14
+    RouteSpec("POST", "/repo/pulls/{pull_id}/review", "repo.pr.review"),
     # Milestone 6
     RouteSpec("POST", "/guardrails/check-tool", "guardrail.tool_check"),
     RouteSpec("POST", "/guardrails/flags", "guardrail.flag"),
@@ -349,12 +479,14 @@ ACTIONS: dict[str, ActionSpec] = {
     for spec in (
         *_API_ACTIONS,
         *_PROVIDER_ACTIONS,
+        *_SYSTEM_ACTIONS,
         *_INTERNAL_ACTIONS,
         *_HUMAN_ONLY_ACTIONS,
         *_tool_actions(),
     )
 }
 PROVIDER_ACTIONS: dict[str, ActionSpec] = {s.name: s for s in _PROVIDER_ACTIONS}
+SYSTEM_ACTIONS: dict[str, ActionSpec] = {s.name: s for s in _SYSTEM_ACTIONS}
 ROUTES: dict[tuple[str, str], RouteSpec] = {(r.method, r.path): r for r in _ROUTES}
 
 TIERS: tuple[str, ...] = tuple(t.value for t in T)

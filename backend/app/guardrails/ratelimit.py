@@ -41,6 +41,9 @@ LIMITS: dict[str, Limit] = {
         Limit(registry.SKILL_INSTALLS, DAY, per_agent=10, per_company=30),
         Limit(registry.WEB_FETCHES, HOUR, per_agent=120, per_company=600),
         Limit(registry.SYSTEM_EMAILS, DAY, per_agent=200, per_company=200),
+        Limit(registry.GITHUB_COMMENTS, DAY, per_agent=30, per_company=100),
+        Limit(registry.GITHUB_WRITES, HOUR, per_agent=10, per_company=30),
+        Limit(registry.GITHUB_PUSHES, HOUR, per_agent=20, per_company=60),
     )
 }
 RETENTION = timedelta(days=2)
