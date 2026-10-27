@@ -3,201 +3,313 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Foundry AI OS: a company that runs itself, on your machine</title>
-<meta name="description" content="Foundry AI OS is a free, open-source operating system for a company run by AI agents. It runs on your own computer, with your own AI keys or a free local model.">
-<meta name="theme-color" content="#0c0d10">
+<title>Foundry AI OS: every idea needs a company</title>
+<meta name="description" content="Foundry AI OS is a free, open-source operating system for a company run by AI agents. Write a note; an AI Co-founder hires a team, hands out the work and reports back. It runs on your own computer.">
+<meta name="theme-color" content="#f9f7f4">
 <meta property="og:title" content="Foundry AI OS">
-<meta property="og:description" content="A company that runs itself, on your machine. Free and open source (MIT).">
+<meta property="og:description" content="Every idea needs a company. Run one with AI employees, on your own machine. Free and open source (MIT).">
 <meta property="og:type" content="website">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Geist:wght@400..700&family=Geist+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="style.css">
 <script src="script.js" defer></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
-
-<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
-  <defs>
-    <symbol id="i-brain" viewBox="0 0 24 24"><path d="M9 4a3 3 0 0 0-3 3 3 3 0 0 0-2 5 3 3 0 0 0 2 5 3 3 0 0 0 6 1V4a3 3 0 0 0-3 0Zm6 0a3 3 0 0 1 3 3 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-6 1"/></symbol>
-    <symbol id="i-hr" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M17 5v6M14 8h6"/></symbol>
-    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4V5Z"/><path d="M8 9.5h8M8 12.5h5"/></symbol>
-    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 3 8 7 10 4-2 7-5.500 7-10V6l-7-3Z"/><path d="m9 12 2.200 2.200L15.500 10"/></symbol>
-    <symbol id="i-home" viewBox="0 0 24 24"><path d="m4 11 8-7 8 7"/><path d="M6 10v10h12V10"/><path d="M10 20v-5h4v5"/></symbol>
-    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m11 12 8-8M16 7l3 3"/></symbol>
-    <symbol id="i-term" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.500"/><path d="m7 9 3 3-3 3M13 15h4"/></symbol>
-    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></symbol>
-    <symbol id="i-people" viewBox="0 0 24 24"><circle cx="9" cy="9" r="3"/><circle cx="17" cy="10" r="2.400"/><path d="M3 19c0-3 2.700-5 6-5s6 2 6 5M16 14.500c2.700 0 5 1.500 5 4.500"/></symbol>
-    <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12.500 2.700 2.700L16 9.500"/></symbol>
-  </defs>
-</svg>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs><filter id="goo"><feGaussianBlur in="SourceGraphic" stdDeviation="7" result="b"/><feColorMatrix in="b" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -9" result="g"/><feComposite in="SourceGraphic" in2="g" operator="atop"/></filter></defs></svg>
 
 <header class="top">
-  <div class="wrap">
+  <div class="wrap bar">
     <a class="brand" href="#top" aria-label="Foundry AI OS, top of page">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="3" fill="#e8e9ec"/><circle cx="5" cy="19" r="3" fill="#7b95fb"/><circle cx="19" cy="19" r="3" fill="#e58aab"/><path d="M12 8v4M12 12 5 16M12 12l7 4" stroke="#747882" stroke-width="1.500" fill="none"/></svg>
-      Foundry AI OS
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="7" fill="#1e1e24"/><circle cx="12" cy="7.5" r="2.6" fill="#ff6a00"/><circle cx="7" cy="16.5" r="2.6" fill="#3950e6"/><circle cx="17" cy="16.5" r="2.6" fill="#ffc23d"/></svg>
+      Foundry
     </a>
     <nav aria-label="Main">
       <ul>
-        <li class="opt"><a href="#how">How it works</a></li>
-        <li class="opt"><a href="#features">Features</a></li>
-        <li><a href="#install">Install</a></li>
+        <li class="opt"><a href="#product">Product</a></li>
+        <li class="opt"><a href="#uses">Use cases</a></li>
         <li class="opt"><a href="#safety">Safety</a></li>
-        <li><a href="https://github.com/suriyavasan/foundry-os">GitHub</a></li>
+        <li class="opt"><a href="#faq">FAQ</a></li>
+        <li class="opt"><a href="https://github.com/suriyavasan/foundry-os">GitHub</a></li>
+        <li class="nav-cta"><a class="btn dark sm" href="#install">Start building</a></li>
       </ul>
     </nav>
   </div>
 </header>
 
 <main id="main">
-<div class="hero" id="top">
-  <div class="wrap">
-    <div>
-      <p class="status"><i aria-hidden="true"></i> <span id="latest-release">Early software. Every change that passes the tests is released.</span></p>
-      <h1><span>Foundry AI OS</span><span class="dim">a company that <em>runs itself</em>, on your machine</span></h1>
-      <p class="lede">You write down what you want. An AI Co-founder turns it into goals, hires AI specialists, hands out the work and tells you what happened. It runs on your own computer, with your own AI. You approve anything that costs real money.</p>
-      <div class="cta">
-        <a class="btn primary" href="#install">Install</a>
-        <a class="btn" href="https://github.com/suriyavasan/foundry-os/blob/main/docs/guide/getting-started.md">Read the guide</a>
+
+<!-- Hero -->
+<section class="hero" id="top">
+  <div class="blob b1" aria-hidden="true"></div>
+  <div class="blob b2" aria-hidden="true"></div>
+  <div class="blob b3" aria-hidden="true"></div>
+  <div class="wrap center">
+    <p class="pill"><span class="dot" aria-hidden="true"></span> <span id="latest-release">Early software · free and open source</span></p>
+    <h1 class="display">Every idea needs<br>a <span class="hl">company</span></h1>
+    <p class="lede">Write down what you want. An AI Co-founder turns it into goals, hires AI employees, hands out the work and tells you what happened. On your own computer, with your own AI.</p>
+
+    <div class="get" role="group" aria-label="Install Foundry">
+      <div class="get-tabs" role="tablist" aria-label="Install method">
+        <button type="button" role="tab" aria-selected="true" data-cmd="brew install suriyavasan/tap/foundry-os">Homebrew</button>
+        <button type="button" role="tab" aria-selected="false" data-cmd="curl -fsSL https://raw.githubusercontent.com/suriyavasan/foundry-os/main/install.sh | sh">Installer</button>
+        <button type="button" role="tab" aria-selected="false" data-cmd="docker run -d --name foundry-os -p 8700:8700 -v foundry-os:/data ghcr.io/suriyavasan/foundry-os:latest">Docker</button>
       </div>
-      <p class="fine">Free and open source (MIT). No account with us. No tracking.</p>
+      <div class="get-bar">
+        <span class="get-ps" aria-hidden="true">$</span>
+        <code id="hero-cmd">brew install suriyavasan/tap/foundry-os</code>
+        <div class="goo-wrap">
+          <div class="goo" aria-hidden="true"><span class="g-btn"></span><span class="g-drop"></span></div>
+          <span class="g-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m6 12.5 4 4L18 8"/></svg></span>
+          <button type="button" class="g-label" id="hero-copy" aria-label="Copy the install command">Copy</button>
+        </div>
+      </div>
+      <p class="get-then">Then run <code>foundryos up</code> and open <code>localhost:8700</code>.</p>
     </div>
-    <figure class="org" style="margin:0">
-      <svg viewBox="0 0 520 390" role="img" aria-labelledby="org-t org-d">
-        <title id="org-t">An example organization</title>
-        <desc id="org-d">A tree of circles. You, the Founder, at the top; below you the AI Co-founder; below that HR and two leads; below them specialists.</desc>
-        <g>
-          <path class="edge" d="M260 80V112"/>
-          <path class="edge e2" d="M260 172V190M110 190H410M110 190V208M260 190V208M410 190V208"/>
-          <path class="edge e3" d="M110 268V310M260 268V290M205 290H315M205 290V310M315 290V310M410 268V310"/>
-        </g>
-        <g class="node-g n1 idle"><circle class="halo" cx="260" cy="52" r="30"/><circle class="node" cx="260" cy="52" r="26"/><text class="glyph" x="260" y="52" fill="#93a9fd">You</text><text class="lbl r" x="296" y="52">Founder (you)</text></g>
-        <g class="node-g n2 work"><circle class="halo" cx="260" cy="142" r="30"/><circle class="node" cx="260" cy="142" r="26"/><text class="glyph" x="260" y="142" fill="#eceef2">AI</text><text class="lbl r" x="296" y="142">AI Co-founder</text></g>
-        <g class="node-g n3 work d2"><circle class="halo" cx="110" cy="238" r="30"/><circle class="node" cx="110" cy="238" r="26"/><text class="glyph" x="110" y="238" fill="#e58aab">HR</text><text class="lbl r" x="146" y="238">HR</text></g>
-        <g class="node-g n3 idle"><circle class="halo" cx="260" cy="238" r="30"/><circle class="node" cx="260" cy="238" r="26"/><text class="glyph" x="260" y="238" fill="#7b95fb">L</text><text class="lbl r" x="296" y="238">Lead</text></g>
-        <g class="node-g n3 work d3"><circle class="halo" cx="410" cy="238" r="30"/><circle class="node" cx="410" cy="238" r="26"/><text class="glyph" x="410" y="238" fill="#f1a066">L</text><text class="lbl r" x="446" y="238">Lead</text></g>
-        <g class="node-g n4 work d2"><circle class="halo" cx="110" cy="340" r="26"/><circle class="node" cx="110" cy="340" r="22"/><text class="glyph" x="110" y="340" fill="#58aef0">S</text><text class="lbl" x="110" y="379">Specialist</text></g>
-        <g class="node-g n4 idle"><circle class="halo" cx="205" cy="340" r="26"/><circle class="node" cx="205" cy="340" r="22"/><text class="glyph" x="205" y="340" fill="#bd92f8">S</text><text class="lbl" x="205" y="379">Specialist</text></g>
-        <g class="node-g n4 work"><circle class="halo" cx="315" cy="340" r="26"/><circle class="node" cx="315" cy="340" r="22"/><text class="glyph" x="315" y="340" fill="#7b95fb">S</text><text class="lbl" x="315" y="379">Specialist</text></g>
-        <g class="node-g n4 idle"><circle class="halo" cx="410" cy="340" r="26"/><circle class="node" cx="410" cy="340" r="22"/><text class="glyph" x="410" y="340" fill="#52c78e">S</text><text class="lbl" x="410" y="379">Specialist</text></g>
+
+    <div class="notch-stage">
+      <div class="notch" id="notch" aria-live="polite">
+        <div class="n-head"><span class="n-av" id="n-av" aria-hidden="true">AI</span><span class="n-who" id="n-who">AI Co-founder</span><span class="n-title" id="n-title">Waiting for your first note</span><span class="n-dot" aria-hidden="true"></span></div>
+        <div class="n-body" id="n-body"><p class="n-text" id="n-text"></p><div class="n-actions" id="n-actions"></div></div>
+      </div>
+      <p class="fine">An illustration of how work flows through your company, not live data. Try the approval buttons.</p>
+    </div>
+  </div>
+</section>
+
+<!-- The whole stack -->
+<section id="product" class="band">
+  <div class="wrap split">
+    <div>
+      <p class="tag">[ The whole company ]</p>
+      <h2 class="display md">The whole company. No hiring slowdown.</h2>
+      <p class="lede left">Skip the job posts, the onboarding and the status meetings. Foundry gives you a working org on day one, with the brakes built in.</p>
+      <ul class="ticks">
+        <li><b>An AI Co-founder</b> that triages your notes, sets goals and reports back</li>
+        <li><b>HR that hires and trains</b>, with skills scanned for safety</li>
+        <li><b>Guardrails in code</b>: risk tiers, approvals, budgets, an emergency stop</li>
+        <li><b>Your data, your machine</b>. There is no Foundry cloud</li>
+        <li><b>Bring your own AI</b>: OpenRouter, Anthropic, OpenAI or free local Ollama</li>
+        <li><b>Reach it from anywhere</b>, on your phone or your own domain</li>
+      </ul>
+    </div>
+    <figure class="org-card" aria-labelledby="org-cap">
+      <svg viewBox="0 0 440 360" role="img" aria-labelledby="org-t">
+        <title id="org-t">An example org chart: you, the AI Co-founder, HR, two leads and four specialists</title>
+        <path class="edge" d="M220 70V110M220 150V172M80 172H360M80 172V196M220 172V196M360 172V196M80 236V270M220 236V256M170 256H270M170 256V270M270 256V270M360 236V270"/>
+        <g class="nd"><rect x="160" y="30" width="120" height="40" rx="20" fill="#1e1e24"/><text x="220" y="55" fill="#fff">You</text></g>
+        <g class="nd pulse"><rect x="140" y="110" width="160" height="40" rx="20" fill="#ff6a00"/><text x="220" y="135" fill="#fff">AI Co-founder</text></g>
+        <g class="nd pulse d2"><rect x="30" y="196" width="100" height="40" rx="20" fill="#ff8fc7"/><text x="80" y="221">HR</text></g>
+        <g class="nd"><rect x="170" y="196" width="100" height="40" rx="20" fill="#fff"/><text x="220" y="221">Lead</text></g>
+        <g class="nd pulse d3"><rect x="310" y="196" width="100" height="40" rx="20" fill="#ffc23d"/><text x="360" y="221">Lead</text></g>
+        <g class="nd"><circle cx="80" cy="294" r="24" fill="#c6f36b"/><text x="80" y="299">S</text></g>
+        <g class="nd pulse"><circle cx="170" cy="294" r="24" fill="#9fd3ff"/><text x="170" y="299">S</text></g>
+        <g class="nd"><circle cx="270" cy="294" r="24" fill="#d9c6ff"/><text x="270" y="299">S</text></g>
+        <g class="nd pulse d2"><circle cx="360" cy="294" r="24" fill="#c6f36b"/><text x="360" y="299">S</text></g>
       </svg>
-      <figcaption>An illustration of the idea, not real data. Glowing rings mean "working".</figcaption>
+      <figcaption id="org-cap">An illustration of the idea, not real data.</figcaption>
     </figure>
   </div>
-</div>
+</section>
 
-<section id="how">
+<!-- Use cases -->
+<section id="uses">
   <div class="wrap">
     <div class="head">
-      <p class="eyebrow">How it works</p>
-      <h2>You set the direction. The company does the rest.</h2>
+      <p class="tag">[ Use cases ]</p>
+      <h2 class="display md">What will your company do?</h2>
+    </div>
+    <div class="uses">
+      <article class="use c-orange">
+        <div class="art" aria-hidden="true"><div class="win"><i></i><i></i><i></i><b></b><b class="s"></b><b class="s"></b></div></div>
+        <h3>Ship products</h3>
+        <p>Projects can be backed by a GitHub repository. Your team plans the work, writes code and keeps the repo tidy.</p>
+        <a href="https://github.com/suriyavasan/foundry-os/blob/main/docs/github.md">Connect GitHub →</a>
+      </article>
+      <article class="use c-blue">
+        <div class="art" aria-hidden="true"><div class="stack"><span></span><span></span><span></span></div></div>
+        <h3>Build a team</h3>
+        <p>Missing a skill? HR finds or writes it, checks it for safety and hires a specialist who has it.</p>
+        <a href="https://github.com/suriyavasan/foundry-os/blob/main/docs/guide/team.md">Meet the team →</a>
+      </article>
+      <article class="use c-green">
+        <div class="art" aria-hidden="true"><div class="bubbles"><span></span><span class="r"></span><span></span></div></div>
+        <h3>Get answers</h3>
+        <p>Every note gets a reply. Specialists research, write and save files you can open and read.</p>
+        <a href="https://github.com/suriyavasan/foundry-os/blob/main/docs/guide/how-your-company-works.md">How it works →</a>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- How it works -->
+<section id="how" class="band">
+  <div class="wrap">
+    <div class="head">
+      <p class="tag">[ How it works ]</p>
+      <h2 class="display md">Autonomous by default. Yours by design.</h2>
     </div>
     <ol class="steps">
-      <li><h3>Write a note</h3><p>Say what you want in plain words, like "Build a landing page for our first product." Every note gets an answer.</p></li>
-      <li><h3>The AI Co-founder plans</h3><p>It turns your note into goals and projects, picks a lead and replies with what it set up.</p></li>
-      <li><h3>HR hires, the team works</h3><p>If a skill is missing, HR finds or writes it and hires someone who has it. Specialists do the work and save files you can open.</p></li>
-      <li><h3>You stay in charge</h3><p>Work is reviewed. Anything with real money or real-world commitments waits for your yes.</p></li>
+      <li class="c-yellow"><span class="n">01</span><h3>Write a note</h3><p>Say what you want in plain words. Every note gets an answer.</p></li>
+      <li class="c-pink"><span class="n">02</span><h3>The Co-founder plans</h3><p>It turns your note into goals and projects, picks a lead and replies with what it set up.</p></li>
+      <li class="c-sky"><span class="n">03</span><h3>The team works</h3><p>HR hires the right roles. Specialists do the work and their output is reviewed.</p></li>
+      <li class="c-lime"><span class="n">04</span><h3>You stay in charge</h3><p>Anything with real money or real-world commitments waits for your yes.</p></li>
     </ol>
   </div>
 </section>
 
-<section id="features">
+<!-- Safety -->
+<section id="safety">
   <div class="wrap">
     <div class="head">
-      <p class="eyebrow">What you get</p>
-      <h2>A whole company, with the brakes built in.</h2>
+      <p class="tag">[ Safety ]</p>
+      <h2 class="display md">Autonomy, with real limits.</h2>
+      <p class="lede">The limits are code. An AI that is confused or tricked still cannot go past them.</p>
     </div>
     <div class="grid">
-      <article class="card"><svg class="ico" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-brain"/></svg><h3>An AI Co-founder</h3><p>One agent whose whole job is managing the others. It triages your notes, sets goals and reports back.</p></article>
-      <article class="card"><svg class="ico" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-hr"/></svg><h3>HR that hires and trains</h3><p>Skills are short instruction packs. HR scans them for safety, assigns them and hires the right role.</p></article>
-      <article class="card"><svg class="ico" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-chat"/></svg><h3>Command Center and Reflections</h3><p>Type a note or a slash command and always get an answer. The Co-founder posts reflections, and the standards you endorse become company rules. <span style="color:var(--fg-3)">(In progress.)</span></p></article>
-      <article class="card"><svg class="ico" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-shield"/></svg><h3>Guardrails in code</h3><p>Risk tiers, approvals, budgets, rate limits and an emergency stop. Enforced by the program, not by asking nicely.</p></article>
-      <article class="card"><svg class="ico" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-home"/></svg><h3>Runs on your machine</h3><p>Your data sits in a folder on your computer. There is no Foundry cloud.</p></article>
-      <article class="card"><svg class="ico" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-key"/></svg><h3>Bring your own AI</h3><p>OpenRouter, Anthropic, OpenAI, any OpenAI-compatible service, or a free local model with Ollama. Free models are preferred by default.</p></article>
-      <article class="card"><svg class="ico" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-term"/></svg><h3>Coding tools do the work</h3><p>Optionally, employees work through Claude Code, Codex or OpenCode, while your AI key runs management. <span style="color:var(--fg-3)">(In progress.)</span></p></article>
-      <article class="card"><svg class="ico" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-globe"/></svg><h3>Reach it from anywhere</h3><p>Open it on your phone, through a secure tunnel, on your own domain, with a company email address.</p></article>
-      <article class="card"><svg class="ico" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-people"/></svg><h3>Humans can join</h3><p>Invite people. They sit in the same org chart and can be given tasks like any agent.</p></article>
+      <article class="card"><span class="ico c-orange" aria-hidden="true">$</span><h3>Real money needs you</h3><p>Purchases, subscriptions and anything over budget wait for your approval, tied to the exact amount.</p></article>
+      <article class="card"><span class="ico c-blue" aria-hidden="true">⌘</span><h3>No self-promotion</h3><p>Agents can never change their own permissions, budgets or rules. Only people can.</p></article>
+      <article class="card"><span class="ico c-pink" aria-hidden="true">■</span><h3>Emergency stop</h3><p>One button pauses the whole company, mid-task.</p></article>
+      <article class="card"><span class="ico c-yellow" aria-hidden="true">✱</span><h3>Secrets stay hidden</h3><p>Keys are encrypted, write-only on screen, and never shown to agents or written to logs.</p></article>
+      <article class="card"><span class="ico c-lime" aria-hidden="true">✓</span><h3>No automated sign-ups</h3><p>Agents never create accounts that need a CAPTCHA, a phone check or accepting terms.</p></article>
+      <article class="card"><span class="ico c-sky" aria-hidden="true">≈</span><h3>Honest numbers</h3><p>Every cost is labelled verified, estimated or unknown. An estimate is never shown as a charge.</p></article>
     </div>
   </div>
 </section>
 
-<section id="install">
+<!-- Honest stats instead of testimonials -->
+<section class="proof">
+  <div class="wrap">
+    <div class="proof-card">
+      <p class="tag light">[ Where it stands ]</p>
+      <blockquote>“It runs the loop: a note becomes goals, projects, hires, tasks, work and reviews, without you approving each step.”</blockquote>
+      <p class="who">From our own FAQ. It is early software: watch it and guide it, don't leave it alone for weeks.</p>
+      <div class="stats">
+        <div><b>$0</b><span>to use, MIT licensed</span></div>
+        <div><b>0</b><span>accounts with us</span></div>
+        <div><b>1 Mac</b><span>tested end to end so far</span></div>
+      </div>
+      <a class="more" href="https://github.com/suriyavasan/foundry-os/blob/main/docs/roadmap.md">Read the roadmap →</a>
+    </div>
+  </div>
+</section>
+
+<!-- Pricing -->
+<section id="pricing">
   <div class="wrap">
     <div class="head">
-      <p class="eyebrow">Install</p>
-      <h2>Pick one. Then run <code style="font:inherit;color:var(--accent-fg)">foundryos</code>.</h2>
-      <p class="lede">These install options install the latest release. Every change that passes the tests is released automatically.</p>
+      <p class="tag">[ Pricing ]</p>
+      <h2 class="display md">Choose your plan</h2>
+      <p class="lede">There is only one, and it's free. You pay your AI provider directly, or nothing with a local model.</p>
+    </div>
+    <div class="plans">
+      <article class="plan">
+        <h3>Foundry</h3>
+        <p class="price"><b>$0</b>/forever</p>
+        <ul class="ticks">
+          <li>Every feature, no limits from us</li>
+          <li>Runs on your machine, your data stays there</li>
+          <li>MIT license, read and change the code</li>
+        </ul>
+        <a class="btn dark" href="#install">Start for free</a>
+      </article>
+      <article class="plan alt">
+        <h3>Your AI</h3>
+        <p class="price"><b>Your call</b></p>
+        <ul class="ticks">
+          <li>Free with a local model through Ollama</li>
+          <li>Or a cloud AI, billed by that provider, not us</li>
+          <li>Budgets checked before and during every task</li>
+        </ul>
+        <a class="btn ghost" href="https://github.com/suriyavasan/foundry-os/blob/main/docs/guide/connect-your-ai.md">Connect your AI</a>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- Install -->
+<section id="install" class="band">
+  <div class="wrap">
+    <div class="head">
+      <p class="tag">[ Install ]</p>
+      <h2 class="display md">Pick one. Then run <code>foundryos</code>.</h2>
+      <p class="lede">Each option installs the latest release. Every change that passes the tests is released automatically.</p>
     </div>
     <div class="install">
       <div class="opt-card">
-        <span class="tag">Latest release</span>
         <h3>Homebrew</h3>
-        <p class="meta">macOS and Linux. Updates with <code>brew upgrade foundry-os</code>.</p>
+        <p class="meta">macOS and Linux. Update with <code>brew upgrade foundry-os</code>.</p>
         <div class="code"><pre id="c1">brew install suriyavasan/tap/foundry-os</pre><button class="copy" type="button" data-target="c1" aria-label="Copy the Homebrew command">Copy</button></div>
       </div>
       <div class="opt-card">
-        <span class="tag">Latest release</span>
         <h3>One-line installer</h3>
-        <p class="meta">macOS and Linux, no Homebrew needed. Updates with <code>foundryos update</code>.</p>
+        <p class="meta">macOS and Linux, no Homebrew. Update with <code>foundryos update</code>.</p>
         <div class="code"><pre id="c2">curl -fsSL https://raw.githubusercontent.com/suriyavasan/foundry-os/main/install.sh | sh</pre><button class="copy" type="button" data-target="c2" aria-label="Copy the installer command">Copy</button></div>
       </div>
       <div class="opt-card">
-        <span class="tag">Latest release</span>
         <h3>Docker</h3>
         <p class="meta">Any system, including Windows. Then open localhost:8700.</p>
         <div class="code"><pre id="c3">docker run -d --name foundry-os -p 8700:8700 -v foundry-os:/data ghcr.io/suriyavasan/foundry-os:latest</pre><button class="copy" type="button" data-target="c3" aria-label="Copy the Docker command">Copy</button></div>
       </div>
     </div>
-    <p class="srcnote">Want it today? You can <a href="https://github.com/suriyavasan/foundry-os/blob/main/docs/deploy.md">run it from source</a>. It needs a terminal and a few developer tools.</p>
-    <p class="verified"><strong>What we have and have not tested.</strong> It was run end to end on one Mac with a small local model. Docker, Linux, Windows, PostgreSQL and cloud AI models have not been tested yet. A small local model is slow and only partly autonomous. The full record is in the <a href="https://github.com/suriyavasan/foundry-os/blob/main/docs/roadmap.md">roadmap</a>.</p>
+    <p class="verified"><strong>What we have and have not tested.</strong> It was run end to end on one Mac with a small local model. Docker, Linux, Windows, PostgreSQL and cloud AI models have not been tested yet. A small local model is slow and only partly autonomous. Prefer source? <a href="https://github.com/suriyavasan/foundry-os/blob/main/docs/deploy.md">Run it from source</a>.</p>
     <p class="sr" id="copy-status" role="status" aria-live="polite"></p>
   </div>
 </section>
 
-<section id="safety">
-  <div class="wrap">
+<!-- FAQ -->
+<section id="faq">
+  <div class="wrap narrow">
     <div class="head">
-      <p class="eyebrow">Safety</p>
-      <h2>Autonomy with real limits.</h2>
-      <p class="lede">The limits are code. An AI that is confused or tricked still cannot go past them.</p>
+      <p class="tag">[ FAQ ]</p>
+      <h2 class="display md">Frequently asked questions</h2>
     </div>
-    <div class="safety">
-      <div class="card"><svg fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-check"/></svg><div><h3>No automated sign-ups</h3><p>Agents never create accounts that need a CAPTCHA, a phone check or accepting terms. You connect each account once.</p></div></div>
-      <div class="card"><svg fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-check"/></svg><div><h3>Real money needs you</h3><p>Domains, subscriptions and anything over budget wait for your approval, tied to the exact amount.</p></div></div>
-      <div class="card"><svg fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-check"/></svg><div><h3>Agents cannot raise their own limits</h3><p>Permissions, budgets and rules can be changed only by people. There is also an emergency stop.</p></div></div>
-      <div class="card"><svg fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-check"/></svg><div><h3>Secrets stay hidden</h3><p>Keys are stored encrypted, are write-only on screen, and are never shown to agents or written to logs.</p></div></div>
-      <div class="card"><svg fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-check"/></svg><div><h3>Honest numbers</h3><p>Every cost is labelled verified, estimated or unknown. An estimate is never shown as a charge.</p></div></div>
-      <div class="card"><svg fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-check"/></svg><div><h3>Known gaps are published</h3><p>We list what is not covered, such as unencrypted backups, in the <a href="https://github.com/suriyavasan/foundry-os/blob/main/docs/security.md">security notes</a>.</p></div></div>
+    <div class="faq">
+      <details><summary>What is Foundry AI OS?</summary><p>An operating system for a company run by AI agents. You write notes; an AI Co-founder plans, HR hires AI specialists, the team does the work, and you approve anything that costs real money. It was formerly called "Company OS".</p></details>
+      <details><summary>Is my data private?</summary><p>Yes. Everything lives in a folder on your computer. There is no Foundry cloud and no account with us. Your AI provider sees what you send it.</p></details>
+      <details><summary>How much does it cost?</summary><p>Foundry is free. A local model through Ollama costs nothing but electricity. A cloud AI charges you per use, billed by that provider. Costs we show for paid AI are estimates, labelled as such.</p></details>
+      <details><summary>Can agents spend my money?</summary><p>Not beyond what you allow. Spending outside AI usage needs your approval by default, tied to the exact amount, and agents cannot change their own budgets or rules.</p></details>
+      <details><summary>Do I need to be a programmer?</summary><p>Not to use it. Installing today still means pasting one command into a terminal.</p></details>
+      <details><summary>Does it really run a company by itself?</summary><p>It runs the loop without you approving each step. With a small local model it got partway in our test. A stronger model should do better; we have not tested that yet. Treat it as something to watch and guide.</p></details>
     </div>
+    <p class="srcnote">More in the <a href="https://github.com/suriyavasan/foundry-os/blob/main/docs/guide/faq.md">full FAQ</a>.</p>
   </div>
 </section>
 
-<section id="open">
-  <div class="wrap">
-    <div class="head">
-      <p class="eyebrow">Open source</p>
-      <h2>Free, and yours to read.</h2>
-      <p class="lede">Foundry AI OS is released under the MIT License. Its agent runtime is a pruned fork of <a href="https://github.com/NousResearch/hermes-agent">Hermes Agent</a> by Nous Research (MIT), with every change marked.</p>
+<!-- Closing CTA -->
+<section class="closer">
+  <div class="wrap center">
+    <h2 class="display">Go ahead.<br>Start a company.</h2>
+    <div class="tiles" aria-hidden="true">
+      <div class="t c-orange"><span>Goals</span></div>
+      <div class="t c-blue"><span>Hires</span></div>
+      <div class="t c-yellow"><span>Tasks</span></div>
+      <div class="t c-pink"><span>Reviews</span></div>
+      <div class="t c-lime"><span>Reports</span></div>
     </div>
     <div class="cta">
-      <a class="btn primary" href="https://github.com/suriyavasan/foundry-os">View on GitHub</a>
-      <a class="btn" href="https://github.com/suriyavasan/foundry-os/tree/main/docs/guide">Browse the guides</a>
+      <a class="btn orange lg" href="#install">Start building</a>
+      <a class="btn ghost lg" href="https://github.com/suriyavasan/foundry-os">View on GitHub</a>
     </div>
   </div>
 </section>
 </main>
 
 <footer>
-  <div class="wrap">
-    <div>Foundry AI OS. MIT License. Formerly "Company OS".</div>
-    <ul>
-      <li><a href="https://github.com/suriyavasan/foundry-os">GitHub</a></li>
-      <li><a href="https://github.com/suriyavasan/foundry-os/blob/main/docs/guide/getting-started.md">Guide</a></li>
-      <li><a href="https://github.com/suriyavasan/foundry-os/blob/main/docs/guide/faq.md">FAQ</a></li>
-      <li><a href="https://github.com/suriyavasan/foundry-os/blob/main/docs/roadmap.md">Roadmap</a></li>
-      <li><a href="https://github.com/suriyavasan/foundry-os/blob/main/docs/security.md">Security</a></li>
-    </ul>
+  <div class="wrap foot">
+    <div class="about">
+      <a class="brand" href="#top"><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="7" fill="#fff"/><circle cx="12" cy="7.5" r="2.6" fill="#ff6a00"/><circle cx="7" cy="16.5" r="2.6" fill="#3950e6"/><circle cx="17" cy="16.5" r="2.6" fill="#ffc23d"/></svg> Foundry</a>
+      <p>A free, open-source company run by AI agents, on your own machine. Its agent runtime is a pruned fork of <a href="https://github.com/NousResearch/hermes-agent">Hermes Agent</a> by Nous Research (MIT).</p>
+    </div>
+    <div class="cols">
+      <div><h4>Product</h4><ul><li><a href="#product">Overview</a></li><li><a href="#safety">Safety</a></li><li><a href="#pricing">Pricing</a></li><li><a href="#install">Install</a></li></ul></div>
+      <div><h4>Guides</h4><ul><li><a href="https://github.com/suriyavasan/foundry-os/blob/main/docs/guide/getting-started.md">Getting started</a></li><li><a href="https://github.com/suriyavasan/foundry-os/blob/main/docs/guide/connect-your-ai.md">Connect your AI</a></li><li><a href="https://github.com/suriyavasan/foundry-os/blob/main/docs/guide/faq.md">FAQ</a></li></ul></div>
+      <div><h4>Project</h4><ul><li><a href="https://github.com/suriyavasan/foundry-os">GitHub</a></li><li><a href="https://github.com/suriyavasan/foundry-os/blob/main/docs/roadmap.md">Roadmap</a></li><li><a href="https://github.com/suriyavasan/foundry-os/blob/main/docs/security.md">Security</a></li><li><a href="https://github.com/suriyavasan/foundry-os/blob/main/LICENSE">MIT License</a></li></ul></div>
+    </div>
   </div>
+  <div class="wrap legal">Foundry AI OS · MIT License · Formerly "Company OS"</div>
 </footer>
 </body>
 </html>
