@@ -471,7 +471,8 @@ def test_claude_mcp_config_launches_the_company_server_with_a_token_file(world):
         "update_task",
         "request_help",
         "find_colleagues",
-    ]  # nothing that creates tasks, hires or decides approvals
+        "request_purchase",
+    ]  # nothing that creates tasks, hires or decides approvals (a purchase request commits nothing)
 
 
 def test_codex_uses_the_workspace_write_sandbox_with_network_off(world):

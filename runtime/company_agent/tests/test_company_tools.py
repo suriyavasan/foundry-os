@@ -29,6 +29,7 @@ TOOLS = [
     "company_decide_peer_review", "company_provider_action",
     "company_post_reflection", "company_reply_reflection", "company_revise_reflection",
     "company_plan_project", "company_review_pull_request",
+    "company_request_purchase", "company_review_subscription",
 ]
 
 
@@ -53,7 +54,7 @@ def test_all_tools_registered_in_company_toolset():
 
     for name in TOOLS:
         assert registry.get_toolset_for_tool(name) == "company"
-    assert len(TOOLS) == 37
+    assert len(TOOLS) == 39
     assert sorted(TOOLS) == sorted(COMPANY_TOOL_NAMES)  # spec validation and registry cannot drift
 
 
@@ -749,3 +750,129 @@ def test_provider_action_description_lists_the_github_actions_and_no_pr_open():
     for action in ("github.issue.read", "github.pr.comment", "github.issue.create", "github.release.draft"):
         assert action in text
     assert "untrusted" in text
+
+
+# ------------------------------------------------------------------ M15: purchasing
+
+PURCHASE = {
+    "item": "Plausible Analytics Growth plan, 10k pageviews", "vendor": "Plausible Insights OU",
+    "url": "https://plausible.io/pricing", "amount_usd": 9, "recurring": "monthly",
+    "justification": "The launch task needs page analytics; the free tools we have do not track conversions.",
+}
+PURCHASE_ACK = {"purchase_request_id": "pr-1", "status": "pending_approval", "decision": "cofounder",
+                "next_step": "Waiting for the AI Co-founder's approval"}
+
+
+def test_request_purchase_posts_the_agent_api_body(configured, api: StubApi):
+    api.forced["/purchases"] = (201, PURCHASE_ACK)
+    out = call("company_request_purchase", **PURCHASE, quantity="2", original_amount="8.5",
+               original_currency="eur", alternatives_considered="Umami self-hosted")
+    assert out == PURCHASE_ACK
+    [req] = api.calls("POST", "/purchases")
+    assert req.path == "/api/agent/v1/purchases" and req.authorization == f"Bearer {api.token}"
+    assert req.body == {
+        **{k: v for k, v in PURCHASE.items() if k != "amount_usd"}, "amount_usd": "9.00",
+        "quantity": 2, "original_amount": "8.50", "original_currency": "EUR",
+        "alternatives_considered": "Umami self-hosted", "task_id": api.task_id}
+
+
+def test_request_purchase_sends_money_as_a_decimal_string_rounded_up_to_the_cent(configured, api: StubApi):
+    api.forced["/purchases"] = (201, PURCHASE_ACK)
+    call("company_request_purchase", **{**PURCHASE, "amount_usd": "$1,299.991"}, task_id="t-other")
+    call("company_request_purchase", **{**PURCHASE, "amount_usd": 0.1})
+    first, second = (r.body for r in api.calls("POST", "/purchases"))
+    assert first["amount_usd"] == "1300.00" and first["task_id"] == "t-other"
+    assert second["amount_usd"] == "0.10" and "original_amount" not in second and first["quantity"] == 1
+
+
+@pytest.mark.parametrize(("change", "needle"), [
+    ({"amount_usd": 0}, "amount_usd"),
+    ({"amount_usd": -5}, "amount_usd"),
+    ({"amount_usd": "lots"}, "amount_usd"),
+    ({"amount_usd": "NaN"}, "amount_usd"),
+    ({"url": "http://plausible.io/pricing"}, "https"),
+    ({"url": "https://user:pw@plausible.io/pricing"}, "https"),
+    ({"recurring": "weekly"}, "recurring"),
+    ({"justification": "too short"}, "justification"),
+    ({"quantity": 0}, "quantity"),
+    ({"quantity": 1.5}, "quantity"),
+    ({"original_amount": 8}, "original_currency"),
+])
+def test_request_purchase_validates_before_calling(configured, api: StubApi, change, needle):
+    out = call("company_request_purchase", **{**PURCHASE, **change})
+    assert out["error"] == "invalid_arguments" and needle in out["message"]
+    assert api.requests == []
+
+
+def test_request_purchase_requires_its_fields_and_a_task(configured, api: StubApi):
+    for missing in ("item", "vendor", "url", "amount_usd", "recurring", "justification"):
+        args = {k: v for k, v in PURCHASE.items() if k != missing}
+        out = call("company_request_purchase", **args)
+        assert out["error"] == "invalid_arguments" and missing in out["message"]
+    ctx.reset()
+    ctx.configure(api.url, api.token, run_id=api.run_id, task_id="", workspace_dir="")
+    out = call("company_request_purchase", **PURCHASE)
+    assert out["error"] == "invalid_arguments" and "task_id" in out["message"]
+    assert api.requests == []
+
+
+CARD_NUMBER = "4242 4242 4242 4242"  # a Luhn-valid test number
+
+
+@pytest.mark.parametrize("field", ["item", "vendor", "justification", "alternatives_considered"])
+def test_request_purchase_refuses_card_numbers_and_never_echoes_them(configured, api: StubApi, field):
+    text = f"{PURCHASE['justification']} pay with {CARD_NUMBER}" if field == "justification" else f"x {CARD_NUMBER}"
+    out = call("company_request_purchase", **{**PURCHASE, field: text})
+    assert out["error"] == "invalid_arguments" and "card number" in out["message"]
+    assert "4242" not in json.dumps(out) and api.requests == []
+
+
+def test_request_purchase_allows_numbers_that_are_not_cards(configured, api: StubApi):
+    api.forced["/purchases"] = (201, PURCHASE_ACK)
+    justification = PURCHASE["justification"] + " Order reference 1234567890123 (not a card)."
+    assert call("company_request_purchase", **{**PURCHASE, "justification": justification})["status"] == "pending_approval"
+
+
+def test_request_purchase_surfaces_server_decisions_as_data(configured, api: StubApi):
+    api.forced["/purchases"] = (429, {"error": {"code": "rate_limited", "message": "5 purchase requests per day",
+                                                "details": None}})
+    out = call("company_request_purchase", **PURCHASE)
+    assert out["error"] == "rate_limited" and out["status"] == 429
+    api.forced["/purchases"] = (200, {**PURCHASE_ACK, "status": "human_task", "decision": None,
+                                      "next_step": "Purchasing is not set up: your request was handed to the Founder as a task"})
+    assert "Founder" in call("company_request_purchase", **PURCHASE)["next_step"]
+
+
+def test_review_subscription_posts_the_decision(configured, api: StubApi):
+    api.forced["/subscriptions/"] = (200, {"id": "sub-1", "status": "active"})
+    out = call("company_review_subscription", subscription_id="sub-1", decision="Keep", reason="Used daily")
+    assert out["id"] == "sub-1"
+    [req] = api.calls("POST", "/subscriptions/")
+    assert req.path == "/api/agent/v1/subscriptions/sub-1/review"
+    assert req.body == {"decision": "keep", "reason": "Used daily"}
+
+
+def test_review_subscription_validates_before_calling(configured, api: StubApi):
+    assert call("company_review_subscription", decision="keep", reason="r")["error"] == "invalid_arguments"
+    assert call("company_review_subscription", subscription_id="s", reason="r")["error"] == "invalid_arguments"
+    assert call("company_review_subscription", subscription_id="s", decision="keep")["error"] == "invalid_arguments"
+    assert call("company_review_subscription", subscription_id="s", decision="pause", reason="r")["error"] == "invalid_arguments"
+    assert call("company_review_subscription", subscription_id="s", decision="keep", reason=f"card {CARD_NUMBER}")[
+        "error"] == "invalid_arguments"
+    assert api.requests == []
+
+
+def test_review_subscription_id_cannot_escape_its_path(configured, api: StubApi):
+    api.forced["/subscriptions/"] = (200, {"ok": True})
+    call("company_review_subscription", subscription_id="../tasks/x", decision="keep", reason="r")
+    assert api.calls("POST", "/subscriptions/")[0].path == "/api/agent/v1/subscriptions/..%2Ftasks%2Fx/review"
+
+
+def test_purchase_tools_are_hidden_unless_allowed(api: StubApi, tmp_path: Path):
+    ctx.configure(api.url, api.token, run_id=api.run_id, task_id=api.task_id, workspace_dir=str(tmp_path),
+                  allowed_tools=["company_get_context", "company_request_purchase"])
+    try:
+        assert ctx.tool_enabled("company_request_purchase")
+        assert not ctx.tool_enabled("company_review_subscription")
+    finally:
+        ctx.reset()

@@ -72,6 +72,12 @@ from app.schemas.hr import (
     RoleTemplate,
     RoleTemplateCreate,
 )
+from app.schemas.purchasing import (
+    PurchaseAck,
+    PurchaseRequestCreate,
+    SubscriptionOut,
+    SubscriptionReviewIn,
+)
 from app.schemas.reflections import (
     AgentReflectionPost,
     AgentReflectionReply,
@@ -112,13 +118,16 @@ from app.services import (
     notes,
     policy,
     projects,
+    purchasing,
     reflections,
     role_templates,
     schedules,
     skills,
     state,
+    subscriptions,
     tasks,
     team,
+    wallet,
 )
 from app.storage.base import ArtifactStorage
 
@@ -535,3 +544,29 @@ def revise_reflection(reflection_id: str, body: AgentReflectionRevise, rc: RunCt
     reaction. The status becomes ``revised``; a standard still needs the Founder's endorsement."""
     row = reflections.agent_revise(db, rc, reflection_id, body)
     return reflections.serialize(db, [row])[0]
+
+
+# ------------------------------------------------------ Milestone 15: purchases
+
+
+@router.post("/purchases", response_model=PurchaseAck, status_code=201)
+def request_purchase(body: PurchaseRequestCreate, rc: RunCtx, db: DbSession):
+    """Ask to buy something (the ``company_request_purchase`` tool). It commits nothing: a policy
+    and an approval decide, and a person completes the checkout. The answer carries no card data;
+    you are woken when it is decided or paid."""
+    return purchasing.ack_for(purchasing.request_purchase(db, rc.ctx, body, run_id=rc.run.id))
+
+
+@router.get("/purchases/{purchase_id}", response_model=PurchaseAck)
+def get_purchase(purchase_id: str, rc: RunCtx, db: DbSession):
+    """Your own purchase request only (another's id is a 404)."""
+    return purchasing.ack_for(purchasing.get_purchase(db, rc.ctx, purchase_id))
+
+
+@router.post("/subscriptions/{subscription_id}/review", response_model=SubscriptionOut)
+def review_subscription(
+    subscription_id: str, body: SubscriptionReviewIn, rc: RunCtx, db: DbSession
+):
+    """Keep or cancel a subscription you own before it renews (a cancel is a task for a person)."""
+    sub = subscriptions.review(db, rc.ctx, subscription_id, body)
+    return wallet.serialize_subscriptions(db, [sub])[0]

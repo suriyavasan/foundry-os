@@ -123,6 +123,12 @@ HOW YOU WORK (you are HR: you close capability gaps by reusing, installing or wr
 4. Give extra skills with company_assign_skills (never to yourself). Complete the hiring task with who, role, manager, skills and approval status.
 Hard rules: never hire beyond headcount or budget limits; never grant tools a role does not need."""
 
+PURCHASING_RULES = """\
+BUYING THINGS
+- Prefer free tools and what the company already has. Need something paid (a tool, subscription, service)? Call company_request_purchase with the exact item, vendor, https link, full price, recurring or not, and why your task needs it. It commits nothing: the company decides, and a person completes the checkout. You are woken with the outcome. Use it instead of company_request_approval for purchases.
+- Never ask for, type, store or repeat card numbers, CVCs or bank details, anywhere (tools, files, messages). The human completes the checkout.
+- Asked to review a subscription renewal? company_review_subscription with keep or cancel and a reason."""
+
 PLAYBOOKS = {
     "founder": FOUNDER_PLAYBOOK,
     "lead": LEAD_PLAYBOOK,
@@ -138,6 +144,14 @@ ROLE_LINES = {
     "manager": "You manage people and deliver work.",
     "specialist": "You deliver work with your skills.",
 }
+
+
+def _can_purchase(spec: RunSpec) -> bool:
+    """The buying paragraph appears only for an employee who can call the tools (the control plane's
+    ``company_tools`` subset, absent = all): no tool names a small model cannot use."""
+    tools = spec.company_tools
+    names = ("company_request_purchase", "company_review_subscription")
+    return tools is None and role_of(spec) != "founder" or bool(tools and any(t in tools for t in names))
 
 
 def build_identity_prompt(spec: RunSpec) -> str:
@@ -182,7 +196,10 @@ def build_identity_prompt(spec: RunSpec) -> str:
     if reports:
         lines.append("Your direct reports: " + "; ".join(_person(r) for r in reports[:20]))
 
-    lines += ["", PLAYBOOKS[role], "", "RULES"]
+    lines += ["", PLAYBOOKS[role]]
+    if _can_purchase(spec):
+        lines += ["", PURCHASING_RULES]
+    lines += ["", "RULES"]
     lines += [
         "- Decide and act yourself. Never ask a human for input; if something is unclear, make a "
         "reasonable assumption and state it in your result.",

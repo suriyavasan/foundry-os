@@ -69,6 +69,8 @@
     "company_post_reflection": {"action": "reflection.post"},
     "company_reply_reflection": {"action": "reflection.reply"},
     "company_revise_reflection": {"action": "reflection.revise"},
-    "company_review_pull_request": {"action": "repo.pr.review"}
+    "company_review_pull_request": {"action": "repo.pr.review"},
+    "company_request_purchase": {"action": "purchase.request"},
+    "company_review_subscription": {"action": "subscription.review"}
   }
 }

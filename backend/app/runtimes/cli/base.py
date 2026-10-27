@@ -86,6 +86,7 @@ CLI_MCP_TOOLS = (
     "update_task",
     "request_help",
     "find_colleagues",
+    "request_purchase",
 )
 SUBSCRIPTION_NOTE = "subscription"
 LOCAL_COST_NOTE = "Local model: no provider charge, recorded as $0 (verified)."

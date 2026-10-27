@@ -1072,6 +1072,7 @@ code (`app/guardrails/ratelimit.py`):
 | `hires_per_day` | 1 day | 10 | 20 | `hire.create` |
 | `skill_installs_per_day` | 1 day | 10 | 30 | `skills.install` |
 | `web_fetches_per_hour` | 1 h | 120 | 600 | runtime `web_search` (asked through `POST /guardrails/check-tool`) |
+| `purchase_requests_per_day` | 1 day | 5 | 20 | `purchase.request` (M15) |
 
 `GET /guardrails/rate-limits[?agent_id=]` -> `{items: [RateLimitStatus {agent_id|null, key, limit, used, window_seconds, resets_at}],
 next_cursor}` (company windows, plus the windows of the given agent or of every agent active in a window). A third refusal of the same

@@ -22,7 +22,7 @@ Rules for this tree: upstream files are modified **only** when unavoidable; each
 |---|---|
 | `company_agent/` | The launcher: `run.py` (entrypoint, stdin spec -> JSONL stdout, signals, limits), `spec.py` (run spec validation), `protocol.py` (event writer: seq, single terminal, redaction), `runner.py` (builds `AIAgent`, callbacks -> events, time/cancel/finish handling), `prompts.py` (role prompt), `home.py` (HERMES_HOME, SOUL.md, enforced `config.yaml`, scrubbed environment), `toolpolicy.py` (toolset mapping/removal), `approvals.py` (deny-all approval callback), `context.py` (tool client config), `guard.py` (M6: tool registry check, untrusted-content tagging, injection flagging). |
 | `company_agent/tests/` | pytest suite incl. a deterministic fake OpenAI-compatible model server and a stub agent API (counts in the milestone report). |
-| `tools/company_tools.py` | The `company` toolset (37 tools: work tools, M4 colleague/hiring/HR tools, M5 autonomy tools, M6 `company_decide_peer_review` and `company_provider_action`, M10 `company_post_reflection` / `company_reply_reflection` / `company_revise_reflection`, M12 `company_plan_project`, M14 `company_review_pull_request`) calling the Company OS agent API. Auto-discovered by Hermes' tool registry. |
+| `tools/company_tools.py` | The `company` toolset (39 tools: work tools, M4 colleague/hiring/HR tools, M5 autonomy tools, M6 `company_decide_peer_review` and `company_provider_action`, M10 `company_post_reflection` / `company_reply_reflection` / `company_revise_reflection`, M12 `company_plan_project`, M14 `company_review_pull_request`, M15 `company_request_purchase` / `company_review_subscription`) calling the Company OS agent API. Auto-discovered by Hermes' tool registry. |
 | `company_agent/mcp_server.py` | M10: a hand-written stdio MCP server (JSON-RPC, no new dependency) that exposes a subset of the company tools to coding CLIs (Claude Code, Codex, OpenCode). Config from the environment; the run token is read from a 0600 file. Tests: `company_agent/tests/test_mcp_server.py`. |
 | `scripts/check_imports.py` | Import check for the pruned tree (run after any prune / upstream sync). |
 | `scripts/scan_dropped_imports.py` | Static list of imports of dropped modules still present in kept code. |
@@ -191,7 +191,7 @@ providers (no keys), the HR/hiring tools against a real model (they are covered 
 
 ## Milestone 14 additions (company layer only, no upstream file touched)
 
-* `tools/company_tools.py`: `company_review_pull_request` (37 company tools in total): the assignee of a pull request review
+* `tools/company_tools.py`: `company_review_pull_request` (37 company tools after M14): the assignee of a pull request review
   task records its one verdict (`accept` | `request_changes`, a note, an optional `head_sha`) with `POST /repo/pulls/{pull_id}/review`.
   Decision words models use (`approve`, `LGTM`, `reject` ...) are normalised; `request_changes` needs a note. A recorded verdict
   marks the task completed (the control plane completes the review task itself); a `pull_request_changed` error carries a hint
@@ -202,3 +202,20 @@ providers (no keys), the HR/hiring tools against a real model (they are covered 
   existing project that already fits the idea (the Founder created it during setup, shown with its repository in the state) to the
   new goal instead of creating a duplicate.
 * Tests: `test_company_tools.py` (the new tool, the provider-action description), `stub_agent_api.py` (the review route).
+
+## Milestone 15 additions (company layer only, no upstream file touched)
+
+* `tools/company_tools.py`: `company_request_purchase` (`POST /purchases`) and `company_review_subscription`
+  (`POST /subscriptions/{id}/review`), 39 company tools in total with M14. The purchase tool validates before any HTTP call (https
+  vendor URL without credentials, `recurring` in none/monthly/yearly, justification of at least 40 characters, positive amount,
+  whole-number quantity, ISO currency with `original_amount`), sends `amount_usd` / `original_amount` as decimal strings rounded
+  up to the cent (never floats), and defaults `task_id` to the run's task. It refuses any text that holds a Luhn-valid 13-19 digit
+  number (card-number shape) without echoing it, in the purchase fields and in a subscription review reason. It commits nothing:
+  the control plane decides, rate limits, dedupes and a person completes any checkout; the agent never sees card data.
+* `company_agent/spec.py`: the two tool names. `company_agent/prompts.py`: a "BUYING THINGS" paragraph (prefer free tools; request
+  purchases with the tool; never ask for, type, store or repeat card numbers; the human completes the checkout; answer renewal
+  reviews), shown only to an employee whose `company_tools` subset contains one of the two tools (all non-Co-founder roles when
+  the subset is absent). It is part of the stable identity prompt, so the cached prefix stays identical per agent.
+* Tests: `test_company_tools.py` (request shape, money handling, validation, card-number refusal, server errors, review path
+  quoting, tool gating), `test_policy.py` (purchasing paragraph per role), `test_guard_registry.py` (both tools classified).
+* Not verified: nothing here was exercised against the real backend or a live model; the tests use the stub agent API.

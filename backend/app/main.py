@@ -47,6 +47,7 @@ from app.api.routes import (
     system,
     tasks,
     team,
+    wallet,
     webhooks,
 )
 from app.core.config import APP_VERSION, Settings, get_settings
@@ -298,6 +299,7 @@ def create_app(
         identity.router,
         repositories.router,
         webhooks.router,
+        wallet.router,
         agent_api.router,
         agent_repo.router,
     ):

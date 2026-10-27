@@ -154,7 +154,7 @@ def test_0013_adds_the_tables_defaults_constraints_and_downgrades_cleanly(tmp_pa
     engine.dispose()
 
 
-def test_0013_is_the_head_after_0012():
+def test_0013_follows_0012():
     from alembic.script import ScriptDirectory
 
     script = ScriptDirectory.from_config(alembic_config("sqlite://"))

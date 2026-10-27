@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, ForeignKey, Integer, String, true
+from sqlalchemy import BigInteger, Boolean, ForeignKey, Integer, String, false, true
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
 
@@ -17,6 +17,14 @@ DEFAULT_HIRE_MONTHLY_BUDGET_MICROS = 5_000_000
 DEFAULT_MAX_AGENT_MONTHLY_BUDGET_MICROS = 25_000_000
 DEFAULT_BUDGET_ALERT_THRESHOLDS = (50, 80, 100)
 DEFAULT_STALL_SECONDS = 180
+# M15 purchasing. Code ceilings on what an AI may approve (docs/specs/m15, section 4).
+MAX_PURCHASE_AUTO_APPROVE_MICROS = 100_000_000  # $100 per charge, no one approves
+MAX_PURCHASE_AGENT_AUTO_MONTHLY_MICROS = 500_000_000  # $500 per agent and month, auto
+MAX_PURCHASE_COFOUNDER_LIMIT_MICROS = 1_000_000_000  # $1,000 per charge, the AI Co-founder
+DEFAULT_PURCHASE_TOLERANCE_BPS = 1000
+DEFAULT_PURCHASE_TOLERANCE_MIN_MICROS = 2_000_000
+DEFAULT_PURCHASE_CARD_TTL_HOURS = 72
+DEFAULT_SUBSCRIPTION_RENEWAL_ALERT_DAYS = 7
 
 
 class CompanyPolicy(Base):
@@ -176,6 +184,62 @@ class CompanyPolicy(Base):
     # each new project to the company's default repository with its own work branch.
     new_project_repository: Mapped[str] = mapped_column(
         String(16), default="local", server_default="local", nullable=False
+    )
+    # M15 purchasing (all human-only; an agent can never change them). Fail closed: purchasing is
+    # off and every AI approval band is 0 until the owner opts in, so a request goes to the human.
+    purchasing_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )
+    # Per-charge amount nobody has to approve (0 = band off), and an agent's auto total per month.
+    purchase_auto_approve_micros: Mapped[int] = mapped_column(
+        BigInteger, default=0, server_default="0", nullable=False
+    )
+    purchase_agent_auto_monthly_micros: Mapped[int] = mapped_column(
+        BigInteger, default=0, server_default="0", nullable=False
+    )
+    # Per-charge and per-month amounts the AI Co-founder may approve (0 = band off).
+    purchase_cofounder_limit_micros: Mapped[int] = mapped_column(
+        BigInteger, default=0, server_default="0", nullable=False
+    )
+    purchase_cofounder_monthly_micros: Mapped[int] = mapped_column(
+        BigInteger, default=0, server_default="0", nullable=False
+    )
+    # Hard company cap on held + settled purchases per month (NULL = no cap). Separate from the
+    # model budgets above: a $20 tool never exhausts an agent's model budget.
+    purchase_monthly_budget_micros: Mapped[int | None] = mapped_column(BigInteger)
+    purchase_recurring_requires_human: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true(), nullable=False
+    )
+    purchase_new_vendor_requires_human: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true(), nullable=False
+    )
+    # Card limit = amount + max(bps of amount, minimum): room for tax and FX.
+    purchase_tolerance_bps: Mapped[int] = mapped_column(
+        Integer,
+        default=DEFAULT_PURCHASE_TOLERANCE_BPS,
+        server_default=str(DEFAULT_PURCHASE_TOLERANCE_BPS),
+        nullable=False,
+    )
+    purchase_tolerance_min_micros: Mapped[int] = mapped_column(
+        BigInteger,
+        default=DEFAULT_PURCHASE_TOLERANCE_MIN_MICROS,
+        server_default=str(DEFAULT_PURCHASE_TOLERANCE_MIN_MICROS),
+        nullable=False,
+    )
+    # An unused card is closed and the request expires after this.
+    purchase_card_ttl_hours: Mapped[int] = mapped_column(
+        Integer,
+        default=DEFAULT_PURCHASE_CARD_TTL_HOURS,
+        server_default=str(DEFAULT_PURCHASE_CARD_TTL_HOURS),
+        nullable=False,
+    )
+    # CompanyMember id who gets the checkout tasks (NULL = the owner).
+    purchase_checkout_member_id: Mapped[str | None] = mapped_column(String(36))
+    subscription_renewal_alert_days: Mapped[int] = mapped_column(
+        Integer,
+        default=DEFAULT_SUBSCRIPTION_RENEWAL_ALERT_DAYS,
+        server_default=str(DEFAULT_SUBSCRIPTION_RENEWAL_ALERT_DAYS),
+        nullable=False,
     )
     budget_lock_version: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)

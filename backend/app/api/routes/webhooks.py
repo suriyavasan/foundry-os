@@ -1,4 +1,5 @@
-"""Public webhooks (no session: authenticated by signature only): inbound e-mail and GitHub."""
+"""Public webhooks (no session: authenticated by signature only): inbound e-mail, GitHub (M14) and
+card-provider events (M15; both only trigger a sync)."""
 
 from __future__ import annotations
 
@@ -8,7 +9,7 @@ from starlette.concurrency import run_in_threadpool
 from app.api.deps import DbSession
 from app.core.errors import PayloadTooLarge
 from app.schemas.repository import WebhookAccepted
-from app.services import email_identity, repositories
+from app.services import card_reconcile, email_identity, repositories
 
 router = APIRouter(tags=["webhooks"])
 
@@ -56,6 +57,25 @@ async def github_webhook(repository_id: str, request: Request, db: DbSession):
         db,
         request.app.state.integrations,
         repository_id,
+        dict(request.headers),
+        body,
+    )
+
+
+@router.post("/webhooks/cards/{company_id}/{provider}", status_code=202)
+async def card_events(company_id: str, provider: str, request: Request, db: DbSession):
+    """A card provider event (Stripe Issuing). The signature is verified against the company's
+    stored webhook secret and the event only triggers a sync: nothing in the body is trusted.
+    Unknown company, no secret, no webhooks for that provider and a bad signature all answer the
+    same 401."""
+    settings = request.app.state.settings
+    body = await _read_capped(request, settings.webhook_max_bytes)
+    return await run_in_threadpool(
+        card_reconcile.receive_webhook,
+        db,
+        request.app.state.integrations,
+        company_id,
+        provider,
         dict(request.headers),
         body,
     )

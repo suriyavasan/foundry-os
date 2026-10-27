@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ApiError, errorMessage, usePolicy, useUpdatePolicy } from '@/api'
+import { ApiError, errorMessage, useMemberDirectory, usePolicy, useUpdatePolicy } from '@/api'
 import type { CompanyPolicy } from '@/api/types'
 import { StringListEditor } from '@/components/forms/StringListEditor'
 import { Boundary, Button, Card, CardBody, CardHeader, Field, FormError, Input, SectionLabel, Select, useToast } from '@/components/ui'
@@ -8,10 +8,13 @@ import {
   APPROVAL_KINDS,
   LIMIT_FIELDS,
   M12_NUMBER_FIELDS,
+  M15_MONEY_FIELDS,
+  M15_NUMBER_FIELDS,
   MODEL_ROUTING_OPTIONS,
   ROLE_FAMILIES,
   diffPolicy,
   hasM12Fields,
+  hasM15Fields,
   hasM6Fields,
   policyToForm,
   validatePolicyForm,
@@ -60,8 +63,14 @@ function PolicyForm({ companyId, policy }: { companyId: string; policy: CompanyP
     setValues((v) => ({ ...v, m12: { ...v.m12, ...p } }))
     setErrors({})
   }
+  const setM15 = (p: Partial<PolicyFormValues['m15']>) => {
+    setValues((v) => ({ ...v, m15: { ...v.m15, ...p } }))
+    setErrors({})
+  }
+  const members = useMemberDirectory(companyId)
   const m6 = values.m6
   const m12 = values.m12
+  const m15 = values.m15
   const toggleFamily = (family: (typeof ROLE_FAMILIES)[number]['value']) => {
     const cur = m12.cli_role_families ?? []
     setM12({ cli_role_families: cur.includes(family) ? cur.filter((f) => f !== family) : [...cur, family] })
@@ -285,6 +294,82 @@ function PolicyForm({ companyId, policy }: { companyId: string; policy: CompanyP
                   <span>
                     <span className="block text-fg">Complete finished projects automatically</span>
                     <span className="block text-[12px] text-fg-3">A project whose work tasks are all finished (at least one done) is closed without waiting for a person.</span>
+                  </span>
+                </label>
+              )}
+            </div>
+          </section>
+        )}
+
+        {hasM15Fields(m15) && (
+          <section className="space-y-3" aria-label="Purchasing">
+            <SectionLabel>Purchasing</SectionLabel>
+            <p className="text-[12px] text-fg-3">
+              When an agent wants to buy something. Three bands decide who approves: automatic, the AI Co-founder, or you. The ceilings below are enforced by the backend; only you can change any of this, agents never can.
+            </p>
+            {m15.purchasing_enabled !== undefined && (
+              <label className="flex cursor-pointer items-start gap-2 rounded-md border border-line bg-raised px-2.5 py-2 text-[13px] hover:bg-hover">
+                <input type="checkbox" className="mt-0.5 size-3.5 accent-(--accent)" checked={m15.purchasing_enabled} onChange={(e) => setM15({ purchasing_enabled: e.target.checked })} />
+                <span>
+                  <span className="block text-fg">Let agents request purchases</span>
+                  <span className="block text-[12px] text-fg-3">Off: every purchase request becomes a task for you, and no card is issued.</span>
+                </span>
+              </label>
+            )}
+            <div className="grid gap-4 sm:grid-cols-2">
+              {M15_MONEY_FIELDS.filter((f) => m15[f.key] !== undefined).map((f) => (
+                <Field key={f.key} label={f.label} error={errors[f.key]} hint={f.hint}>
+                  {({ id, invalid, describedBy }) => <Input id={id} inputMode="decimal" value={m15[f.key]} invalid={invalid} aria-describedby={describedBy} onChange={(e) => setM15({ [f.key]: e.target.value })} />}
+                </Field>
+              ))}
+              {m15.purchase_monthly_budget_micros !== undefined && (
+                <Field label="Purchase budget per month (USD)" error={errors.purchase_monthly_budget_micros} hint="A hard cap on what is committed plus charged each month. Separate from model budgets. Blank = no cap.">
+                  {({ id, invalid, describedBy }) => <Input id={id} inputMode="decimal" value={m15.purchase_monthly_budget_micros} invalid={invalid} aria-describedby={describedBy} onChange={(e) => setM15({ purchase_monthly_budget_micros: e.target.value })} />}
+                </Field>
+              )}
+              {m15.purchase_tolerance_percent !== undefined && (
+                <Field label="Tax and FX allowance (%)" error={errors.purchase_tolerance_percent} hint="The card limit is the amount plus this percentage (or the minimum above, whichever is larger).">
+                  {({ id, invalid, describedBy }) => <Input id={id} inputMode="decimal" value={m15.purchase_tolerance_percent} invalid={invalid} aria-describedby={describedBy} onChange={(e) => setM15({ purchase_tolerance_percent: e.target.value })} />}
+                </Field>
+              )}
+              {M15_NUMBER_FIELDS.filter((f) => m15[f.key] !== undefined).map((f) => (
+                <Field key={f.key} label={f.label} error={errors[f.key]} hint={f.hint}>
+                  {({ id, invalid, describedBy }) => <Input id={id} inputMode="numeric" value={m15[f.key]} invalid={invalid} aria-describedby={describedBy} onChange={(e) => setM15({ [f.key]: e.target.value })} />}
+                </Field>
+              ))}
+              {m15.purchase_checkout_member_id !== undefined && (
+                <Field label="Who gets checkout tasks" hint="The person who pays when a purchase needs a human at checkout.">
+                  {({ id, describedBy }) => (
+                    <Select id={id} aria-describedby={describedBy} value={m15.purchase_checkout_member_id} onChange={(e) => setM15({ purchase_checkout_member_id: e.target.value })}>
+                      <option value="">The owner (default)</option>
+                      {members.members
+                        .filter((m) => m.status === 'active' && (m.role === 'owner' || m.role === 'admin'))
+                        .map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.display_name}
+                          </option>
+                        ))}
+                    </Select>
+                  )}
+                </Field>
+              )}
+            </div>
+            <div className="grid gap-1.5 sm:grid-cols-2">
+              {m15.purchase_recurring_requires_human !== undefined && (
+                <label className="flex cursor-pointer items-start gap-2 rounded-md border border-line bg-raised px-2.5 py-2 text-[13px] hover:bg-hover">
+                  <input type="checkbox" className="mt-0.5 size-3.5 accent-(--accent)" checked={m15.purchase_recurring_requires_human} onChange={(e) => setM15({ purchase_recurring_requires_human: e.target.checked })} />
+                  <span>
+                    <span className="block text-fg">Starting a subscription needs me</span>
+                    <span className="block text-[12px] text-fg-3">The first payment of any recurring purchase goes to you, whatever its size.</span>
+                  </span>
+                </label>
+              )}
+              {m15.purchase_new_vendor_requires_human !== undefined && (
+                <label className="flex cursor-pointer items-start gap-2 rounded-md border border-line bg-raised px-2.5 py-2 text-[13px] hover:bg-hover">
+                  <input type="checkbox" className="mt-0.5 size-3.5 accent-(--accent)" checked={m15.purchase_new_vendor_requires_human} onChange={(e) => setM15({ purchase_new_vendor_requires_human: e.target.checked })} />
+                  <span>
+                    <span className="block text-fg">A new vendor needs me</span>
+                    <span className="block text-[12px] text-fg-3">The first purchase from any website goes to you.</span>
                   </span>
                 </label>
               )}

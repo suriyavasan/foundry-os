@@ -50,6 +50,7 @@ import { formatDuration } from '@/lib/dates'
 import { formatDateTime, formatRelative } from '@/lib/format'
 import { formatCost, formatUsd } from '@/lib/money'
 import { allowedTaskActions, isTerminalTask, type TaskActionSpec } from '@/lib/taskStatus'
+import { TaskCheckout } from '@/features/wallet/TaskCheckout'
 import { RunDetail } from './RunDetail'
 
 const dash = <span className="text-fg-3">—</span>
@@ -110,6 +111,7 @@ function TaskBody({ companyId, task }: { companyId: string; task: Task }) {
 
   return (
     <div className="space-y-4">
+      <TaskCheckout companyId={companyId} taskId={task.id} />
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader title="Brief" />

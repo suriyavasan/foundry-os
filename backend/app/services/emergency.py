@@ -82,7 +82,7 @@ def stop(db: Session, principal: Principal, reason: str | None) -> dict[str, Any
     require_owner(db, principal)
     if is_active(db):
         return status(db)
-    from app.services import runs  # local: runs -> safety -> ... must not import this module first
+    from app.services import runs, wallet  # local: both depend on this module
 
     now = utcnow()
     cancelled = 0
@@ -112,6 +112,8 @@ def stop(db: Session, principal: Principal, reason: str | None) -> dict[str, Any
             summary="EMERGENCY STOP: all runs cancelled, dispatch disabled until the owner resumes",
             data={"reason": value["reason"], "runs_cancelled": cancelled},
         )
+        # M15: no agent card may be used while everything is stopped (a person unfreezes later)
+        wallet.freeze_all_cards(db, company_id, reason="emergency_stop")
         events.emit(
             db,
             company_id,

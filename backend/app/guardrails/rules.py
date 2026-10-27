@@ -71,6 +71,9 @@ class Facts:
 
     amount_micros: int | None = None
     domain: str | None = None  # host / e-mail domain of the action's target
+    # M15: set only by ``services.purchasing`` (the purchase request flow). A purchase.make that
+    # arrives as a provider action keeps the old SPEND default (``auto_spend_limit_micros``).
+    purchasing: bool = False
 
 
 @dataclass(frozen=True)
@@ -81,7 +84,39 @@ class Resolution:
     reason: str
 
 
+PURCHASE_ACTIONS = frozenset({"purchase.make", "subscription.start"})
+# Strictness of a decision, loosest first: used to combine the purchasing policy with the rules.
+_STRICTNESS = {
+    D.ALLOW: 0,
+    D.PEER_REVIEW: 1,
+    D.COFOUNDER_APPROVAL: 2,
+    D.HUMAN_APPROVAL: 3,
+    D.DENY: 4,
+}
+
+
+def strictest(*decisions: str) -> str:
+    """The most restrictive decision (a guardrail rule can only tighten a purchase)."""
+    return max(decisions, key=lambda d: _STRICTNESS[GuardrailDecision(d)])
+
+
+def purchase_band(limits: CompanyPolicy, amount_micros: int) -> str:
+    """The M15 band for one charge from the amounts alone (docs/specs/m15, section 4.4.2): nobody
+    approves up to ``purchase_auto_approve_micros``, the AI Co-founder up to
+    ``purchase_cofounder_limit_micros``, the human above. A band at 0 is off, so the defaults send
+    everything to the human. The monthly totals, the recurring / new-vendor floors and the
+    Co-founder-requests-its-own rule are applied by ``services.purchasing.decide_band``."""
+    auto, cofounder = limits.purchase_auto_approve_micros, limits.purchase_cofounder_limit_micros
+    if auto > 0 and amount_micros <= auto:
+        return D.ALLOW
+    if cofounder > 0 and amount_micros <= cofounder:
+        return D.COFOUNDER_APPROVAL
+    return D.HUMAN_APPROVAL
+
+
 def default_decision(spec: ActionSpec, limits: CompanyPolicy, facts: Facts) -> str:
+    if facts.purchasing and spec.name in PURCHASE_ACTIONS:  # M15: the bands, not auto_spend_limit
+        return purchase_band(limits, facts.amount_micros or 0)
     if spec.default_decision is not None:  # M14: an action-level default replaces the tier's
         return spec.default_decision
     if spec.tier == T.SPEND:
@@ -100,7 +135,7 @@ def facts_from_payload(payload: dict[str, Any] | None) -> Facts:
         amount = params.get("max_price_micros")
     amount = amount if isinstance(amount, int) and not isinstance(amount, bool) else None
     target = None
-    for key in ("url", "to", "domain", "host", "repo_url"):
+    for key in ("url", "to", "domain", "host", "repo_url", "vendor_domain"):
         value = params.get(key)
         if isinstance(value, list) and value:
             value = value[0]

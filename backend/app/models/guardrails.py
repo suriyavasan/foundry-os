@@ -103,7 +103,12 @@ class ExternalExpense(Base):
     """A cost outside model usage that a human recorded (domain, subscription, ...)."""
 
     __tablename__ = "external_expenses"
-    __table_args__ = (Index("ix_external_expenses_company_incurred", "company_id", "incurred_on"),)
+    __table_args__ = (
+        Index("ix_external_expenses_company_incurred", "company_id", "incurred_on"),
+        UniqueConstraint(
+            "company_id", "card_transaction_id", name="uq_external_expenses_card_transaction"
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     company_id: Mapped[str] = mapped_column(ForeignKey("companies.id"), nullable=False)
@@ -116,6 +121,17 @@ class ExternalExpense(Base):
     created_by_type: Mapped[str | None] = mapped_column(String(16))
     created_by_id: Mapped[str | None] = mapped_column(String(36))
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)
+    # M15. Rows from before M15 are human records of real charges, hence the 'verified' default.
+    # ``human`` | ``card`` | ``provider_action``; a card expense links its purchase and the
+    # provider transaction (unique per company, so a replayed sync records it once).
+    cost_kind: Mapped[str] = mapped_column(
+        String(16), default="verified", server_default="verified", nullable=False
+    )
+    source: Mapped[str] = mapped_column(
+        String(16), default="human", server_default="human", nullable=False
+    )
+    purchase_request_id: Mapped[str | None] = mapped_column(String(36))
+    card_transaction_id: Mapped[str | None] = mapped_column(String(36))
 
 
 class BudgetAlertMark(Base):

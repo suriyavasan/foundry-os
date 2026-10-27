@@ -390,6 +390,11 @@ def decide(
         from app.guardrails import peer  # local: the guardrail engine depends on this module
 
         peer.after_decision(db, ctx, approval, decision, note)
+    if approval.subject_type == "purchase_request":
+        from app.services import purchasing  # local: purchasing depends on this module
+
+        db.flush()
+        purchasing.apply_decision(db, ctx, approval, decision)
     if approval.requested_by_agent_id and approval.subject_type != "agent_hire":
         # the requester continues once it is decided (a hire wakes the new hire's manager instead)
         from app.services import wakes
@@ -405,11 +410,25 @@ def decide(
             actor_agent_id=principal.id if principal.is_agent else None,
         )
     db.commit()
+    if approval.subject_type == "purchase_request" and approval.status == ApprovalStatus.APPROVED:
+        from app.services import purchasing
+
+        # The provider call happens after the decision is committed (never inside it); it never
+        # raises: a failure is recorded on the purchase and retried by the scheduler.
+        purchasing.issue_after_decision(db, approval)
     return approval
 
 
 def _wake_text(approval: Approval, status: str) -> str:
     text = f"Approval {status}: {approval.title}"
+    if approval.subject_type == "purchase_request":
+        if status == ApprovalStatus.APPROVED:
+            return (
+                f"{text}. The purchase is approved: the Founder completes the checkout and you "
+                "are woken when it is paid. Do not try to pay or ask for card details."
+            )
+        note = f" Note: {approval.decision_note}" if approval.decision_note else ""
+        return f"{text}.{note} Do not request the same purchase again; find another way."
     if approval.subject_type != "guardrail":
         return text
     if status == ApprovalStatus.APPROVED:
@@ -418,6 +437,54 @@ def _wake_text(approval: Approval, status: str) -> str:
             "approval is single-use and bound to exactly that content."
         )
     return f"{text}. Do NOT resend the same content; change it or choose another approach."
+
+
+def consume_internal(
+    db: Session,
+    company_id: str,
+    approval_id: str,
+    scope: dict[str, Any],
+    *,
+    now: datetime | None = None,
+) -> Approval:
+    """``consume`` for the platform's own jobs (the card-issuing job): no principal and NO commit,
+    so the approval is spent in the same transaction as the intent it authorizes."""
+    approval = db.scalar(
+        select(Approval).where(Approval.id == approval_id, Approval.company_id == company_id)
+    )
+    if approval is None:
+        raise NotFound("Approval not found")
+    if approval.status != ApprovalStatus.APPROVED:
+        raise Conflict(f"Approval is {approval.status}, not approved")
+    if approval.consumed_at is not None:
+        raise Conflict("Approval has already been used")
+    if compute_scope_hash(scope) != approval.scope_hash:
+        raise Conflict("Action does not match the approved scope")
+    now = now or utcnow()
+    result = db.execute(
+        update(Approval)
+        .where(
+            Approval.id == approval.id,
+            Approval.company_id == company_id,
+            Approval.status == ApprovalStatus.APPROVED,
+            Approval.consumed_at.is_(None),
+        )
+        .values(consumed_at=now, updated_at=now)
+    )
+    if result.rowcount != 1:  # lost a race with a concurrent consumer
+        raise Conflict("Approval has already been used")
+    audit.record(
+        db,
+        company_id=company_id,
+        principal=None,
+        action="approval.consumed",
+        target_type="approval",
+        target_id=approval.id,
+        summary=f"Used approval: {approval.title}",
+        data={"kind": approval.kind},
+    )
+    db.refresh(approval)
+    return approval
 
 
 def consume(

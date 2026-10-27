@@ -50,6 +50,8 @@ COMPANY_TOOL_NAMES = (
     "company_plan_project",
     # M14: the internal reviewer's verdict on a Foundry pull request.
     "company_review_pull_request",
+    # M15: ask the company to buy something (no card data ever); answer a subscription renewal review.
+    "company_request_purchase", "company_review_subscription",
 )
 
 MIN_CONTEXT_LENGTH = 8192

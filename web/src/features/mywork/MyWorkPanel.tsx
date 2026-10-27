@@ -8,6 +8,7 @@ import { useCanvas } from '@/features/canvas/CanvasContext'
 import { useAgentMap, useCompanyRole } from '@/features/canvas/hooks'
 import { PanelFrame } from '@/features/canvas/PanelFrame'
 import { PriorityBadge, TaskStatusBadge } from '@/features/shared/badges'
+import { TaskCheckout } from '@/features/wallet/TaskCheckout'
 import { formatDateTime } from '@/lib/format'
 import { splitMyWork, validateAttachment } from '@/lib/myWork'
 import { canManageTeam } from '@/lib/people'
@@ -43,8 +44,8 @@ export function MyWorkPanel() {
   } else {
     body = (
       <div className="space-y-4">
-        <TaskSection title="Assigned to me" description="Work for you to do." tasks={work.tasks} onOpen={(id) => openPanel({ kind: 'task', id })} onAct={(task, action) => setActing({ task, action })} />
-        <TaskSection title="Reviews requested" description="Someone is waiting for your verdict." tasks={work.reviews} onOpen={(id) => openPanel({ kind: 'task', id })} onAct={(task, action) => setActing({ task, action })} />
+        <TaskSection companyId={companyId} title="Assigned to me" description="Work for you to do." tasks={work.tasks} onOpen={(id) => openPanel({ kind: 'task', id })} onAct={(task, action) => setActing({ task, action })} />
+        <TaskSection companyId={companyId} title="Reviews requested" description="Someone is waiting for your verdict." tasks={work.reviews} onOpen={(id) => openPanel({ kind: 'task', id })} onAct={(task, action) => setActing({ task, action })} />
         <Card>
           <CardHeader title="Approvals for me" description="Decisions only a person can make." />
           {approvals.isError ? (
@@ -71,7 +72,7 @@ export function MyWorkPanel() {
   )
 }
 
-function TaskSection({ title, description, tasks, onOpen, onAct }: { title: string; description: string; tasks: Task[]; onOpen: (id: string) => void; onAct: (t: Task, a: 'complete' | 'block') => void }) {
+function TaskSection({ companyId, title, description, tasks, onOpen, onAct }: { companyId: string; title: string; description: string; tasks: Task[]; onOpen: (id: string) => void; onAct: (t: Task, a: 'complete' | 'block') => void }) {
   return (
     <Card aria-label={title}>
       <CardHeader title={title} description={description} actions={<Badge tone="neutral">{tasks.length}</Badge>} />
@@ -98,6 +99,9 @@ function TaskSection({ title, description, tasks, onOpen, onAct }: { title: stri
                 <Button size="sm" variant="primary" icon={<CheckCircle2 className="size-3.5" />} aria-label={`Complete ${t.title}`} onClick={() => onAct(t, 'complete')}>
                   Complete
                 </Button>
+              </div>
+              <div className="w-full empty:hidden">
+                <TaskCheckout companyId={companyId} taskId={t.id} />
               </div>
             </li>
           ))}

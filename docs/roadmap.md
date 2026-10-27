@@ -39,6 +39,7 @@ reachable from anywhere — without approving each step.*
 | M12 | Full autonomy | The company runs end to end without the human: autonomy watchdog and closure loops (reviews, blocks, hires, project/goal completion, initiative), transient-failure backoff and breaker auto-resume, per-role models and CLI role-family scope, shared per-project git repository for hybrid work, decomposition caps; spec `specs/m12-full-autonomy.md` | done (verified with scripted runtimes and fake CLIs only) |
 | M13 | Headless setup and a free public URL | `foundryos setup` (the whole onboarding in a terminal, resumable, scriptable with `--non-interactive` and `--secrets-stdin`); no browser on SSH or display-less boxes; Linux linger and macOS `user/` launchd fallback with LaunchDaemon hints; the Cloudflare quick tunnel as the free public URL with stored, audited, announced URL changes (`reach --watch`, `reach public start\|stop`, `public-url.json`); no passkeys on ephemeral origins; spec `specs/m13-headless-setup-and-public-url.md` | done (verified with fakes only) |
 | M14 | GitHub-backed projects | Onboarding asks for a new or an existing GitHub repository (fine-grained token, machine-user recommended); the project repository becomes a clone the control plane syncs (fetch, merge-not-rebase, never force-push); agents' work goes to GitHub through pull requests with internal review, CI evaluation and, for new repositories, automatic merge; issue triage, review comments, CI and security-alert fixes, stale-branch cleanup; push gate for secrets and workflow files; system GitHub operations pass the guardrail engine; spec `specs/m14-github-backed-projects.md` | done (verified with a fake GitHub API and local bare repositories only; no real GitHub) |
+| M15 | Agent cards and purchasing | Agents request purchases (`company_request_purchase`); a deterministic policy (bands all 0 by default, recurring and new vendors to a person, code ceilings), approval bound to the exact scope, per-purchase card from a provider adapter (`manual` / `stripe_issuing` / `mercury`) or the owner's own card, a human checkout task, verified expense on settlement, subscription tracking, freeze on stop/pause, a Wallet panel and widget on the canvas; the card number never touches Foundry; spec `specs/m15-agent-cards-and-purchasing.md`; decisions D45, D46 | done (verified with a fake card provider and recorded API responses only; no real Stripe Issuing or Mercury call) |
 
 Order: M3b ∥ M4-UI → M5 → M6 → M7 → M8 → M9. UI for each milestone ships with it.
 
@@ -69,6 +70,14 @@ detection, circuit breaker and emergency stop. Agents can never change their own
   require the Founder's approval by default (configurable).
 
 ## Status notes
+
+- **M15 status (2026-10-27):** agents request purchases with `company_request_purchase`; a three-band policy (auto, AI
+  Co-founder, human; all bands start at zero) decides; an approved purchase gets a single-use card with an exact limit
+  (Stripe Issuing or Mercury, US entities) or, with a manual card (India and everyone else), a checkout task for the
+  human. Card numbers never reach the server. Reconciliation polls every 15 minutes, settles verified expenses, freezes
+  cards on anomalies; subscriptions get renewal reviews. Wallet tile, panel and setup wizard with per-provider funding
+  guides. **Not run for real:** any card provider API (Mercury's card API paths are partly assumed, see the adapter
+  docstring), a real checkout, Stripe webhooks. Details: `specs/m15-agent-cards-and-purchasing.md`.
 
 - **M14 status (2026-10-27):** onboarding (web and `foundryos setup`) offers a new GitHub repository, an existing one, or
   none. Agents work on `foundry/<project>` and open pull requests; the internal reviewer reviews them and they merge when

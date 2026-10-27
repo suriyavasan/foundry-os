@@ -54,6 +54,7 @@ from app.services import (
     standards,
     tasks,
     wakes,
+    wallet,
 )
 from app.services.pagination import paginate
 
@@ -109,6 +110,7 @@ HELP: list[tuple[str, str]] = [
     ("/tasks [status]", "Tasks (optionally one status, e.g. /tasks blocked)"),
     ("/spend [day|month]", "Spend, split into verified / estimated / unknown"),
     ("/approvals", "Approvals waiting for a decision"),
+    ("/wallet", "Agent cards: balance, awaiting checkout, renewals"),
     ("/standards", "The company standards in force"),
     ("/pause", "Pause the company: cancel runs, stop dispatch"),
     ("/resume", "Resume a paused company"),
@@ -297,6 +299,49 @@ def _cmd_spend(db, ctx, arg) -> _Result:
             text=f"Total recorded: {_usd(p.spent_micros)}",
             links=[_link("Finance", "finance")],
         )
+    )
+
+
+def _cmd_wallet(db, ctx, arg) -> _Result:
+    ov = wallet.overview(db, ctx)
+    if not ov.enabled:
+        return _Result(
+            _out(
+                "text",
+                "Wallet",
+                "Agent cards are not set up: agents cannot buy anything yet, and a purchase "
+                "request becomes your task. Open the Wallet to set it up.",
+                links=[_link("Wallet", "wallet")],
+            )
+        )
+    bal = ov.balance
+    if bal is None or bal.available_micros is None:
+        balance = (
+            "manual card (no balance to report)" if bal and bal.source == "manual" else "unknown"
+        )
+    else:
+        balance = _usd(bal.available_micros) + (
+            f" as of {bal.as_of:%Y-%m-%d %H:%M} UTC" if bal.as_of else ""
+        )
+    rows = [
+        ["Balance (provider-reported)", balance],
+        ["Settled this month (verified)", _usd(ov.month.settled_verified_micros)],
+        ["Committed, not charged", _usd(ov.month.held_micros)],
+        [
+            "Purchase budget",
+            _usd(ov.month.budget_micros) if ov.month.budget_micros is not None else "none set",
+        ],
+        ["Awaiting your checkout", str(len(ov.awaiting_checkout))],
+        ["Purchases awaiting approval", str(ov.pending_approvals)],
+        ["Renewals due soon", str(len(ov.renewals_due))],
+    ]
+    notes = []
+    if ov.low_balance:
+        notes.append("The balance may not cover what is committed and due.")
+    if ov.attention:
+        notes.append(ov.attention)
+    return _Result(
+        _table("Wallet", ["", ""], rows, text=" ".join(notes), links=[_link("Wallet", "wallet")])
     )
 
 
@@ -508,6 +553,7 @@ _HANDLERS = {
     "tasks": _cmd_tasks,
     "spend": _cmd_spend,
     "approvals": _cmd_approvals,
+    "wallet": _cmd_wallet,
     "standards": _cmd_standards,
     "pause": _cmd_pause,
     "resume": _cmd_resume,
@@ -518,7 +564,7 @@ _HANDLERS = {
     "reject": _cmd_reject,
 }
 READ_COMMANDS = frozenset(
-    {"help", "status", "goals", "agents", "tasks", "spend", "approvals", "standards"}
+    {"help", "status", "goals", "agents", "tasks", "spend", "approvals", "wallet", "standards"}
 )
 
 

@@ -9,7 +9,7 @@ from app.core.principal import CompanyContext, require_human_admin
 from app.core.time import utcnow
 from app.models.company import Company
 from app.models.enums import CompanyStatus
-from app.services import audit, companies, events, runs, safety, tasks
+from app.services import audit, companies, events, runs, safety, tasks, wallet
 
 
 def apply_status_effects(db: Session, ctx: CompanyContext | None, company: Company) -> None:
@@ -19,6 +19,8 @@ def apply_status_effects(db: Session, ctx: CompanyContext | None, company: Compa
     if company.status == CompanyStatus.PAUSED:
         cancelled = runs.request_cancel_all(db, company.id, runs.CANCEL_COMPANY_PAUSED, principal)
         tasks.recompute_readiness(db, company.id, principal=principal)
+        # M15: a paused company's agent cards are frozen; resuming does not unfreeze them
+        wallet.freeze_all_cards(db, company.id, reason="company_paused")
         audit.record(
             db,
             company_id=company.id,

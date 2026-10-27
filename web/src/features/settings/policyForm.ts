@@ -1,4 +1,5 @@
 import type { ApprovalKind, AutonomyMode, CompanyPolicy, ModelRouting, RoleFamily, UpdatePolicyRequest } from '@/api/types'
+import type { PurchasePolicyFields } from '@/api/wallet'
 import { microsToUsdString, parseBudgetInput } from '@/lib/money'
 
 export const APPROVAL_KINDS: Array<{ kind: ApprovalKind; label: string; hint: string }> = [
@@ -261,6 +262,144 @@ function diffM12(m: M12FormValues, p: CompanyPolicy): UpdatePolicyRequest {
   return out
 }
 
+
+/* ------------------------------ Milestone 15 fields ------------------------------ */
+
+/**
+ * The code ceilings the server enforces on the purchasing bands (`backend/app/models/policy.py`). They are validated here as
+ * well so the form can say so before a save, and shown as helper text. The owner can still approve anything by hand.
+ */
+export const PURCHASE_CEILINGS_USD = { purchase_auto_approve_micros: 100, purchase_agent_auto_monthly_micros: 500, purchase_cofounder_limit_micros: 1000 } as const
+
+export type M15MoneyKey =
+  | 'purchase_auto_approve_micros'
+  | 'purchase_agent_auto_monthly_micros'
+  | 'purchase_cofounder_limit_micros'
+  | 'purchase_cofounder_monthly_micros'
+  | 'purchase_tolerance_min_micros'
+
+export const M15_MONEY_FIELDS: Array<{ key: M15MoneyKey; label: string; hint: string; maxUsd?: number }> = [
+  { key: 'purchase_auto_approve_micros', label: 'Approve automatically up to (USD per charge)', hint: 'Charges up to this need no one. 0 turns this band off. Ceiling $100.', maxUsd: 100 },
+  { key: 'purchase_agent_auto_monthly_micros', label: 'Automatic total per agent and month (USD)', hint: 'Once an agent has had this much approved automatically in a month, the next one goes up a level. Ceiling $500.', maxUsd: 500 },
+  { key: 'purchase_cofounder_limit_micros', label: 'AI Co-founder may approve up to (USD per charge)', hint: 'Above this a person decides. 0 turns this band off. Ceiling $1,000.', maxUsd: 1000 },
+  { key: 'purchase_cofounder_monthly_micros', label: 'AI Co-founder total per month (USD)', hint: 'The most the AI Co-founder may approve in a month.' },
+  { key: 'purchase_tolerance_min_micros', label: 'Tax and FX allowance, at least (USD)', hint: 'A card limit is the amount plus the larger of the percentage below and this. Up to $100.', maxUsd: 100 },
+]
+
+export type M15NumberKey = 'purchase_card_ttl_hours' | 'subscription_renewal_alert_days'
+export const M15_NUMBER_FIELDS: Array<{ key: M15NumberKey; label: string; hint: string; min: number; max: number }> = [
+  { key: 'purchase_card_ttl_hours', label: 'Unused card closes after (hours)', hint: 'A card nobody used in this time is closed, the purchase expires and the hold is released.', min: 1, max: 720 },
+  { key: 'subscription_renewal_alert_days', label: 'Renewal review lead time (days)', hint: 'How many days before a renewal the owning agent is asked to review the subscription.', min: 1, max: 60 },
+]
+
+/** Purchasing values as typed, only for the fields the backend reported (same rule as M6 and M12). */
+export interface M15FormValues extends Partial<Record<M15MoneyKey, string>>, Partial<Record<M15NumberKey, string>> {
+  purchasing_enabled?: boolean
+  /** Blank = no cap. */
+  purchase_monthly_budget_micros?: string
+  purchase_recurring_requires_human?: boolean
+  purchase_new_vendor_requires_human?: boolean
+  /** Percent with up to two decimals ("10" = 1000 basis points). */
+  purchase_tolerance_percent?: string
+  /** Member id, or '' for the owner. */
+  purchase_checkout_member_id?: string
+}
+
+export const hasM15Fields = (m15: M15FormValues): boolean => Object.keys(m15).length > 0
+
+const bpsToPercent = (bps: number): string => {
+  const whole = Math.floor(bps / 100)
+  const frac = String(bps % 100).padStart(2, '0').replace(/0+$/, '')
+  return frac ? `${whole}.${frac}` : String(whole)
+}
+
+function m15ToForm(src: CompanyPolicy): M15FormValues {
+  const p = src as CompanyPolicy & PurchasePolicyFields
+  const m: M15FormValues = {}
+  if (p.purchasing_enabled !== undefined) m.purchasing_enabled = p.purchasing_enabled
+  for (const f of M15_MONEY_FIELDS) {
+    const v = p[f.key]
+    if (v !== undefined) m[f.key] = microsToUsdString(v)
+  }
+  if (p.purchase_monthly_budget_micros !== undefined) m.purchase_monthly_budget_micros = microsToUsdString(p.purchase_monthly_budget_micros)
+  if (p.purchase_recurring_requires_human !== undefined) m.purchase_recurring_requires_human = p.purchase_recurring_requires_human
+  if (p.purchase_new_vendor_requires_human !== undefined) m.purchase_new_vendor_requires_human = p.purchase_new_vendor_requires_human
+  if (p.purchase_tolerance_bps !== undefined) m.purchase_tolerance_percent = bpsToPercent(p.purchase_tolerance_bps)
+  for (const f of M15_NUMBER_FIELDS) {
+    const v = p[f.key]
+    if (v !== undefined) m[f.key] = String(v)
+  }
+  if (p.purchase_checkout_member_id !== undefined) m.purchase_checkout_member_id = p.purchase_checkout_member_id ?? ''
+  return m
+}
+
+const PERCENT_RE = /^\d{1,2}(\.\d{1,2})?$/
+const percentToBps = (s: string): number | null => (PERCENT_RE.test(s.trim()) ? Math.round(Number(s.trim()) * 100) : null)
+
+/** Shared by the Settings form and the setup wizard. */
+export function validateM15(m: M15FormValues): PolicyFormErrors {
+  const e: PolicyFormErrors = {}
+  for (const f of M15_MONEY_FIELDS) {
+    const raw = m[f.key]
+    if (raw === undefined) continue
+    const parsed = parseBudgetInput(raw)
+    if (raw.trim() === '' || parsed.error || parsed.value === null) e[f.key] = parsed.error ?? 'Enter an amount. 0 turns the band off.'
+    else if (f.maxUsd !== undefined && parsed.value > f.maxUsd * 1_000_000) e[f.key] = `At most $${f.maxUsd.toLocaleString('en-US')}`
+  }
+  if (m.purchase_monthly_budget_micros !== undefined) {
+    const b = parseBudgetInput(m.purchase_monthly_budget_micros)
+    if (b.error) e.purchase_monthly_budget_micros = b.error
+  }
+  if (m.purchase_tolerance_percent !== undefined) {
+    const bps = percentToBps(m.purchase_tolerance_percent)
+    if (bps === null || bps > 5000) e.purchase_tolerance_percent = 'Enter a percentage from 0 to 50, like 10'
+  }
+  for (const f of M15_NUMBER_FIELDS) {
+    const raw = m[f.key]
+    if (raw === undefined) continue
+    const t = raw.trim()
+    if (!/^\d+$/.test(t) || !Number.isSafeInteger(Number(t))) e[f.key] = 'Enter a whole number'
+    else if (Number(t) < f.min) e[f.key] = `At least ${f.min}`
+    else if (Number(t) > f.max) e[f.key] = `At most ${f.max.toLocaleString('en-US')}`
+  }
+  return e
+}
+
+/** The PATCH body for what changed, or (without `saved`) the whole form. Money as micros, the percentage as basis points. */
+export function diffM15(m: M15FormValues, saved?: CompanyPolicy): Partial<PurchasePolicyFields> {
+  const p = saved as (CompanyPolicy & PurchasePolicyFields) | undefined
+  const out: Partial<PurchasePolicyFields> = {}
+  const changed = <T,>(next: T, prev: T | undefined) => !p || prev === undefined || next !== prev
+  if (m.purchasing_enabled !== undefined && changed(m.purchasing_enabled, p?.purchasing_enabled)) out.purchasing_enabled = m.purchasing_enabled
+  for (const f of M15_MONEY_FIELDS) {
+    const raw = m[f.key]
+    if (raw === undefined) continue
+    const v = parseBudgetInput(raw).value
+    if (v !== null && changed(v, p?.[f.key])) out[f.key] = v
+  }
+  if (m.purchase_monthly_budget_micros !== undefined) {
+    const v = parseBudgetInput(m.purchase_monthly_budget_micros).value
+    if (!p || p.purchase_monthly_budget_micros === undefined ? true : v !== p.purchase_monthly_budget_micros) out.purchase_monthly_budget_micros = v
+  }
+  if (m.purchase_recurring_requires_human !== undefined && changed(m.purchase_recurring_requires_human, p?.purchase_recurring_requires_human)) out.purchase_recurring_requires_human = m.purchase_recurring_requires_human
+  if (m.purchase_new_vendor_requires_human !== undefined && changed(m.purchase_new_vendor_requires_human, p?.purchase_new_vendor_requires_human)) out.purchase_new_vendor_requires_human = m.purchase_new_vendor_requires_human
+  if (m.purchase_tolerance_percent !== undefined) {
+    const bps = percentToBps(m.purchase_tolerance_percent)
+    if (bps !== null && changed(bps, p?.purchase_tolerance_bps)) out.purchase_tolerance_bps = bps
+  }
+  for (const f of M15_NUMBER_FIELDS) {
+    const raw = m[f.key]
+    if (raw === undefined) continue
+    const n = Number(raw)
+    if (Number.isFinite(n) && changed(n, p?.[f.key])) out[f.key] = n
+  }
+  if (m.purchase_checkout_member_id !== undefined) {
+    const v = m.purchase_checkout_member_id === '' ? null : m.purchase_checkout_member_id
+    if (!p || p.purchase_checkout_member_id === undefined ? true : v !== p.purchase_checkout_member_id) out.purchase_checkout_member_id = v
+  }
+  return out
+}
+
 export interface PolicyFormValues {
   autonomy_mode: AutonomyMode
   human_approval_required_for: ApprovalKind[]
@@ -271,6 +410,7 @@ export interface PolicyFormValues {
   allowed_model_providers: string[]
   m6: M6FormValues
   m12: M12FormValues
+  m15: M15FormValues
 }
 
 export type PolicyFormErrors = Partial<Record<string, string>>
@@ -288,6 +428,7 @@ export function policyToForm(p: CompanyPolicy): PolicyFormValues {
     allowed_model_providers: [...p.allowed_model_providers],
     m6: m6ToForm(p),
     m12: m12ToForm(p),
+    m15: m15ToForm(p),
   }
 }
 
@@ -307,7 +448,7 @@ export function validatePolicyForm(v: PolicyFormValues, saved?: CompanyPolicy): 
     else if (Number(raw) < f.min) e[f.key] = `At least ${f.min}`
     else if (!Number.isSafeInteger(Number(raw))) e[f.key] = 'Too large'
   }
-  return { ...e, ...validateM6(v.m6), ...validateM12(v.m12, v.limits, saved) }
+  return { ...e, ...validateM6(v.m6), ...validateM12(v.m12, v.limits, saved), ...validateM15(v.m15) }
 }
 
 const sameSet = (a: string[], b: string[]) => a.length === b.length && [...a].sort().join('|') === [...b].sort().join('|')
@@ -330,5 +471,5 @@ export function diffPolicy(v: PolicyFormValues, p: CompanyPolicy): UpdatePolicyR
   }
   const providers = v.allowed_model_providers.map((s) => s.trim()).filter(Boolean)
   if (!sameList(providers, p.allowed_model_providers)) out.allowed_model_providers = providers
-  return { ...out, ...diffM6(v.m6, p), ...diffM12(v.m12, p) }
+  return { ...out, ...diffM6(v.m6, p), ...diffM12(v.m12, p), ...(diffM15(v.m15, p) as UpdatePolicyRequest) }
 }

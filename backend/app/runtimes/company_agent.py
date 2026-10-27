@@ -368,6 +368,17 @@ class CompanyAgentAdapter(RuntimeAdapter):
                 company_tools = [
                     *dict.fromkeys([*company_tools, "company_review_pull_request"]),
                 ]
+            elif (
+                task_peek is not None
+                and task_peek.idempotency_key
+                and task_peek.idempotency_key.startswith("subrev:")
+            ):
+                # M15: the subscription renewal review (services/subscriptions.py) goes to the
+                # owning agent, its manager or the Co-founder; whichever it is, it gets the tool
+                # (``subscriptions.review`` accepts the assignee of that task).
+                company_tools = [
+                    *dict.fromkeys([*company_tools, agent_toolkit.SUBSCRIPTION_REVIEW_TOOL]),
+                ]
             manager = db.get(Agent, agent.manager_agent_id) if agent.manager_agent_id else None
             reports = agent_toolkit.direct_reports(db, agent)
             role = agent_roles.role_of(db, agent)
