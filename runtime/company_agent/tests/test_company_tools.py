@@ -28,7 +28,7 @@ TOOLS = [
     "company_escalate", "company_request_help", "company_propose_memory", "company_verify_memory",
     "company_decide_peer_review", "company_provider_action",
     "company_post_reflection", "company_reply_reflection", "company_revise_reflection",
-    "company_plan_project",
+    "company_plan_project", "company_review_pull_request",
 ]
 
 
@@ -53,7 +53,7 @@ def test_all_tools_registered_in_company_toolset():
 
     for name in TOOLS:
         assert registry.get_toolset_for_tool(name) == "company"
-    assert len(TOOLS) == 36
+    assert len(TOOLS) == 37
     assert sorted(TOOLS) == sorted(COMPANY_TOOL_NAMES)  # spec validation and registry cannot drift
 
 
@@ -678,3 +678,74 @@ def test_plan_project_a_parked_task_is_reported_not_counted_as_created(configure
     api.forced["/tasks"] = (202, {"status": "pending_approval", "approval_id": "ap-1"})
     out = _plan(tasks=[{"key": "a", "title": "A"}])
     assert out["created"] == [] and out["failed"][0]["error"] == "pending_approval"
+
+
+# ------------------------------------------------------------------ M14: pull request review
+
+
+def test_review_pull_request_schema_and_registration():
+    schema = ct._TOOLS["company_review_pull_request"][0]
+    params = schema["parameters"]
+    assert schema["name"] == "company_review_pull_request"
+    assert params["required"] == ["pull_id", "decision"]
+    assert params["properties"]["decision"]["enum"] == ["accept", "request_changes"]
+    assert set(params["properties"]) == {"pull_id", "decision", "note", "head_sha"}
+    assert registry.get_toolset_for_tool("company_review_pull_request") == "company"
+
+
+def test_review_pull_request_posts_the_verdict_to_the_route_and_ends_the_task(configured, api: StubApi):
+    out = call("company_review_pull_request", pull_id="pr-1", decision="accept", note="Looks right.",
+               head_sha="abc1234")
+    assert out["verdict"] == "accepted" and out["pull_id"] == "pr-1" and "Stop now" in out["next"]
+    req = api.calls("POST", "/repo/pulls/pr-1/review")[0]
+    assert req.path == "/api/agent/v1/repo/pulls/pr-1/review"
+    assert req.authorization == f"Bearer {api.token}"
+    assert req.body == {"decision": "accept", "note": "Looks right.", "head_sha": "abc1234"}
+    assert ctx.dispositions() == {"task-1": "completed"}  # the verdict is the whole task
+
+
+def test_review_pull_request_accepts_the_words_models_use_for_a_decision(configured, api: StubApi):
+    for word, wanted in (("approve", "accept"), ("LGTM", "accept"), ("reject", "request_changes"),
+                         ("changes_requested", "request_changes")):
+        ctx.reset()
+        ctx.configure(api.url, api.token, run_id=api.run_id, task_id=api.task_id)
+        call("company_review_pull_request", pull_id="pr-1", decision=word, note="n")
+        assert api.requests[-1].body["decision"] == wanted
+
+
+def test_review_pull_request_validates_before_calling(configured, api: StubApi):
+    assert call("company_review_pull_request", decision="accept")["error"] == "invalid_arguments"
+    assert call("company_review_pull_request", pull_id="pr-1")["error"] == "invalid_arguments"
+    assert call("company_review_pull_request", pull_id="pr-1", decision="maybe")["error"] == "invalid_arguments"
+    out = call("company_review_pull_request", pull_id="pr-1", decision="request_changes")
+    assert out["error"] == "invalid_arguments" and "note" in out["message"]
+    assert api.requests == []
+    assert ctx.dispositions() == {}
+
+
+def test_review_pull_request_accept_needs_no_note(configured, api: StubApi):
+    call("company_review_pull_request", pull_id="pr-1", decision="accept")
+    assert api.requests[-1].body == {"decision": "accept", "note": ""}
+
+
+def test_review_pull_request_passes_server_errors_through_without_ending_the_task(configured, api: StubApi):
+    api.forced["/repo/pulls/pr-1/review"] = (409, {"error": {
+        "code": "pull_request_changed", "message": "The pull request changed since it was reviewed",
+        "details": {"review_sha": "a" * 40}}})
+    out = call("company_review_pull_request", pull_id="pr-1", decision="accept", note="ok")
+    assert out["error"] == "pull_request_changed" and out["status"] == 409
+    assert "Do not retry" in out["hint"]
+    assert ctx.dispositions() == {}
+    api.forced["/repo/pulls/pr-2/review"] = (403, {"error": {
+        "code": "forbidden", "message": "Only the agent assigned to this pull request's review", "details": None}})
+    out = call("company_review_pull_request", pull_id="pr-2", decision="accept")
+    assert out["error"] == "forbidden" and out["status"] == 403
+    assert ctx.dispositions() == {}
+
+
+def test_provider_action_description_lists_the_github_actions_and_no_pr_open():
+    text = ct._TOOLS["company_provider_action"][0]["description"]
+    assert "github.pr.open" not in text
+    for action in ("github.issue.read", "github.pr.comment", "github.issue.create", "github.release.draft"):
+        assert action in text
+    assert "untrusted" in text

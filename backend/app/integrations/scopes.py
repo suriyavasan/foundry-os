@@ -10,9 +10,17 @@ from typing import Any
 M8_APPROVAL_ACTIONS = frozenset(
     {"domain.register_pr", "domain.purchase", "dns.change", "mailbox.create", "hosted_ui.deploy"}
 )
+# M14: what a human reads before approving a GitHub action. ``github.pr.merge`` is a system action
+# whose payload is flat (the sync loop's own dict); the provider actions carry ``params``.
+M14_APPROVAL_ACTIONS = frozenset(
+    {"github.repo.create", "github.release.publish", "github.pr.merge"}
+)
+BODY_EXCERPT = 500
 
 
 def display_scope(action: str, payload: dict[str, Any]) -> dict[str, Any]:
+    if action in M14_APPROVAL_ACTIONS:
+        return _github_scope(action, payload)
     if action not in M8_APPROVAL_ACTIONS:
         return {}
     params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
@@ -42,3 +50,19 @@ def display_scope(action: str, payload: dict[str, Any]) -> dict[str, Any]:
     if action == "mailbox.create":
         return pick("address", "owner_agent_id", "owner_agent_name", "provider")
     return pick("provider", "project", "proxy_target")
+
+
+def _github_scope(action: str, payload: dict[str, Any]) -> dict[str, Any]:
+    params = payload.get("params") if isinstance(payload.get("params"), dict) else payload
+    pick = lambda *keys: {k: params[k] for k in keys if params.get(k) not in (None, "")}  # noqa: E731
+    if action == "github.pr.merge":
+        return pick("repo", "number", "head_sha", "method")
+    if action == "github.repo.create":
+        out = pick("owner", "name", "visibility", "description", "project_id", "project")
+        out.setdefault("visibility", "private")
+        return out
+    out = pick("repo", "tag", "target", "target_sha", "name")
+    body = params.get("body")
+    if isinstance(body, str) and body.strip():
+        out["body_excerpt"] = body.strip()[:BODY_EXCERPT]
+    return out

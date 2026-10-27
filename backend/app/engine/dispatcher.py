@@ -52,6 +52,7 @@ from app.services import (
     jobs,
     ledger,
     policy,
+    repo_sync,
     routing,
     runs,
     tasks,
@@ -79,6 +80,8 @@ class DispatchReport:
     budget_blocked_task_ids: list[str] = field(default_factory=list)
     policy_blocked_task_ids: list[str] = field(default_factory=list)
     waiting_for_runtime: int = 0
+    # M14: task id -> why it waits (repository_not_ready, codebase_onboarding)
+    held: dict[str, str] = field(default_factory=dict)
 
 
 def _agent_ctx(agent: Agent) -> CompanyContext:
@@ -266,6 +269,11 @@ def _dispatch_one(
             .limit(CANDIDATE_WINDOW)
         )
         for task in db.scalars(stmt):
+            held = repo_sync.dispatch_hold(db, task)
+            if held:  # M14: the repository is not cloned yet / the codebase is being learned
+                skipped.add(task.id)
+                report.held[task.id] = held
+                continue
             assignee = db.get(Agent, task.assignee_agent_id) if task.assignee_agent_id else None
             if assignee is None or assignee.status != AgentStatus.ACTIVE:
                 skipped.add(task.id)

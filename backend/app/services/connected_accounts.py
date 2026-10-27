@@ -287,6 +287,36 @@ def _run_check(
     return result
 
 
+def refresh_scope(db: Session, account: ConnectedAccount) -> bool:
+    """Grant the account's main credential the provider's CURRENT actions (M14: a GitHub token
+    connected in M8 gains the repository actions when a repository is bound). Only adds: nothing a
+    human configured is removed. Audited as ``connected_account.scope_refreshed``; no commit.
+    Returns True when the grant changed."""
+    spec = catalog.spec_for(account.provider)
+    if spec is None or not spec.needs_secret or not account.credential_id or not spec.actions:
+        return False
+    row = db.get(Credential, account.credential_id)
+    if row is None or row.company_id != account.company_id or row.revoked_at is not None:
+        return False
+    current = list(row.allowed_actions or [])
+    added = sorted(a for a in spec.actions if a not in current)
+    if not added:
+        return False
+    _bind_credential(db, row, account.provider, sorted({*current, *spec.actions}), main=True)
+    audit.record(
+        db,
+        company_id=account.company_id,
+        principal=None,
+        action="connected_account.scope_refreshed",
+        target_type="connected_account",
+        target_id=account.id,
+        summary=f"Granted {account.provider} account {account.label} {len(added)} new action(s)",
+        data={"provider": account.provider, "added": added},
+    )
+    events.emit(db, account.company_id, "connected_account.updated", {"account_id": account.id})
+    return True
+
+
 def check_account(
     db: Session, ctx: CompanyContext, ic: IntegrationContext, account_id: str
 ) -> dict[str, Any]:

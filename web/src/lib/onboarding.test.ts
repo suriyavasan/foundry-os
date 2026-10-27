@@ -4,12 +4,12 @@ import { GATE_STEPS, SETUP_STEPS, canContinue, canGoBack, flowReducer, initialFl
 const run = (s: FlowState, ...events: FlowEvent[]) => events.reduce(flowReducer, s)
 
 describe('onboarding step machine: first run', () => {
-  it('has five steps in order', () => {
-    expect(SETUP_STEPS).toEqual(['welcome', 'account', 'company', 'ai', 'team'])
+  it('has six steps in order', () => {
+    expect(SETUP_STEPS).toEqual(['welcome', 'account', 'company', 'ai', 'repo', 'team'])
     expect(stepsFor('setup')).toBe(SETUP_STEPS)
   })
 
-  it('walks welcome -> account -> company -> ai -> team', () => {
+  it('walks welcome -> account -> company -> ai -> repo -> team', () => {
     let s = initialFlow('setup')
     expect(s.step).toBe('welcome')
     s = run(s, { type: 'next' })
@@ -19,7 +19,10 @@ describe('onboarding step machine: first run', () => {
     s = run(s, { type: 'company_created', companyId: 'c9', idea: 'Sell lemonade' })
     expect(s).toMatchObject({ step: 'ai', companyId: 'c9', idea: 'Sell lemonade' })
     s = run(s, { type: 'next' })
-    expect(s.step).toBe('team')
+    expect(s.step).toBe('repo')
+    expect(run(s, { type: 'next' }).step).toBe('repo') // the repo step leaves only through repo_done
+    s = run(s, { type: 'repo_done' })
+    expect(s).toMatchObject({ step: 'team', repoDone: true })
     expect(isLastStep(s)).toBe(true)
     expect(run(s, { type: 'next' }).step).toBe('team')
   })
@@ -42,13 +45,18 @@ describe('onboarding step machine: first run', () => {
     s = run(s, { type: 'company_created', companyId: 'c1', idea: '' })
     expect(canGoBack(s)).toBe(false) // ai -> company
     s = run(s, { type: 'next' })
-    expect(canGoBack(s)).toBe(true) // team -> ai is fine
+    expect(s.step).toBe('repo')
+    expect(canGoBack(s)).toBe(true) // repo -> ai is fine
     expect(run(s, { type: 'back' }).step).toBe('ai')
+    s = run(s, { type: 'next' }, { type: 'repo_done' })
+    expect(canGoBack(s)).toBe(false) // team -> repo would run the repository and the first note again
+    expect(run(s, { type: 'back' }).step).toBe('team')
   })
 
-  it('shows "Step n of 5"', () => {
-    expect(progressText(initialFlow('setup'))).toBe('Step 1 of 5 · Welcome')
-    expect(progressText({ mode: 'setup', step: 'ai' })).toBe('Step 4 of 5 · Connect your AI')
+  it('shows "Step n of 6"', () => {
+    expect(progressText(initialFlow('setup'))).toBe('Step 1 of 6 · Welcome')
+    expect(progressText({ mode: 'setup', step: 'ai' })).toBe('Step 4 of 6 · Connect your AI')
+    expect(progressText({ mode: 'setup', step: 'repo' })).toBe('Step 5 of 6 · Your code')
   })
 })
 
@@ -72,6 +80,7 @@ describe('onboarding step machine: gate-only mode for existing users', () => {
     const s = initialFlow('gate', { companyId: 'c1' })
     expect(run(s, { type: 'account_created' })).toBe(s)
     expect(run(s, { type: 'company_created', companyId: 'z', idea: '' })).toBe(s)
+    expect(run(s, { type: 'repo_done' })).toBe(s)
   })
 })
 

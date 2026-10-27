@@ -965,7 +965,7 @@ from the OpenAPI document and fails when one is missing. Default decision per ti
 | `internal_write` | `task.create/update/complete`, `artifact.submit`, `progress.report`, `memory.propose`, `peer_review.decide`, `write_file` | allow |
 | `org_change` | `hire.create`, `hire.request`, `skills.install/author/assign`, `role_templates.create`, `goal/project/schedule.*` | allow (M4 headcount/budget rules still apply) |
 | `external_read` | `skills.catalog`, runtime `web_search`, provider `email.read`, `github.read` | allow, rate limited |
-| `external_communication` | provider `email.send`, `social.post`, `github.pr.open`, `github.issue.comment`, `invite.send` | **peer_review**, then allow |
+| `external_communication` | provider `email.send`, `social.post`, `github.issue.comment`, `github.pr.comment`, `invite.send`; platform (system) `github.pr.open` | **peer_review**, then allow (the system actions of a bound repository default to allow: consent is the repository's `merge_mode`) |
 | `external_commitment` | `terms.accept`, `account.register`, `domain.register` | human_approval |
 | `spend` | `purchase.make`, `subscription.start`, platform `model.paid_fallback` | human_approval above `auto_spend_limit_micros` (default 0), else cofounder_approval |
 | `identity` | `mailbox.create`, `ui.deploy`, `credential.rotate`, `dns.change` | cofounder_approval; human_approval for `dns.change` and `domain.register` (domain/DNS ownership) |
@@ -1730,3 +1730,78 @@ Since M13 a passkey registered on an ephemeral origin does not count: the `auth.
 real signatures and counters; tests `test_passkeys.py`), the policy above, migration `0010` up/down. Not verified: a real browser/OS authenticator (Touch ID, Windows Hello, a
 FIDO2 key, a phone via hybrid), non-`none` attestation formats against real hardware, RS256/EdDSA authenticators, Postgres. User verification is requested (`preferred`) but not
 required, so a passkey on an authenticator without a PIN/biometric is possession-only while still counting as 2FA; requiring it is a one-line policy change if wanted.
+
+## Milestone 14 — GitHub-backed projects (`/api/companies/{cid}`)
+
+A project may be backed by one GitHub repository ("binding"). Owner/admin humans change bindings; any human member reads them
+(viewers included); an agent's run token gets `403` on every route below except the agent review route; a non-member gets `404`;
+a `write`-scoped API token cannot change repositories (an `admin` token can, a `read` token reads). Lists return `{items, next_cursor}`.
+The token, the ETags, the sync lease and the webhook secret are never in any response, audit event or log. Design: `docs/specs/m14-github-backed-projects.md`.
+
+| Method & path | Body → response | Notes |
+|---|---|---|
+| `GET /repositories/status` | → `RepoAvailability {available, reason, git_version, milestone: "M14"}` | any member; `available: false` when git (or file locking) is missing. Creating then answers `501 not_available` with `details {available: false, milestone: "M14", reason: "git_unavailable"}` |
+| `POST /github/inspect` | `GithubInspectRequest {connected_account_id, full_name?, owner?, mode}` → `GithubInspectResult` | owner/admin; what the token can do (owner candidates, token kind and expiry, repository facts, `missing_permissions`, `warnings`) |
+| `GET /repositories?project_id=&limit=&cursor=` | → `Page<ProjectRepository>` | oldest first |
+| `POST /repositories` | `RepositoryCreate` → `201 ProjectRepository` | see below |
+| `GET /repositories/{rid}` | → `ProjectRepository` | includes `project_name`, `webhook {enabled, url, stale}` and `open_pull_request` (summary of the open Foundry PR, else null) |
+| `PATCH /repositories/{rid}` | `RepositoryUpdate {policy?, default_branch?, is_company_default?}` → `ProjectRepository` | only the given policy fields change. `409 branch_protected` for `merge_mode: direct_push` while the base branch is protected (from the stored protection summary); `409 repository_busy` when the base branch changes while a PR is open; `409` on a disconnected binding. Audit `repository.policy_updated` with `data.changed = {"policy.<field>": {old, new}, ...}`; nothing changed = no event |
+| `POST /repositories/{rid}/sync` | → `202 {queued: true}` | `409` unless `active`, `auth_failed` or `error` (a paused binding makes no network call) |
+| `POST /repositories/{rid}/pause` / `…/resume` | → `ProjectRepository` | idempotent; `409` from `pending`/`creating`/`cloning`/`disconnected` (pause) or from anything but `paused` (resume) |
+| `POST /repositories/{rid}/disconnect` | `{confirm: true}` → `ProjectRepository` | `422` without `confirm`; `409 repository_busy` while a Foundry PR is `merging` or a run of the project is running. The row and the clone stay (`status = disconnected`, work continues locally); the webhook secret is revoked and the hook, if any, is left on GitHub (`data.webhook_left_on_github` in the audit event). Connect the project again later with `POST /repositories` (the row is reused) |
+| `POST /repositories/{rid}/integration/reset` | `{to: "remote_work_branch" \| "default_branch", confirm: true}` → `ProjectRepository` | keeps the old head as the branch `foundry/rescue-<UTC>` (in the audit event); refused (`409`) while a run is active or there is no clone yet |
+| `POST /repositories/{rid}/pull-requests/resume-opening` | → `ProjectRepository` | clears `pr_opening_paused` (set when a PR was closed without merge) |
+| `PUT /repositories/{rid}/webhook` | `{enabled}` → `ProjectRepository` | enabling needs a stable public URL: `409 public_url_ephemeral` for no tunnel or a quick tunnel; `409` (`details.reason = webhook_permission_missing`) when the token lacks the Webhooks permission |
+| `GET /repositories/{rid}/pull-requests` | → `Page<RepoPullRequest>` | newest first |
+| `GET /repositories/{rid}/items?kind=&status=` | → `Page<RepoItem>` | newest first; every item has `untrusted: true`, `body_excerpt` is clipped and scrubbed, `injection_flags` lists what the scanner saw. Never present these as the company's own words |
+| `GET /repositories/{rid}/activity` | → `Page<AuditEvent>` | audit events with `target_type = "repository"`, newest first |
+| `POST /webhooks/github/{repository_id}` (public) | signed body → `202 {accepted: true}` | see Webhook |
+
+**Creating (`POST /repositories`).** `mode: "create"` makes an empty repository (`auto_init` false; Foundry writes the first commit in the worker) under `owner`
+(default: the token's login; an organisation the token can create in is detected) and binds it with `status: "creating"`, `origin: "created"`. `mode: "connect"` binds an existing one:
+`status: "cloning"`, `origin: "connected"`, or `"creating"`/`"created"` when the repository is empty, or `"creating"`/`"published"` with `publish_local`. Exactly one of `project_id` / `project_name`
+(a new project is created in the same transaction). The response is the binding right after the request; the `repo_clone` job (worker) moves it to `active` or `error`
+(poll `GET /repositories/{rid}` or listen for the `repository.updated` event). Defaults follow the choice (`default_policy`): `create` is `pr_auto_merge` with docs upkeep, `connect` is
+`pr_human_merge` with intake of `foundry`-labelled issues and `ci_mode: required` when `.github/workflows` exists; `policy` overrides any field. `onboarding_status` is `pending` for a connected non-empty repository.
+`company_default` (default true) makes it the company's default repository and sets `new_project_repository = company_repo`: later projects (created by the Co-founder or a person) get their own binding to it
+(own work branch `foundry/<project-slug>`, own clone, no second issue intake or alerts). `work_branch` defaults to `foundry/<project-slug>` (a suffix is added if another project of the company uses it).
+A project's existing local repository: kept aside as `projects/<project>/local-<UTC>` (never deleted, `status_reason` says so and an info alert is raised) when the remote has content, simply replaced when it has no history,
+kept in place and published when `publish_local` is set and the remote is empty (`422` if it is not).
+
+| Error | Status | When |
+|---|---|---|
+| `no_account` | 409 | the connected account is not a live GitHub account of this company |
+| `project_has_repository` | 409 | the project already has a binding that is not disconnected |
+| `confirm_public_required` | 422 | `visibility: public` without `confirm_public` |
+| `repository_exists` | 409 | create: the name is taken |
+| `administration_permission_missing` | 409 | create: the token lacks Administration (nothing was created) |
+| `repository_not_accessible` | 409 | the token cannot see the repository (or the owner) |
+| `repository_archived` / `repository_too_large` | 409 | archived; larger than `repo_max_size_mb` |
+| `token_cannot_push` | 409 | `details.missing_permissions` lists what the token lacks |
+| `branch_protected` | 409 | `direct_push` on a protected base branch |
+| `repository_busy` | 409 | a run of the project is active (connect, disconnect, reset); a PR is merging (disconnect); a PR is open (base branch change) |
+| 422 | | a branch or name is invalid, a branch override does not exist, the description contains a secret |
+
+`ProjectRepository.protection` holds the summary read at binding time (and refreshed by the sync loop): `{branch, protected, require_pr, required_checks, linear_history, required_signatures, non_fast_forward, checked_at}`.
+
+**Webhook (optional, polling stays the default).** Enabling creates a hook on GitHub for `push`, `pull_request`, `pull_request_review`, `pull_request_review_comment`, `issues`, `issue_comment`, `check_suite`,
+`check_run`, `status`, `workflow_run` and `dependabot_alert`, at `<public URL>/api/webhooks/github/<repository id>`, with a random 32-byte secret stored encrypted in the credential store
+(a credential named `GitHub webhook secret <id>`; its value is never returned). A delivery needs a valid `X-Hub-Signature-256` (HMAC-SHA256 of the raw body, constant-time compare). An unknown repository, a binding
+without a webhook, a revoked secret and a bad or missing signature all answer the same `401 webhook_rejected`. The body is capped at `webhook_max_bytes` (`413`, checked before the signature). A valid delivery
+only sets the binding's next sync to "now" (and only for an `active` binding; a `ping` does nothing); the payload is never parsed or trusted. `webhook.stale` is true when the recorded public URL differs from the hook's URL (polling continues; enable again to replace the hook).
+
+**Agent route.** `POST /api/agent/v1/repo/pulls/{pull_id}/review` (run token; action `repo.pr.review`, `internal_write`): body `PullReviewBody {decision: "accept" | "request_changes", note?, head_sha?}` →
+`PullReviewResult {pull_id, number, verdict: "accepted" | "changes_requested", verdict_sha, fix_task_id}`. Only the assignee of the pull request's review task (`403` for anyone else, `404` for a pull request of another company);
+`409 pull_request_changed` when the pull request's head is no longer the reviewed commit, when `head_sha` (a full SHA or a prefix) is not the reviewed commit, or when the pull request is merged/closed; `409` when the review task is not running.
+The verdict writes `verdict`, `verdict_note` (scrubbed), `verdict_sha` and `verdict_agent_id` and completes the review task; it never changes the PR's `stage` (the sync loop does). `request_changes` also creates the work task
+`Address the review of PR #<n>` (assigned to the project lead) and an `internal_review` item. Repeating the same call returns the same result. The runtime tool is `company_review_pull_request(pull_id, decision, note, head_sha?)`,
+offered only on runs of review tasks that reference `github:pr:<id>`.
+
+**State.** The AI Co-founder's (and a lead's) `GET /agent/v1/state` project rows gained `repository: {full_name, merge_mode, status} | null`.
+
+**Audit actions** (all `target_type = "repository"`, `target_id = <repository id>`): `repository.created`, `.connected`, `.published`, `.policy_updated`, `.paused`, `.resumed`, `.disconnected`,
+`.integration_reset`, `.pr_opening_resumed`, `.webhook_enabled`, `.webhook_disabled`, `.pr_review_requested`, `.pr_verdict`; creating a repository for a company that still had `new_project_repository = local`
+also writes `policy.updated`. Event: `repository.updated {repository_id}`.
+
+**Verified and not verified (WP-C).** Verified against the GitHub fake and a local git remote (`backend/tests/test_m14_*.py`): every route above, tenancy and roles, the refusals, the local-history handling, the webhook signature
+path and the review rules. Not verified: any request against real GitHub (permission names, the organisation-approval and SSO answers, the hook API), the clone job itself (worker, WP-B).

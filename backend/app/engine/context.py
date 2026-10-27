@@ -12,6 +12,7 @@ from app.core.config import Settings
 from app.core.keys import SecretKeyProvider
 from app.core.time import utcnow
 from app.db.session import build_engine, build_session_factory
+from app.integrations.base import IntegrationHttp
 from app.runtimes.base import HealthStatus
 from app.runtimes.registry import RuntimeRegistry, build_default_registry
 from app.skills.env import SkillsEnv, build_skills_env
@@ -56,6 +57,9 @@ class EngineContext:
     storage: ArtifactStorage
     clock: Callable[[], datetime] = utcnow
     skills: SkillsEnv | None = None
+    # M14: the worker has no IntegrationContext; the repository sync loop talks to GitHub through
+    # this HTTP factory (tests replace its transport with the fake GitHub).
+    integration_http: IntegrationHttp = field(default_factory=IntegrationHttp)
     health: HealthCache = field(init=False)
 
     def __post_init__(self) -> None:
@@ -73,6 +77,7 @@ def build_context(
     storage: ArtifactStorage | None = None,
     clock: Callable[[], datetime] = utcnow,
     skills: SkillsEnv | None = None,
+    integration_http: IntegrationHttp | None = None,
 ) -> EngineContext:
     if session_factory is None:
         session_factory = build_session_factory(build_engine(settings.resolved_database_url))
@@ -86,4 +91,5 @@ def build_context(
         storage=storage or LocalFileStorage(settings.artifacts_dir),
         clock=clock,
         skills=skills,
+        integration_http=integration_http or IntegrationHttp(),
     )

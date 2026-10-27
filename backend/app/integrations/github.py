@@ -841,6 +841,20 @@ class GithubClient(ApiClient):
     def delete_hook(self, repo: str, hook_id: int | str) -> None:
         self._write("DELETE", f"/repos/{repo}/hooks/{hook_id}", what="delete the webhook")
 
+    # ------------------------------------------------------------------ M14 WP-A additions
+
+    def get_issue(self, repo: str, number: int) -> dict[str, Any]:
+        """One issue (or pull request: the entry then carries a ``pull_request`` key)."""
+        return self.get_json(f"/repos/{repo}/issues/{number}", what="read the issue")
+
+    def get_commit(self, repo: str, sha: str) -> dict[str, Any]:
+        """One commit (``commit.committer.date`` dates a branch for the stale-branch cleanup)."""
+        return self.get_json(f"/repos/{repo}/commits/{sha}", what="read the commit")
+
+    def token_kind(self) -> str:
+        """``fine_grained`` | ``classic`` | ``other``, from the token's prefix (never the token)."""
+        return classify_token(self._token)
+
 
 def submit_registry_pr(
     client: GithubClient,
@@ -869,3 +883,14 @@ def submit_registry_pr(
         upstream, title=pr_title, body=pr_body, head=f"{login}:{branch}", base=base
     )
     return {"number": pr.get("number"), "url": pr.get("html_url"), "state": pr.get("state")}
+
+
+def classify_token(token: str) -> str:
+    """Token kind from its prefix: ``github_pat_`` is fine-grained, ``ghp_`` / ``gho_`` / ``ghu_`` /
+    ``ghs_`` / ``ghr_`` are classic-style tokens, anything else is ``other``."""
+    value = (token or "").strip()
+    if value.startswith("github_pat_"):
+        return "fine_grained"
+    if re.match(r"^gh[pousr]_", value):
+        return "classic"
+    return "other"

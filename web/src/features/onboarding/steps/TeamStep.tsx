@@ -1,11 +1,12 @@
 import { ArrowRight } from 'lucide-react'
 import { motion } from 'motion/react'
-import { useAgents, useAiSetup } from '@/api'
+import { useAgents, useAiSetup, useRepositories } from '@/api'
 import type { Agent } from '@/api/types'
 import { Avatar } from '@/components/avatar'
 import { MovingBorderButton } from '../fx/MovingBorderButton'
 import { StepHeading } from '../StepFrame'
 import { WORK_MODE_LABEL } from '@/lib/aiSetup'
+import { codeSummary } from '@/lib/repos'
 import { usePrefersReducedMotion } from '@/lib/motion'
 import { AI_COFOUNDER_LABEL, findCofounder } from '@/lib/terms'
 import { inferRoleFamily } from '@/lib/roleFamily'
@@ -30,10 +31,12 @@ function Teammate({ agent, role, i }: { agent: Agent; role: string; i: number })
   )
 }
 
-/** Step 5: the first two employees, a summary of the choices, and the launch button. */
+/** Step 6: the first two employees, a summary of the choices, and the launch button. */
 export function TeamStep({ companyId, companyIdea, onLaunch }: { companyId: string; companyIdea: string; onLaunch: () => void }) {
   const agents = useAgents(companyId)
   const ai = useAiSetup(companyId)
+  const repos = useRepositories(companyId)
+  const repo = repos.data?.find((r) => r.is_company_default) ?? repos.data?.[0]
   const list = agents.data ?? []
   const cofounder = findCofounder(list)
   const hr = list.find((a) => a.status !== 'retired' && a.status !== 'rejected' && a.kind !== 'founder' && inferRoleFamily(a) === 'hr')
@@ -73,6 +76,12 @@ export function TeamStep({ companyId, companyIdea, onLaunch }: { companyId: stri
               {WORK_MODE_LABEL[ai.data.work_mode]}
               {ai.data.work_mode === 'hybrid' && runtime ? <span className="text-fg-2"> · {runtime.replace(/^cli:/, '').replace(/_/g, ' ')}</span> : null}
             </dd>
+          </>
+        )}
+        {repo && (
+          <>
+            <dt className="text-fg-3">Code</dt>
+            <dd className="min-w-0 font-mono text-[12.5px] break-words text-fg">{codeSummary(repo)}</dd>
           </>
         )}
       </dl>

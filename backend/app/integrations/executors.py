@@ -16,7 +16,6 @@ from app.core.errors import Conflict, NotFound, ValidationFailed
 from app.guardrails.providers import ProviderCall, ProviderRegistry
 from app.integrations import catalog, registries
 from app.integrations.context import IntegrationContext
-from app.integrations.github import GithubClient
 from app.models.reachability import ConnectedAccount
 from app.services import connected_accounts, domains, email_identity, hosted_ui
 from app.services import reachability as reach
@@ -179,88 +178,6 @@ class VercelExecutor(IntegrationExecutor):
         return hosted_ui.view(row) or {"status": "none"}
 
 
-# ------------------------------------------------------------------------- github
-
-
-class GithubExecutor(IntegrationExecutor):
-    provider = "github"
-    actions = catalog.SPECS["github"].actions
-
-    def do_github_read(self, db, call, params):
-        repo = _s(params, "repo") or ""
-        if repo.count("/") != 1:
-            raise ValidationFailed("`repo` must look like owner/name")
-        client = connected_accounts.client_for(db, self.ic, self.account(db, call))
-        assert isinstance(client, GithubClient)
-        try:
-            path = _s(params, "path", required=False)
-            if path:
-                body = client.json(
-                    "GET", f"/repos/{repo}/contents/{path.lstrip('/')}", what="read the file"
-                )
-                return {"repo": repo, "path": path, "entry": _slim(body)}
-            info = client.repo(repo)
-        finally:
-            client.http.close()
-        if info is None:
-            raise NotFound("Repository not found")
-        return {
-            k: info.get(k)
-            for k in ("full_name", "description", "default_branch", "html_url", "private")
-        }
-
-    def do_domain_preview(self, db, call, params):
-        pv = domains.build_preview(
-            db,
-            self.ic,
-            call.company_id,
-            _s(params, "registry_id") or "",
-            _s(params, "name") or "",
-            _s(params, "target", required=False),
-        )
-        return pv
-
-    def check_domain_register_pr(self, db, rc, params):
-        _slot_free(db, rc.ctx.company_id)
-        self._verify_content(db, rc.ctx.company_id, params)
-
-    def _verify_content(self, db, company_id, params):
-        pv = domains.build_preview(
-            db,
-            self.ic,
-            company_id,
-            _s(params, "registry_id") or "",
-            _s(params, "name") or "",
-            _s(params, "target", required=False),
-        )
-        if not pv["eligible"]:
-            raise ValidationFailed(pv["ineligible_reason"] or "Not eligible")
-        for key in (*CONTENT_KEYS, "publishes_as"):
-            if params.get(key) != pv[key]:
-                raise ValidationFailed(
-                    f"`{key}` does not match what the registry definition generates; call "
-                    "domain.preview and submit exactly its content",
-                    details={"reason": "content_mismatch", "field": key},
-                )
-        return pv
-
-    def do_domain_register_pr(self, db, call, params):
-        """Open the registry pull request with exactly the content the approval was bound to. The
-        content must be what the registry definition generates for (registry_id, name, target)."""
-        pv = self._verify_content(db, call.company_id, params)
-        _slot_free(db, call.company_id)
-        reg = domains.execute_registry_pr(db, self.ic, call.company_id, pv, None)
-        return {"status": reg.status, "pr_url": reg.pr_url, "domain": reg.domain}
-
-
-def _slim(body: Any) -> Any:
-    if isinstance(body, list):
-        return [{"name": e.get("name"), "type": e.get("type")} for e in body[:100]]
-    if isinstance(body, dict):
-        return {k: body.get(k) for k in ("name", "type", "size", "html_url")}
-    return None
-
-
 # ------------------------------------------------------------------------- e-mail providers
 
 
@@ -401,6 +318,8 @@ class NamecheapExecutor(RegistrarExecutor):
 
 
 def register_all(registry: ProviderRegistry, ic: IntegrationContext) -> None:
+    from app.integrations.github_executor import GithubExecutor  # it subclasses the base above
+
     for cls in (
         CloudflareExecutor,
         VercelExecutor,

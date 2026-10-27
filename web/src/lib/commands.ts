@@ -94,6 +94,8 @@ export interface CommandContext {
   guardrails?: boolean
   /** false when the M8 reachability endpoints are not deployed: its actions are hidden, not faked. */
   reachability?: boolean
+  /** false when the M14 repository endpoints are not deployed: the panel entry is hidden, not faked. */
+  repositories?: boolean
 }
 
 export function buildCommands(ctx: CommandContext): PaletteCommand[] {
@@ -137,6 +139,7 @@ export function buildCommands(ctx: CommandContext): PaletteCommand[] {
     { id: 'act:theme', group: 'Actions', label: 'Toggle theme', hint: 'Dark / light', keywords: ['dark', 'light', 'appearance'], action: { type: 'theme' } },
   )
   for (const kind of SIMPLE_PANELS) {
+    if (kind === 'repos' && ctx.repositories === false) continue
     out.push({ id: `panel:${kind}`, group: 'Panels', label: `Open ${PANEL_TITLE[kind]}`, keywords: [kind, 'go', 'show'], action: { type: 'panel', panel: { kind } } })
   }
   for (const a of ctx.agents) {

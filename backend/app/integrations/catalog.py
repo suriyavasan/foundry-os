@@ -37,6 +37,27 @@ class ProviderSpec:
     help: str = ""
 
 
+# The agent actions a GitHub account enables (the system actions of the sync loop are not
+# agent-callable and are not listed). ``connected_accounts.refresh_scope`` re-applies this set.
+GITHUB_ACTIONS = frozenset(
+    {
+        "github.read",
+        "domain.preview",
+        "domain.register_pr",
+        "github.issue.read",
+        "github.pr.read",
+        "github.checks.read",
+        "github.alerts.read",
+        "github.issue.comment",
+        "github.pr.comment",
+        "github.issue.create",
+        "github.issue.update",
+        "github.release.draft",
+        "github.release.publish",
+        "github.repo.create",
+    }
+)
+
 SPECS: dict[str, ProviderSpec] = {
     s.id: s
     for s in (
@@ -64,9 +85,16 @@ SPECS: dict[str, ProviderSpec] = {
             "github",
             "GitHub",
             "code",
-            actions=frozenset({"github.read", "domain.preview", "domain.register_pr"}),
-            help="A personal access token that may create forks and pull requests "
-            "(fine-grained: Contents + Pull requests write on forks; classic: public_repo).",
+            actions=GITHUB_ACTIONS,
+            help="A personal access token. Fine-grained (recommended), for the repository your "
+            "company works in: Metadata read, Contents read and write, Pull requests read and "
+            "write, Issues read and write, Commit statuses read, Actions read, Checks read, "
+            "Dependabot alerts read; Administration read and write only to let Foundry create "
+            "the repository (remove it afterwards), Workflows only if agents may edit CI, "
+            "Webhooks only for webhooks. Classic tokens work with the repo scope (public_repo "
+            "for public repositories) but reach every repository of the account. The "
+            "registry flow for a free subdomain needs a token that may fork and open pull "
+            "requests.",
         ),
         ProviderSpec(
             "agentmail",
@@ -148,7 +176,12 @@ def build_client(
     if provider == "vercel":
         return VercelClient(client, main, meta.get("team_id") or None)
     if provider == "github":
-        return GithubClient(client, main, base_url=settings.github_api_url)
+        return GithubClient(
+            client,
+            main,
+            base_url=settings.github_api_url,
+            web_url=settings.github_web_url,
+        )
     if provider == "agentmail":
         return AgentMailClient(client, main)
     if provider == "resend":
@@ -220,13 +253,12 @@ def _t_vercel(c: VercelClient, meta: dict[str, str]) -> CheckResult:
 def _t_github(c: GithubClient, meta: dict[str, str]) -> CheckResult:
     user = c.identity()
     login = str(user.get("login") or "")
-    return CheckResult(
-        True,
-        "Connected to GitHub",
-        login or None,
-        tuple(c.scopes),
-        {"login": login} if login else {},
-    )
+    out: dict[str, str] = {"token_kind": c.token_kind()}
+    if login:
+        out["login"] = login
+    if c.token_expires_at is not None:  # GitHub-Authentication-Token-Expiration, when present
+        out["token_expires_at"] = c.token_expires_at.strftime("%Y-%m-%dT%H:%M:%SZ")
+    return CheckResult(True, "Connected to GitHub", login or None, tuple(c.scopes), out)
 
 
 def _t_agentmail(c: AgentMailClient, meta: dict[str, str]) -> CheckResult:

@@ -38,6 +38,7 @@ from app.models.enums import (
 )
 from app.models.governance import Approval, Decision
 from app.models.provider import ModelProvider
+from app.models.repository import ProjectRepository
 from app.models.schedule import Schedule
 from app.models.work import Goal, Project, Task
 from app.schemas.autonomy import (
@@ -49,6 +50,7 @@ from app.schemas.autonomy import (
     StateMemory,
     StateNotes,
     StateProject,
+    StateRepository,
     StateSchedule,
     StateStandard,
     StateTask,
@@ -133,6 +135,16 @@ def _task_row(t: Task, names: dict[str, str], clip: int = 200) -> StateTask:
         blocked_reason=t.blocked_reason,
         error=_clip(f"{err.get('code')}: {err.get('message')}", clip) if err else None,
         result_summary=_clip(t.result_summary, clip),
+    )
+
+
+def _repository_row(binding: ProjectRepository | None) -> StateRepository | None:
+    if binding is None:
+        return None
+    return StateRepository(
+        full_name=binding.full_name,
+        merge_mode=str((binding.policy or {}).get("merge_mode") or "pr_human_merge"),
+        status=binding.status,
     )
 
 
@@ -255,6 +267,17 @@ def build_state(db: Session, rc: AgentRunContext) -> AgentState:
             .group_by(Task.project_id, Task.status)
         ):
             project_counts.setdefault(pid, {})[status] = int(n)
+    repositories: dict[str, ProjectRepository] = {}
+    if projects:  # M14: the repository a project is backed by (full name, merge mode, status)
+        repositories = {
+            r.project_id: r
+            for r in db.scalars(
+                select(ProjectRepository).where(
+                    ProjectRepository.company_id == company_id,
+                    ProjectRepository.project_id.in_([p.id for p in projects]),
+                )
+            )
+        }
     project_rows = []
     for p in projects:
         c = project_counts.get(p.id, {})
@@ -273,6 +296,7 @@ def build_state(db: Session, rc: AgentRunContext) -> AgentState:
                 tasks_total=total,
                 tasks_done=done,
                 tasks_open=sum(n for s, n in c.items() if s in {x.value for x in OPEN}),
+                repository=_repository_row(repositories.get(p.id)),
             )
         )
 

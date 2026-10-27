@@ -35,12 +35,15 @@ from app.cli.client import (
     ApiClient,
     CliError,
 )
+from app.cli.commands import repo as repo_cmd
 from app.cli.commands.auth import csrf_headers, end_session, mint_cli_token
 from app.cli.context import CliState, JsonOpt, command, state
 from app.cli.onboarding import (
     ALL_PRESETS,
     BLOCKING_REASON_TEXT,
     CLI_AUTH_FLAGS,
+    GITHUB_CI_FLAGS,
+    GITHUB_MERGE_FLAGS,
     PRESET_BY_FLAG,
     STEPS,
     ModelOption,
@@ -49,6 +52,7 @@ from app.cli.onboarding import (
     usage,
 )
 from app.runtimes.cli.catalog import CLIS, assert_safe_argv
+from app.schemas.repository import default_policy
 
 PROVIDER_TEST_TIMEOUT = 180.0  # a live test of a slow provider (it may load a local model)
 CLI_TEST_TIMEOUT = 120.0  # the server limits the CLI test to 60 s; this leaves room on top
@@ -223,10 +227,12 @@ class Wizard:
                 self.step_ai()
             elif step == "work":
                 self.step_work()
+            elif step == "repo":
+                self.repo_step_guarded()
             elif step == "public-url":
                 self.optional("public-url", self.step_public_url)
         self.close_session()
-        if self.opts.only in (None, "company", "ai", "work"):
+        if self.opts.only in (None, "company", "ai", "work", "repo"):
             self.seed_idea()
         self.finish()
 
@@ -295,6 +301,17 @@ class Wizard:
                 missing.append("--cli-auth")
             elif o.cli_auth == "api-key" and "cli_api_key" not in self.secrets:
                 missing.append("cli_api_key (a 'cli_api_key=' line in --secrets-stdin)")
+        if (
+            "repo" in plan
+            and o.github in ("new", "existing")
+            and not self._repo_already_bound(bool(companies) and credential_ok)
+        ):
+            if o.github == "existing" and not o.github_repo:
+                missing.append("--github-repo")
+            if "github_token" not in self.secrets and not self._has_github_account(
+                bool(companies) and credential_ok
+            ):
+                missing.append("github_token (a 'github_token=' line in --secrets-stdin)")
         if "public-url" in plan and self.opts.only == "public-url" and not o.public_url:
             missing.append("--public-url")
         if missing:
@@ -1359,6 +1376,447 @@ class Wizard:
             self.say(text)
         self.record("idea", outcome)
 
+    # ------------------------------------------------------------------ step: the repository (M14)
+
+    def _has_github_account(self, company_exists: bool) -> bool:
+        if not company_exists:
+            return False
+        try:
+            return bool(repo_cmd.working_github_accounts(self.api, self.ensure_company()))
+        except CliError:
+            return False
+
+    def _repo_already_bound(self, company_exists: bool) -> bool:
+        """Would the repository step only repeat what is bound already? (Then it needs no token.)"""
+        if not company_exists:
+            return False
+        o = self.opts
+        try:
+            owner = name = None
+            if o.github_repo:
+                owner, name = onboarding.split_repo_ref(o.github, o.github_repo)
+            return self._bound_match(self._bound_repos(), o.github, owner, name) is not None
+        except CliError:
+            return False
+
+    def repo_step_guarded(self) -> None:
+        """The repository step must finish before the idea becomes a note; when it fails, say how the
+        idea still gets saved."""
+        try:
+            self.step_repo()
+        except CliError as exc:
+            if exc.code != "usage" and self.idea:
+                self.warn(
+                    "Your idea is saved as the first note once this step is done: "
+                    'foundryos setup --only repo --idea "..."'
+                )
+            raise
+
+    def _bound_repos(self) -> list[dict]:
+        items = self.api.paged(self.cpath("/repositories"))
+        return [r for r in items if r.get("status") != "disconnected"]
+
+    def _company_label(self) -> str:
+        if not self.company_name:
+            wanted = self.ensure_company()
+            for c in self.api.paged("/companies"):
+                if c["id"] == wanted:
+                    self.company_name = c["name"]
+        return self.company_name or "company"
+
+    @staticmethod
+    def _bound_match(
+        bound: list[dict], choice: str | None, owner: str | None, name: str | None
+    ) -> dict | None:
+        """The binding a rerun would only repeat: the named repository, or (new, no name) the company's."""
+        if name:
+            for r in bound:
+                same = (r.get("full_name") or "").lower() == f"{owner}/{name}".lower()
+                if (owner and same) or (
+                    not owner and (r.get("name") or "").lower() == name.lower()
+                ):
+                    return r
+            return None
+        if choice == "new":
+            return next((r for r in bound if r.get("is_company_default")), None)
+        return None
+
+    def _repo_info(self, repo: dict) -> dict[str, Any]:
+        return {
+            "repository_id": repo.get("id"),
+            "full_name": repo.get("full_name"),
+            "project": repo.get("project_name"),
+            "repo_status": repo.get("status"),
+            "origin": repo.get("origin"),
+            "visibility": repo.get("visibility"),
+            "default_branch": repo.get("default_branch"),
+            "work_branch": repo.get("work_branch"),
+            "merge_mode": (repo.get("policy") or {}).get("merge_mode"),
+            "onboarding": repo.get("onboarding_status"),
+        }
+
+    def _pick(self, title: str, options: list[tuple[str, str]], default: str) -> str:
+        """A menu of ``(value, label)``; returns the value."""
+        values = [v for v, _ in options]
+        n = self.menu(title, [label for _, label in options], default=values.index(default) + 1)
+        return values[n - 1]
+
+    def step_repo(self) -> None:
+        self.header("Repository")
+        cid = self.ensure_company()
+        o = self.opts
+        if o.github == "none":
+            self.say("Skipped: no GitHub repository. Add one later: foundryos repo connect")
+            self.record("repo", "skipped")
+            return
+        wanted_owner = wanted_name = None
+        if o.github_repo:
+            wanted_owner, wanted_name = onboarding.split_repo_ref(o.github, o.github_repo)
+        bound = self._bound_repos()
+        if bound:
+            same = self._bound_match(bound, o.github, wanted_owner, wanted_name)
+            more = (
+                o.github is None
+                and self.interactive
+                and o.only == "repo"
+                and self.confirm(
+                    f"{onboarding.repo_line(bound[0])}. Connect another repository?", default=False
+                )
+            )
+            if same is not None or (o.github is None and not more):
+                shown = same or bound[0]
+                self.say(f"Already done: {onboarding.repo_line(shown)}.")
+                self.record("repo", "already_done", **self._repo_info(shown))
+                return
+        elif o.github is None and not self.interactive:
+            self.say("Skipped: no GitHub repository requested (--github new or --github existing).")
+            self.record("repo", "skipped")
+            return
+        avail = repo_cmd.availability(self.api, cid)
+        if avail.get("available") is False:
+            reason = f"GitHub-backed projects are not available here: {avail.get('reason')}"
+            if o.github in ("new", "existing"):
+                raise CliError(reason, code="not_available")
+            self.warn(reason)
+            self.record("repo", "skipped", reason="unavailable")
+            return
+        choice = o.github or self._ask_repo_choice()
+        if choice == "none":
+            self.say("Skipped: no GitHub repository. Add one later: foundryos repo connect")
+            self.record("repo", "skipped")
+            return
+        mode = "create" if choice == "new" else "connect"
+        account = self._github_account(mode)
+        first = repo_cmd.inspect_github(self.api, cid, account["id"], mode)
+        self.say()
+        for line in onboarding.inspect_lines(first):
+            self.say(line)
+        if (
+            first.get("missing_permissions")
+            and self.interactive
+            and not self.confirm(
+                "The token lacks permissions listed above. Continue anyway?", default=False
+            )
+        ):
+            raise CliError(
+                "Stopped. Fix the token (docs/github.md), then run `foundryos setup --only repo`."
+            )
+        if choice == "new":
+            body, has_workflows = self._new_repo_body(account, first, wanted_owner, wanted_name)
+        else:
+            body, has_workflows = self._existing_repo_body(
+                account, first, wanted_owner, wanted_name
+            )
+        body["policy"] = self._repo_policy(mode, has_workflows)
+        if not body["policy"]:
+            del body["policy"]
+        project = o.project_name or (
+            self.ask("Project name", default=body.get("name") or body["full_name"].split("/")[-1])
+            if self.interactive
+            else None
+        )
+        body["project_name"] = (
+            project or body.get("name") or body["full_name"].split("/")[-1]
+        ).strip()
+        self.say()
+        self.say(
+            "Creating the repository on GitHub..."
+            if choice == "new"
+            else "Connecting the repository..."
+        )
+        created = repo_cmd.create_binding(self.api, cid, body)
+        if created.get("status_reason"):
+            self.say(f"Note: {created['status_reason']}")
+        final = repo_cmd.wait_for_active(
+            self.api,
+            cid,
+            created,
+            say=self.say,
+            dot=lambda: typer.echo(".", nl=False, err=True),
+            sleep=lambda seconds: sleep(seconds),
+        )
+        info = self._repo_info(final)
+        if final.get("status") != "active":
+            self.warn(
+                f"{final.get('full_name')} is still {final.get('status')}. It keeps going in the "
+                "background; check it with: foundryos repo status"
+            )
+            self.record("repo", "pending", **info)
+            return
+        self.say(f"{final['full_name']} is ready: {onboarding.repo_line(final)}.")
+        if final.get("onboarding_status") == "pending":
+            self.say("Your AI team will first read the codebase and write down how it works.")
+        self.record("repo", "done", **info)
+
+    def _ask_repo_choice(self) -> str:
+        if not self.interactive:
+            return "none"
+        self.say("Should your projects live in a GitHub repository?")
+        return self._pick(
+            "Pick one",
+            [
+                ("new", "New GitHub repository: Foundry creates it and keeps it up to date"),
+                ("existing", "Existing repository: your AI team works in code you already have"),
+                (
+                    "none",
+                    "No GitHub: projects stay on this machine (you can add a repository later)",
+                ),
+            ],
+            "none",
+        )
+
+    def _github_account(self, mode: str) -> dict:
+        """A working GitHub account: a connected one (reused), else a token from --secrets-stdin or a
+        hidden prompt. The token is dropped from memory as soon as the server has it."""
+        cid = self.ensure_company()
+        accounts = repo_cmd.working_github_accounts(self.api, cid)
+        token = self.secrets.pop("github_token", None)
+        if token is None and accounts:
+            account = accounts[0]
+            login = (account.get("metadata") or {}).get("login", "?")
+            if not self.interactive or self.confirm(
+                f"Use the connected GitHub account {account['label']} ({login})?", default=True
+            ):
+                self.say(f"Using the connected GitHub account {account['label']} ({login}).")
+                return account
+        if self.interactive and token is None:
+            self.say()
+            for line in onboarding.token_instructions(mode):
+                self.say(line)
+        for _ in range(3 if self.interactive else 1):
+            if token is None:
+                token = self.secret("github_token", "GitHub token (hidden)")
+            error = onboarding.github_token_error(token or "")
+            if error:
+                if not self.interactive:
+                    raise usage(error + ".")
+                self.warn(error)
+                token = None
+                continue
+            try:
+                return repo_cmd.connect_token(self.api, cid, token or "")
+            except CliError as exc:
+                if not self.interactive or exc.code != "invalid_token":
+                    raise
+                self.warn(onboarding.redact(exc.message, token))
+                token = None
+        raise CliError("No GitHub token worked. Run `foundryos setup --only repo` to try again.")
+
+    def _check_repo(self, account: dict, mode: str, full_name: str, *, want_new: bool) -> dict:
+        """Inspect one repository. ``problem`` is a message when it cannot be used, else None."""
+        result = repo_cmd.inspect_github(
+            self.api, self.ensure_company(), account["id"], mode, full_name=full_name
+        )
+        repo = result.get("repository") or {}
+        lines = onboarding.inspect_lines(result)[1:]
+        if want_new and not repo.get("exists"):  # "does not exist" is the good news here
+            lines = [f"{full_name} is free."] + [
+                x for x in lines if not x.startswith("Repository ")
+            ]
+        for line in lines:
+            self.say(line)
+        problem = None
+        if want_new and repo.get("exists"):
+            problem = f"{full_name} already exists. Choose another name, or connect it as an existing repository."
+        elif not want_new and not repo.get("exists"):
+            problem = f"{full_name} does not exist, or this token cannot see it."
+        elif not want_new and not repo.get("accessible", True):
+            problem = (
+                f"This token cannot see {full_name}: add it under the token's repository access."
+            )
+        elif not want_new and repo.get("archived"):
+            problem = (
+                f"{full_name} is archived, so it is read-only. Unarchive it on github.com first."
+            )
+        return {"problem": problem, "result": result}
+
+    def _new_repo_body(
+        self, account: dict, first: dict, owner: str | None, name: str | None
+    ) -> tuple[dict, bool]:
+        o = self.opts
+        login = first.get("login")
+        owners = [c["login"] for c in first.get("owners") or []]
+        for attempt in range(3):
+            if name is None:
+                default = onboarding.slugify_repo_name(self._company_label())
+                name = default
+                if self.interactive:
+                    name = self.ask("Repository name", default=default).strip()
+                    if not onboarding.valid_repo_name(name):
+                        self.warn("Use letters, digits, '.', '_' and '-' (at most 100).")
+                        name = None
+                        continue
+            if owner is None and self.interactive and len(owners) > 1:
+                n = self.menu("Who should own it?", owners, default=1)
+                owner = owners[n - 1]
+            target = f"{owner or login}/{name}"
+            checked = self._check_repo(account, "create", target, want_new=True)
+            if not checked["problem"]:
+                break
+            if not self.interactive or attempt == 2:
+                raise CliError(checked["problem"], code="repository_exists")
+            self.warn(checked["problem"])
+            name = None
+        visibility = o.github_visibility or "private"
+        if self.interactive and o.github_visibility is None:
+            visibility = self._pick(
+                "Who may see the repository?",
+                [
+                    ("private", "Private: only you and people you invite"),
+                    ("public", "Public: anyone; everything your agents commit becomes public"),
+                ],
+                "private",
+            )
+        if (
+            visibility == "public"
+            and not o.github_public_ok
+            and (
+                not self.interactive
+                or not self.confirm(
+                    "Your agents' code will be PUBLIC on GitHub. Really make it public?",
+                    default=False,
+                )
+            )
+        ):
+            raise usage("A public repository needs confirmation (--github-public-ok).")
+        branch = o.github_default_branch
+        if branch is None and self.interactive:
+            branch = self.ask("Default branch", default="main").strip()
+        body: dict[str, Any] = {
+            "mode": "create",
+            "connected_account_id": account["id"],
+            "name": name,
+            "visibility": visibility,
+            "confirm_public": visibility == "public",
+        }
+        if owner:
+            body["owner"] = owner
+        if branch and branch != "main":
+            body["default_branch"] = branch
+        if self.idea:
+            body["description"] = self.idea[:350]
+        return body, False
+
+    def _existing_repo_body(
+        self, account: dict, first: dict, owner: str | None, name: str | None
+    ) -> tuple[dict, bool]:
+        o = self.opts
+        full_name = f"{owner}/{name}" if owner and name else None
+        result: dict = {}
+        for attempt in range(3):
+            if full_name is None:
+                text = self.ask("Repository (OWNER/NAME or a github.com URL)").strip()
+                ref = onboarding.parse_repo_ref(text)
+                if ref is None:
+                    self.warn("Expected OWNER/NAME or https://github.com/OWNER/NAME.")
+                    continue
+                full_name = f"{ref[0]}/{ref[1]}"
+            checked = self._check_repo(account, "connect", full_name, want_new=False)
+            result = checked["result"]
+            if not checked["problem"]:
+                break
+            if not self.interactive or attempt == 2:
+                raise CliError(checked["problem"], code="repository_not_accessible")
+            self.warn(checked["problem"])
+            full_name = None
+        repo = result.get("repository") or {}
+        if (
+            repo.get("can_push") is False
+            and self.interactive
+            and not self.confirm(
+                "This token cannot push to the repository, so agents could not deliver work. "
+                "Continue anyway?",
+                default=False,
+            )
+        ):
+            raise CliError("Stopped. Give the token Contents: Read and write (docs/github.md).")
+        branch = o.github_default_branch
+        if branch is None and self.interactive and not repo.get("empty"):
+            asked = self.ask(
+                "Base branch for pull requests", default=repo.get("default_branch") or "main"
+            )
+            branch = asked.strip()
+        body: dict[str, Any] = {
+            "mode": "connect",
+            "connected_account_id": account["id"],
+            "full_name": full_name,
+        }
+        if branch and branch != repo.get("default_branch"):
+            body["default_branch"] = branch
+        return body, bool(repo.get("has_workflows"))
+
+    def _repo_policy(self, mode: str, has_workflows: bool) -> dict[str, str]:
+        """Only what the person chose differently from the server's defaults for this mode."""
+        o = self.opts
+        defaults = default_policy(mode, has_workflows=has_workflows)  # type: ignore[arg-type]
+        merge = GITHUB_MERGE_FLAGS.get(o.github_merge or "")
+        ci = GITHUB_CI_FLAGS.get(o.github_ci or "")
+        issues = o.github_issues
+        if self.interactive:
+            if merge is None:
+                merge = self._pick(
+                    "How should finished work reach GitHub?",
+                    [
+                        (
+                            "pr_auto_merge",
+                            "Pull requests that the agents review and merge themselves once CI is green",
+                        ),
+                        ("pr_human_merge", "Pull requests that you merge"),
+                        (
+                            "direct_push",
+                            "Straight to the default branch (only if it is not protected)",
+                        ),
+                    ],
+                    defaults.merge_mode,
+                )
+            if ci is None:
+                ci = self._pick(
+                    "What must CI say before a merge?",
+                    [
+                        ("if_present", "Green if the repository has CI; no CI is fine"),
+                        ("required", "At least one check, all green"),
+                        ("ignore", "Ignore CI (not recommended)"),
+                    ],
+                    defaults.ci_mode,
+                )
+            if issues is None:
+                issues = self._pick(
+                    "Which GitHub issues should your team pick up?",
+                    [
+                        ("collaborators", "Issues opened by owners, members and collaborators"),
+                        ("labeled", "Only issues labelled 'foundry'"),
+                        ("everyone", "Every issue (anyone can create work for your agents)"),
+                        ("off", "None"),
+                    ],
+                    defaults.issue_intake,
+                )
+        chosen = {"merge_mode": merge, "ci_mode": ci, "issue_intake": issues}
+        return {
+            key: value
+            for key, value in chosen.items()
+            if value is not None and value != getattr(defaults, key)
+        }
+
     # ------------------------------------------------------------------ step: public URL
 
     def public_choice(self) -> str:
@@ -1470,6 +1928,12 @@ class Wizard:
             self.say(f"  Company     {self.company_name}")
         if ai.get("provider"):
             self.say(f"  Model API   {ai['provider']} ({ai.get('model')})")
+        repo_info = self.summary.get("repo") or {}
+        if repo_info.get("full_name"):
+            self.say(
+                f"  Repository  {repo_info['full_name']} ({repo_info.get('merge_mode') or '?'}, "
+                f"{repo_info.get('repo_status')})"
+            )
         if work.get("mode"):
             self.say(
                 f"  Work mode   {work['mode']}"
@@ -1640,16 +2104,72 @@ def register(app: typer.Typer) -> None:
         hostname: Annotated[
             str | None, typer.Option("--hostname", help="For --public-url named / tailscale.")
         ] = None,
+        github: Annotated[
+            str | None,
+            typer.Option(
+                "--github",
+                help="Back your projects with GitHub: new (create a repository), existing, or none. "
+                "With --non-interactive the default is none.",
+            ),
+        ] = None,
+        github_repo: Annotated[
+            str | None,
+            typer.Option(
+                "--github-repo",
+                help="OWNER/NAME or a github.com URL (new: NAME alone is fine; the owner is then "
+                "the token's account).",
+            ),
+        ] = None,
+        github_visibility: Annotated[
+            str | None,
+            typer.Option(
+                "--github-visibility", help="New repository: private (default) or public."
+            ),
+        ] = None,
+        github_public_ok: Annotated[
+            bool,
+            typer.Option(
+                "--github-public-ok",
+                help="Confirm that a public repository is intended (needed with --non-interactive).",
+            ),
+        ] = False,
+        github_default_branch: Annotated[
+            str | None,
+            typer.Option(
+                "--github-default-branch", help="The branch pull requests target (new: main)."
+            ),
+        ] = None,
+        github_merge: Annotated[
+            str | None,
+            typer.Option(
+                "--github-merge",
+                help="pr-human (you merge), pr-auto (agents merge after review and CI) or direct. "
+                "Default: pr-auto for a new repository, pr-human for an existing one.",
+            ),
+        ] = None,
+        github_ci: Annotated[
+            str | None,
+            typer.Option("--github-ci", help="if-present, required or ignore."),
+        ] = None,
+        github_issues: Annotated[
+            str | None,
+            typer.Option("--github-issues", help="off, collaborators, labeled or everyone."),
+        ] = None,
+        project_name: Annotated[
+            str | None,
+            typer.Option("--project-name", help="Name of the project bound to the repository."),
+        ] = None,
         secrets_stdin: Annotated[
             bool,
             typer.Option(
                 "--secrets-stdin",
-                help="Read key=value lines from stdin: password, api_key, cli_api_key, setup_token. "
+                help="Read key=value lines from stdin: password, api_key, cli_api_key, setup_token, "
+                "github_token. "
                 "Secrets are never accepted as options.",
             ),
         ] = False,
     ) -> None:
-        """Set up Foundry AI OS in this terminal: account, company, model API, work mode, background service, public URL.
+        """Set up Foundry AI OS in this terminal: account, company, model API, work mode, GitHub repository, background service, public URL.
 
         Safe to run again: finished steps are skipped. A coding-CLI test sends one tiny prompt and is
         capped at $0.05; --work-mode hybrid counts as your consent to run it.
@@ -1677,6 +2197,15 @@ def register(app: typer.Typer) -> None:
             two_fa=two_fa,
             public_url=public_url,
             hostname=hostname,
+            github=github,
+            github_repo=github_repo,
+            github_visibility=github_visibility,
+            github_public_ok=github_public_ok,
+            github_default_branch=github_default_branch,
+            github_merge=github_merge,
+            github_ci=github_ci,
+            github_issues=github_issues,
+            project_name=project_name,
             secrets_stdin=secrets_stdin,
         )
         onboarding.validate_options(opts)

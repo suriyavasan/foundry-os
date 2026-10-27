@@ -120,26 +120,27 @@ def test_viewers_may_read_but_not_change(client, client_as, make_user, add_membe
     for method, path in WRITES:
         assert call(vc, cid, method, path).status_code == 403, (method, path)
     assert call(vc, cid, "POST", "/github/inspect").status_code == 403
-    for method, path in READS:  # allowed: the stub answers "not built yet", not 403
-        assert call(vc, cid, method, path).status_code == 501, (method, path)
+    for method, path in READS:  # allowed: a list is empty, an unknown id is a 404, never a 403
+        assert call(vc, cid, method, path).status_code in (200, 404), (method, path)
 
 
-def test_stub_owner_calls_answer_501_not_available_m14(client, company):
+def test_owner_calls_on_unknown_ids_are_clean_errors(client, company):
+    """WP-C replaced the 501 stubs: an owner's call about something that does not exist answers
+    with the error envelope (404 / 409 / 200 for an empty list), never a 5xx."""
     cid = company["id"]
     for method, path in WRITES + READS:
         resp = call(client, cid, method, path)
-        assert resp.status_code == 501, (method, path, resp.text)
-        err = resp.json()["error"]
-        assert err["code"] == "not_available"
-        assert err["details"] == {"available": False, "milestone": "M14"}
+        assert resp.status_code in (200, 404, 409), (method, path, resp.text)
+        if resp.status_code != 200:
+            assert resp.json()["error"]["code"] in ("not_found", "no_account"), (method, path)
 
 
-def test_stub_availability_says_not_built(client, company):
+def test_availability_reports_git_and_the_milestone(client, company):
     body = client.get(api(company["id"], "/repositories/status")).json()
-    assert body["available"] is False and body["milestone"] == "M14" and body["reason"]
+    assert body["milestone"] == "M14" and body["available"] is True and body["git_version"]
 
 
-def test_stub_invalid_bodies_are_422_before_the_service_is_reached(client, company):
+def test_invalid_bodies_are_422_before_the_service_is_reached(client, company):
     cid = company["id"]
     for body in (
         {"mode": "connect", "connected_account_id": "a", "full_name": "acme/app"},  # no project
@@ -178,9 +179,10 @@ def test_stub_invalid_bodies_are_422_before_the_service_is_reached(client, compa
         assert client.post(api(cid, "/repositories"), json=body).status_code == 422, body
 
 
-def test_stub_the_webhook_receiver_is_public_and_capped(client, anon_client, company):
+def test_the_webhook_receiver_is_public_and_capped(client, anon_client, company):
     r = anon_client.post(f"/api/webhooks/github/{RID}", content=b"{}")
-    assert r.status_code == 501  # no auth needed: the signature is the credential
+    assert r.status_code == 401  # no session needed: the signature is the credential
+    assert r.json()["error"]["code"] == "webhook_rejected"
     big = anon_client.post(f"/api/webhooks/github/{RID}", content=b"x" * (1024 * 1024 + 10))
     assert big.status_code == 413
 

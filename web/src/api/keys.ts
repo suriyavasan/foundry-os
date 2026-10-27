@@ -104,6 +104,14 @@ export const qk = {
   standardsAll: (cid: string) => ['company', cid, 'standards'] as const,
   standards: (cid: string) => ['company', cid, 'standards', 'list'] as const,
   commandFeed: (cid: string) => ['company', cid, 'command-center', 'feed'] as const,
+  // M14 GitHub-backed projects. repository.* events (and every mutation here) invalidate the whole prefix.
+  reposAll: (cid: string) => ['company', cid, 'repositories'] as const,
+  repoStatus: (cid: string) => ['company', cid, 'repositories', 'status'] as const,
+  repoList: (cid: string) => ['company', cid, 'repositories', 'list'] as const,
+  repo: (cid: string, id: string) => ['company', cid, 'repositories', 'detail', id] as const,
+  repoPulls: (cid: string, id: string) => ['company', cid, 'repositories', 'pulls', id] as const,
+  repoItems: (cid: string, id: string, kind: string, status: string) => ['company', cid, 'repositories', 'items', id, kind, status] as const,
+  repoActivity: (cid: string, id: string) => ['company', cid, 'repositories', 'activity', id] as const,
   // The emergency stop is global (all companies).
   systemStatus: ['system', 'status'] as const,
   // The update check is installation-wide (owner only).

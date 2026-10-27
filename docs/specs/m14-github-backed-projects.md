@@ -4,11 +4,7 @@ Owner direction (2026-10-27): "As part of onboarding, setting up the repo is key
 use an existing repo, and take the relevant input from the user. The whole agent team runs in full autonomous
 mode and maintains the GitHub."
 
-Status: **in progress.** Step 0 (this document, the schema, the contracts, the GitHub client and the test
-fakes) is done; the five work packages follow. **Verified with fakes only** (a fake GitHub REST API and a local
-smart-HTTP git remote). No call to GitHub, no live agent and no real coding CLI has been used; section 9 lists
-the GitHub facts that must be confirmed against the official documentation before they are written into
-`docs/github.md`.
+Status: **done (2026-10-27)**, verified against a fake GitHub API and local bare repositories over git HTTP only (section 9 lists what real GitHub must still confirm).
 
 The milestone is split into **step 0** (sequential groundwork: schema, contracts, fakes) and **five parallel work
 packages**: WP-A (GitHub API side), WP-B (git engine and sync), WP-C (repository service, owner API, PR review),

@@ -97,6 +97,8 @@ export const KNOWN_EVENT_TYPES = [
   'standard.adopted',
   'standard.updated',
   'command.updated',
+  // M14 GitHub-backed projects (sync state, pull requests, intake)
+  'repository.updated',
 ] as const
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null)
@@ -255,6 +257,8 @@ export function effectsForEvent(cid: string, ev: CompanyEvent): CacheEffect[] {
       return [inv(qk.standardsAll(cid)), inv(qk.reflectionsAll(cid)), inv(qk.activityAll(cid))]
     case 'command.updated':
       return [inv(qk.commandFeed(cid)), inv(qk.notesAll(cid))]
+    case 'repository.updated':
+      return [inv(qk.reposAll(cid)), inv(qk.activityAll(cid))]
     default:
       return []
   }

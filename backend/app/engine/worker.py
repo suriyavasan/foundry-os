@@ -11,13 +11,13 @@ from datetime import datetime
 
 from app.engine.context import EngineContext
 from app.engine.executor import RunExecutor
-from app.services import jobs
+from app.services import jobs, repo_sync
 from app.services import skills as skills_service
 from app.services.companies import SEED_JOB_KIND
 
 logger = logging.getLogger("company_os.worker")
 
-JOB_KINDS = ("execute_run", SEED_JOB_KIND)
+JOB_KINDS = ("execute_run", SEED_JOB_KIND, *repo_sync.JOB_KINDS)
 LEASE_SECONDS = 60
 POLL_SECONDS = 0.5
 SHUTDOWN_GRACE_SECONDS = 10.0
@@ -55,6 +55,8 @@ class Worker:
                 self.executor.execute(str(job.payload["run_id"]), job.id)
             elif job.kind == SEED_JOB_KIND:
                 self._seed_skill_library(str(job.payload["company_id"]))
+            elif job.kind in repo_sync.JOB_KINDS:  # M14: clone / sync a GitHub-backed project
+                repo_sync.run_job(ctx, job, self.worker_id)
             else:
                 raise ValueError(f"unknown job kind {job.kind!r}")
         except Exception as exc:

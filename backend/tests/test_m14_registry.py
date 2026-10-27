@@ -242,11 +242,11 @@ def test_the_review_verdict_route_and_runtime_tool_are_registered():
 
 
 def test_the_verdict_route_is_gated_like_every_agent_route(app, client, team):
-    """No body, no real pull request: the gate runs first (registered -> 200-class), then the
-    stub service answers 501 ``not_available`` until WP-C implements it."""
+    """No real pull request: the gate runs first (registered -> not a 403), then the service
+    answers 404 for a pull request that does not exist in the company."""
     worker = run_as(app, client, team.cid, team.worker)
     r = worker.post("/repo/pulls/p1/review", json={"decision": "accept", "note": "ok"})
-    assert r.status_code == 501 and r.json()["error"]["details"]["milestone"] == "M14"
+    assert r.status_code == 404 and r.json()["error"]["code"] == "not_found"
     # an invalid decision is a validation error before the service is reached
     bad = worker.post("/repo/pulls/p1/review", json={"decision": "yes"})
     assert bad.status_code == 422

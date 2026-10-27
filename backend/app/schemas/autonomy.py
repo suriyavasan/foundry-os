@@ -341,6 +341,14 @@ class StateGoal(ApiModel):
     ended_projects: int = 0
 
 
+class StateRepository(ApiModel):
+    """M14: the repository a project is backed by (nothing secret: no URL, no token)."""
+
+    full_name: str
+    merge_mode: str
+    status: str
+
+
 class StateProject(ApiModel):
     id: str
     name: str
@@ -353,6 +361,7 @@ class StateProject(ApiModel):
     tasks_total: int = 0
     tasks_done: int = 0
     tasks_open: int = 0
+    repository: StateRepository | None = None
 
 
 class StateTask(ApiModel):

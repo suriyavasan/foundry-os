@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import socket
 import stat
@@ -475,6 +476,111 @@ def check_running(settings: Settings) -> Check:
     )
 
 
+MIN_GIT = (2, 25)
+TOKEN_EXPIRY_WARN_DAYS = 14
+
+
+def _git_version_tuple(text: str) -> tuple[int, ...] | None:
+    """``git version 2.43.0`` / ``git version 2.39.5 (Apple Git-154)`` -> (2, 39, 5)."""
+    match = re.search(r"(\d+)\.(\d+)(?:\.(\d+))?", text)
+    return tuple(int(g) for g in match.groups() if g is not None) if match else None
+
+
+def check_git() -> Check:
+    """Projects (and GitHub-backed projects) keep their work in git repositories on this machine."""
+    git = shutil.which("git")
+    if not git:
+        return Check(
+            "git",
+            WARN,
+            "not installed: projects cannot share a code repository",
+            "Install git (macOS: xcode-select --install or brew install git; Debian/Ubuntu: apt install git).",
+        )
+    result = _run([git, "--version"])
+    text = result.stdout.strip() if result and result.returncode == 0 else ""
+    version = _git_version_tuple(text)
+    if version is None:
+        return Check("git", WARN, f"{git} did not report a version", "Reinstall git.")
+    if version < MIN_GIT:
+        return Check(
+            "git",
+            WARN,
+            f"{text} is older than {'.'.join(map(str, MIN_GIT))}",
+            "Update git; Foundry relies on worktrees and modern merge handling.",
+        )
+    return Check("git", OK, text)
+
+
+def check_github_repositories(settings: Settings) -> Check:
+    """The GitHub repositories of this install: state, sync problems and token expiry. Reads the
+    database only; it never calls GitHub."""
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import inspect, select
+
+    from app.db.session import build_engine, build_session_factory
+    from app.models.repository import ProjectRepository
+
+    engine = build_engine(settings.resolved_database_url)
+    try:
+        if "project_repositories" not in inspect(engine).get_table_names():
+            return Check(
+                "github repos", INFO, "not set up yet (the database has no repositories table)"
+            )
+        with build_session_factory(engine)() as db:
+            rows = db.execute(
+                select(
+                    ProjectRepository.full_name,
+                    ProjectRepository.status,
+                    ProjectRepository.sync_state,
+                    ProjectRepository.token_expires_at,
+                ).where(ProjectRepository.status != "disconnected")
+            ).all()
+    except Exception as exc:
+        return Check(
+            "github repos",
+            WARN,
+            f"could not be read ({exc.__class__.__name__})",
+            "Run `foundryos upgrade`.",
+        )
+    finally:
+        engine.dispose()
+    if not rows:
+        return Check(
+            "github repos",
+            INFO,
+            "none connected: projects live on this machine only",
+            "Back a project with GitHub: foundryos repo connect (or foundryos setup --only repo).",
+        )
+    problems, soon = [], []
+    now = datetime.now(UTC)
+    for name, status, sync_state, expires in rows:
+        if status == "auth_failed":
+            problems.append(f"{name}: GitHub refused the token")
+        elif status == "error":
+            problems.append(f"{name}: error (foundryos repo status)")
+        elif status == "paused":
+            problems.append(f"{name}: paused")
+        elif sync_state not in (None, "idle"):
+            problems.append(f"{name}: {str(sync_state).replace('_', ' ')}")
+        if expires is not None:
+            at = expires if expires.tzinfo else expires.replace(tzinfo=UTC)
+            if at - now < timedelta(days=TOKEN_EXPIRY_WARN_DAYS):
+                soon.append(
+                    f"{name}: token {'expired' if at < now else 'expires ' + at.date().isoformat()}"
+                )
+    if problems or soon:
+        fix = (
+            "Replace the token with: foundryos repo token"
+            if any("token" in p for p in [*problems, *soon])
+            else "See: foundryos repo status"
+        )
+        return Check("github repos", WARN, "; ".join([*problems, *soon]), fix)
+    setting_up = [r for r in rows if r[1] in ("pending", "creating", "cloning")]
+    note = f" ({len(setting_up)} still being set up)" if setting_up else ", all syncing"
+    return Check("github repos", OK, f"{len(rows)} connected{note}")
+
+
 def run_checks(settings: Settings | None = None) -> list[Check]:
     settings = settings or Settings()
     steps = [
@@ -482,6 +588,8 @@ def run_checks(settings: Settings | None = None) -> list[Check]:
         lambda: check_node(settings),
         lambda: check_database(settings),
         lambda: check_runtime(settings),
+        check_git,
+        lambda: check_github_repositories(settings),
         check_ollama,
         check_docker,
         lambda: check_tunnel_tools(settings),

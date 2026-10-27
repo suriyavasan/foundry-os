@@ -20,10 +20,11 @@ from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.cli.client import CliError
+from app.schemas.repository import parse_repo_ref, valid_branch_name, valid_repo_name
 
 # ------------------------------------------------------------------ steps and flags
 
-STEPS = ("service", "account", "2fa", "company", "ai", "work", "public-url")
+STEPS = ("service", "account", "2fa", "company", "ai", "work", "repo", "public-url")
 WORK_MODES = ("api", "hybrid")
 CLI_IDS = ("claude_code", "codex", "opencode", "antigravity")
 # --cli-auth value -> what the wizard does ("provider" = OpenCode on the company's model provider).
@@ -31,8 +32,21 @@ CLI_AUTH_FLAGS = {"own-login": "own_login", "api-key": "api_key", "provider": "p
 PUBLIC_URL_CHOICES = ("quick", "named", "tailscale", "off")
 IDEA_MAX = 280
 
+# The repository step (M14). Flag value -> the API's value.
+GITHUB_CHOICES = ("new", "existing", "none")
+GITHUB_VISIBILITY = ("private", "public")
+GITHUB_MERGE_FLAGS = {
+    "pr-human": "pr_human_merge",
+    "pr-auto": "pr_auto_merge",
+    "direct": "direct_push",
+}
+GITHUB_CI_FLAGS = {"if-present": "if_present", "required": "required", "ignore": "ignore"}
+GITHUB_ISSUES = ("off", "collaborators", "labeled", "everyone")
+GITHUB_TOKEN_URL = "https://github.com/settings/personal-access-tokens/new"
+PROJECT_NAME_MAX = 200
+
 # What --secrets-stdin may carry (key=value lines). Anything else is refused, not ignored.
-SECRET_KEYS = ("password", "api_key", "cli_api_key", "setup_token")
+SECRET_KEYS = ("password", "api_key", "cli_api_key", "setup_token", "github_token")
 
 # The readiness checks, in the order the server reports them (web/src/lib/aiSetup.ts CHECK_ORDER).
 CHECK_ORDER = ("reachable", "auth", "tool_calling", "context", "model_exists")
@@ -78,8 +92,33 @@ class WizardOptions:
     two_fa: bool | None = None
     public_url: str | None = None
     hostname: str | None = None
+    github: str | None = (
+        None  # new | existing | none (None = ask, or "none" with --non-interactive)
+    )
+    github_repo: str | None = None
+    github_visibility: str | None = None
+    github_public_ok: bool = False
+    github_default_branch: str | None = None
+    github_merge: str | None = None
+    github_ci: str | None = None
+    github_issues: str | None = None
+    project_name: str | None = None
     secrets_stdin: bool = False
     secrets: dict[str, str] = field(default_factory=dict, repr=False)
+
+    def github_detail_flags(self) -> list[str]:
+        """The repository flags that only make sense with ``--github new|existing``."""
+        given = {
+            "--github-repo": self.github_repo,
+            "--github-visibility": self.github_visibility,
+            "--github-public-ok": self.github_public_ok or None,
+            "--github-default-branch": self.github_default_branch,
+            "--github-merge": self.github_merge,
+            "--github-ci": self.github_ci,
+            "--github-issues": self.github_issues,
+            "--project-name": self.project_name,
+        }
+        return [flag for flag, value in given.items() if value]
 
     def hybrid_flags_without_hybrid(self) -> bool:
         return self.work_mode == "api" and bool(self.cli or self.cli_auth or self.install_cli)
@@ -118,6 +157,41 @@ def validate_options(opts: WizardOptions) -> None:
             raise usage(f"--base-url: {err}")
     if opts.hybrid_flags_without_hybrid():
         raise usage("--cli / --cli-auth / --install-cli need --work-mode hybrid.")
+    validate_github_options(opts)
+
+
+def validate_github_options(opts: WizardOptions) -> None:
+    """The repository flags (M14): values, combinations and the repo reference, before anything runs."""
+    validate_choice("--github", opts.github, GITHUB_CHOICES)
+    validate_choice("--github-visibility", opts.github_visibility, GITHUB_VISIBILITY)
+    validate_choice("--github-merge", opts.github_merge, tuple(GITHUB_MERGE_FLAGS))
+    validate_choice("--github-ci", opts.github_ci, tuple(GITHUB_CI_FLAGS))
+    validate_choice("--github-issues", opts.github_issues, GITHUB_ISSUES)
+    details = opts.github_detail_flags()
+    if details and opts.github in (None, "none"):
+        raise usage(f"{', '.join(details)} need --github new or --github existing.")
+    if opts.github_visibility and opts.github == "existing":
+        raise usage(
+            "--github-visibility only applies to a new repository (an existing one has its own)."
+        )
+    if opts.github_repo:
+        split_repo_ref(opts.github, opts.github_repo)
+    if opts.github_default_branch is not None and not valid_branch_name(opts.github_default_branch):
+        raise usage(
+            f"--github-default-branch {opts.github_default_branch!r} is not a valid branch name."
+        )
+    if opts.project_name is not None:
+        project_name_error(opts.project_name)
+    if (
+        opts.github == "new"
+        and opts.github_visibility == "public"
+        and opts.non_interactive
+        and not opts.github_public_ok
+    ):
+        raise usage(
+            "--github-visibility public makes everything your agents commit public. "
+            "Add --github-public-ok to confirm it."
+        )
 
 
 # ------------------------------------------------------------------ secrets on stdin
@@ -171,7 +245,138 @@ def idea_error(idea: str) -> str | None:
     return None
 
 
+def project_name_error(name: str) -> None:
+    if not 1 <= len(name.strip()) <= PROJECT_NAME_MAX:
+        raise usage(f"The project name must be 1 to {PROJECT_NAME_MAX} characters.")
+
+
+def split_repo_ref(choice: str | None, text: str) -> tuple[str | None, str]:
+    """``--github-repo`` -> ``(owner or None, name)``.
+
+    An existing repository is always ``OWNER/NAME`` or a github.com URL. A new one may also be a bare
+    ``NAME`` (the owner is then the token's account). Raises a usage error naming the flag."""
+    value = text.strip()
+    parsed = parse_repo_ref(value)
+    if parsed is not None:
+        return parsed
+    if choice == "new" and "/" not in value and "://" not in value and valid_repo_name(value):
+        return None, value
+    wanted = (
+        "OWNER/NAME or https://github.com/OWNER/NAME"
+        if choice == "existing"
+        else "NAME, OWNER/NAME or https://github.com/OWNER/NAME"
+    )
+    raise usage(f"--github-repo {text!r} is not a repository reference (expected {wanted}).")
+
+
+def slugify_repo_name(company_name: str) -> str:
+    """A GitHub repository name from the company name: lowercase, hyphens, no leading dots."""
+    slug = re.sub(r"[^a-z0-9._-]+", "-", company_name.strip().lower()).strip("-._")
+    slug = slug[:100].strip("-._")
+    return slug if valid_repo_name(slug) else "company"
+
+
+def github_token_error(value: str) -> str | None:
+    if not value.strip():
+        return "A GitHub token is required"
+    if re.search(r"\s", value.strip()):
+        return "A GitHub token has no spaces or line breaks; check what you pasted"
+    return None
+
+
+# What each choice needs (docs/github.md has the same tables). ``(permission, access, why)``.
+_BASE_PERMISSIONS = (
+    ("Metadata", "Read", "automatic; everything needs it"),
+    ("Contents", "Read and write", "clone, fetch and push"),
+    ("Pull requests", "Read and write", "open, update, comment and merge pull requests"),
+    ("Issues", "Read and write", "issue intake and comments (Read is enough with intake off)"),
+    ("Commit statuses", "Read", "CI state"),
+    ("Actions", "Read", "workflow runs and failure logs"),
+    ("Checks", "Read", "check runs, if the token page offers it"),
+    ("Dependabot alerts", "Read", "security alerts"),
+)
+CREATE_PERMISSIONS = (
+    *_BASE_PERMISSIONS,
+    ("Administration", "Read and write", "only to create the repository; remove it afterwards"),
+)
+
+
+def permission_lines(mode: str) -> list[str]:
+    """The checklist printed before the token prompt. ``mode`` is the API's ``create`` | ``connect``."""
+    rows = CREATE_PERMISSIONS if mode == "create" else _BASE_PERMISSIONS
+    width = max(len(name) for name, _, _ in rows)
+    access = max(len(a) for _, a, _ in rows)
+    lines = [f"  {name.ljust(width)}  {acc.ljust(access)}  {why}" for name, acc, why in rows]
+    lines.append("  Not needed: Workflows (agents may not edit CI), Webhooks (polling works).")
+    return lines
+
+
+def token_instructions(mode: str) -> list[str]:
+    """What to do on github.com, as terminal lines."""
+    where = "Resource owner: you or the organisation that will own the repository.\n" + (
+        "Repository access: All repositories (needed to create one); narrow it to the new "
+        "repository afterwards.\n"
+        "Or create an empty repository on github.com yourself and choose 'Existing repository' "
+        "(no Administration permission needed)."
+        if mode == "create"
+        else "Repository access: Only select repositories, then pick the one you are connecting."
+    )
+    return [
+        f"Create a fine-grained personal access token: {GITHUB_TOKEN_URL}",
+        *where.split("\n"),
+        "Repository permissions:",
+        *permission_lines(mode),
+        "Tip: use a free machine-user account for the token (docs/github.md), so a person can approve "
+        "the pull requests the agents open.",
+    ]
+
+
+def inspect_lines(result: Mapping[str, Any]) -> list[str]:
+    """One summary of ``POST /github/inspect`` for the terminal."""
+    kind = {"fine_grained": "fine-grained token", "classic": "classic token (broad access)"}.get(
+        str(result.get("token_kind")), "token of unknown kind"
+    )
+    expiry = result.get("token_expires_at")
+    head = f"GitHub account {result.get('login') or '(unknown)'}: {kind}"
+    if expiry:
+        head += f", expires {str(expiry)[:10]}"
+    lines = [head]
+    repo = result.get("repository")
+    if isinstance(repo, dict):
+        if not repo.get("exists"):
+            lines.append(f"Repository {repo.get('full_name')}: does not exist")
+        elif not repo.get("accessible"):
+            lines.append(f"Repository {repo.get('full_name')}: this token cannot see it")
+        else:
+            bits = [
+                str(repo.get("visibility") or "?"),
+                "empty" if repo.get("empty") else f"default branch {repo.get('default_branch')}",
+                "archived" if repo.get("archived") else None,
+                "branch protected" if repo.get("protected") else None,
+                "has workflows" if repo.get("has_workflows") else None,
+                "can push" if repo.get("can_push") else "cannot push",
+            ]
+            lines.append(f"Repository {repo.get('full_name')}: " + ", ".join(b for b in bits if b))
+    lines += [f"[missing] {m}" for m in result.get("missing_permissions") or []]
+    lines += [f"[note] {w}" for w in result.get("warnings") or []]
+    if result.get("sso_url"):
+        lines.append(f"[action] Authorise the token for SAML SSO: {result['sso_url']}")
+    if result.get("organisation_approval_pending"):
+        lines.append("[waiting] The organisation has to approve this token before it works.")
+    return lines
+
+
+def repo_line(repo: Mapping[str, Any]) -> str:
+    """``owner/name (active) -> project, merge mode`` for one repository row."""
+    policy = repo.get("policy") or {}
+    return (
+        f"{repo.get('full_name')} ({repo.get('status')}) for {repo.get('project_name') or 'its project'}"
+        f", merge mode {policy.get('merge_mode', '?')}"
+    )
+
+
 def timezone_error(name: str) -> str | None:
+
     try:
         ZoneInfo(name)
     except (ZoneInfoNotFoundError, ValueError, OSError):

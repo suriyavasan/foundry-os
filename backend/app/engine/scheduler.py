@@ -15,6 +15,7 @@ from app.services import (
     emergency,
     events,
     jobs,
+    repo_sync,
     schedules,
     wakes,
 )
@@ -33,6 +34,7 @@ class TickReport:
     dispatch: DispatchReport = field(default_factory=DispatchReport)
     recovery: recovery.RecoveryReport | None = None
     watchdog: dict[str, int] = field(default_factory=dict)  # interventions per detector (M12)
+    repo_syncs: int = 0  # repository syncs enqueued this tick (M14)
 
 
 class Scheduler:
@@ -44,6 +46,7 @@ class Scheduler:
         self._last_recovery: datetime | None = None
         self._last_prune: datetime | None = None
         self._last_watchdog: datetime | None = None
+        self._last_repo_sync: datetime | None = None
 
     def start(self, now: datetime | None = None) -> recovery.RecoveryReport:
         """Startup recovery (also fires any schedule that came due while we were down)."""
@@ -77,6 +80,14 @@ class Scheduler:
                     report.watchdog = autonomy_watchdog.run_all(self.ctx.session_factory, now)
                 except Exception:  # the watchdog must never stop dispatching
                     logger.exception("autonomy watchdog failed")
+            if self._last_repo_sync is None or now - self._last_repo_sync >= timedelta(
+                seconds=self.ctx.settings.repo_sync_tick_seconds
+            ):
+                self._last_repo_sync = now
+                try:  # M14: repository syncs that came due become jobs for the worker
+                    report.repo_syncs = repo_sync.enqueue_due(self.ctx.session_factory, now)
+                except Exception:  # a sync problem must not stop dispatching
+                    logger.exception("repository sync enqueue failed")
             report.woke_task_ids = wakes.materialize_due(self.ctx.session_factory, now)
             report.dispatch = dispatch_tick(self.ctx, now)
         if self._last_recovery is None or now - self._last_recovery >= timedelta(

@@ -48,6 +48,8 @@ COMPANY_TOOL_NAMES = (
     "company_post_reflection", "company_reply_reflection", "company_revise_reflection",
     # M12: plan a project's first task list in one call (leads and managers).
     "company_plan_project",
+    # M14: the internal reviewer's verdict on a Foundry pull request.
+    "company_review_pull_request",
 )
 
 MIN_CONTEXT_LENGTH = 8192

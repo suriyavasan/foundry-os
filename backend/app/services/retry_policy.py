@@ -17,10 +17,16 @@ TRANSIENT = "transient"
 PERMANENT = "permanent"
 
 # Error codes the platform itself raises when the infrastructure (not the task) failed.
-TRANSIENT_CODES = frozenset({"unavailable", "worker_lost", "job_dead", "merge_conflict"})
+TRANSIENT_CODES = frozenset(
+    {"unavailable", "worker_lost", "job_dead", "merge_conflict", "merge_conflict_unresolved"}
+)
 # Transient for the circuit breaker (the work is fine, main moved on) but the attempt is spent:
 # a conflict that keeps coming back is the task's problem, so ``max_attempts_per_task`` bounds it.
-ATTEMPT_CONSUMING_CODES = frozenset({"merge_conflict"})
+ATTEMPT_CONSUMING_CODES = frozenset({"merge_conflict", "merge_conflict_unresolved"})
+# M14 push-gate refusals: the run's own output was the problem, so it is permanent (the attempt is
+# consumed and the slower permanent schedule applies). Listed for documentation and for the tests;
+# ``classify`` treats every code outside TRANSIENT_CODES as permanent anyway.
+PERMANENT_CODES = frozenset({"secret_detected", "protected_path", "workspace_too_large"})
 MERGE_CONFLICT = "merge_conflict"
 _TRANSIENT_PHRASES = (
     "rate limit",
@@ -46,6 +52,8 @@ PERMANENT_SCHEDULE_SECONDS = (0, 60, 240)
 
 def classify(code: str | None, message: str | None = None) -> str:
     """``transient`` or ``permanent`` for a run failure."""
+    if (code or "").strip().lower() in PERMANENT_CODES:
+        return PERMANENT
     if (code or "").strip().lower() in TRANSIENT_CODES:
         return TRANSIENT
     text = f"{code or ''} {message or ''}".lower()
@@ -82,6 +90,7 @@ __all__ = [
     "MERGE_CONFLICT",
     "MAX_TRANSIENT_FAILURES",
     "PERMANENT",
+    "PERMANENT_CODES",
     "TRANSIENT",
     "backoff",
     "classify",

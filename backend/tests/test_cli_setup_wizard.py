@@ -185,6 +185,7 @@ def test_full_interactive_setup_creates_everything(app, wiz, calls, cfg_dir):
             MODEL,  # model
             "n",  # pick from the provider's list? no
             "1",  # work mode: API only
+            "3",  # GitHub: no repository
             "y",  # download and open the tunnel
         ]
     ) + "\n"  # fmt: skip
@@ -322,7 +323,7 @@ def test_non_interactive_run_keeps_secrets_out_of_argv_output_and_audit(app, wiz
     assert summary["work"]["mode"] == "api"
     assert summary["steps"] == {
         "service": "already_done", "account": "done", "2fa": "skipped", "company": "done",
-        "ai": "done", "work": "done", "public-url": "done", "idea": "note",
+        "ai": "done", "work": "done", "repo": "skipped", "public-url": "done", "idea": "note",
     }  # fmt: skip
     # stdout is exactly one JSON document; progress went to stderr
     assert r.out.lstrip().startswith("{") and "Created the owner account" in r.err

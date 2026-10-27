@@ -52,8 +52,8 @@ function backend() {
   return { api, order }
 }
 
-describe('first run, all five screens on an M10 backend', () => {
-  it('Welcome -> account -> company -> connect your AI (one save) -> meet your team -> the app', async () => {
+describe('first run, all six screens on an M10 backend', () => {
+  it('Welcome -> account -> company -> connect your AI (one save) -> where the code lives -> meet your team -> the app', async () => {
     const { api, order } = backend()
     renderWithProviders(
       <AuthGate>
@@ -64,7 +64,7 @@ describe('first run, all five screens on an M10 backend', () => {
 
     // 1 Welcome
     expect(await screen.findByRole('heading', { name: 'A company that runs itself.' })).toBeInTheDocument()
-    expect(screen.getByText('Step 1 of 5 · Welcome')).toBeInTheDocument()
+    expect(screen.getByText('Step 1 of 6 · Welcome')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Back' })).not.toBeInTheDocument()
     await u.click(screen.getByRole('button', { name: /Start/ }))
 
@@ -83,7 +83,7 @@ describe('first run, all five screens on an M10 backend', () => {
 
     // 4 Connect your AI: mandatory
     expect(await screen.findByRole('heading', { name: 'Connect your AI' })).toBeInTheDocument()
-    expect(screen.getByText('Step 4 of 5 · Connect your AI')).toBeInTheDocument()
+    expect(screen.getByText('Step 4 of 6 · Connect your AI')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Save and continue' })).toBeDisabled()
     expect(api.calls.some((c) => c.path.endsWith('/notes'))).toBe(false) // the server would refuse a note now
     await u.click(await screen.findByRole('radio', { name: /OpenRouter/ }))
@@ -94,7 +94,13 @@ describe('first run, all five screens on an M10 backend', () => {
     expect(order).toEqual([]) // testing saved nothing
     await u.click(screen.getByRole('button', { name: 'Save and continue' }))
 
-    // 5 Meet your team: the first note was posted only now that the AI works
+    // 5 Your code: the idea waits for this choice too, so the Co-founder sees the project with its repository
+    expect(await screen.findByRole('heading', { name: 'Where should your code live?' })).toBeInTheDocument()
+    expect(screen.getByText('Step 5 of 6 · Your code')).toBeInTheDocument()
+    expect(order).toEqual(['PUT ai-setup api'])
+    await u.click(screen.getByRole('button', { name: /No GitHub for now/ }))
+
+    // 6 Meet your team: the first note was posted only now that the AI works and the code's home is chosen
     expect(await screen.findByRole('heading', { name: 'Meet your team' })).toBeInTheDocument()
     expect(order).toEqual(['PUT ai-setup api', 'POST notes'])
     expect(api.calls.find((c) => c.path === '/companies/c9/notes')?.body).toEqual({ body: 'Sell lemonade' })

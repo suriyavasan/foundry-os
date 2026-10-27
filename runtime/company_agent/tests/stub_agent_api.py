@@ -131,6 +131,10 @@ class StubApi:
         if m == "POST" and sub.endswith("/complete"):
             return 200, {"id": sub.split("/")[2], "status": "done", "result_summary": b.get("result_summary"),
                          "error": self.task_error}
+        if m == "POST" and sub.startswith("/repo/pulls/") and sub.endswith("/review"):  # M14
+            return 200, {"pull_id": sub.split("/")[3], "number": 7,
+                         "verdict": "accepted" if b.get("decision") == "accept" else "changes_requested",
+                         "verdict_sha": "a" * 40, "fix_task_id": None}
         if m == "POST" and sub.endswith("/review"):
             return 200, {"id": sub.split("/")[2], "status": "done" if b.get("decision") == "accept" else "revision_requested"}
         if m == "POST" and sub == "/artifacts":

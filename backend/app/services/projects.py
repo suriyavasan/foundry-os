@@ -101,7 +101,16 @@ def _check_agent_budget(db: Session, company_id: str, budget_micros: int | None)
         )
 
 
-def create_project(db: Session, ctx: CompanyContext, data: ProjectCreate) -> Project:
+def create_project(
+    db: Session,
+    ctx: CompanyContext,
+    data: ProjectCreate,
+    *,
+    commit: bool = True,
+    bind_repository: bool = True,
+) -> Project:
+    """Create a project. ``commit=False`` and ``bind_repository=False`` are for the repository
+    service, which creates the project and its binding in one transaction (M14)."""
     role = _agent_role(db, ctx)
     if role is None:
         require_human_admin(ctx, "create projects")
@@ -139,7 +148,12 @@ def create_project(db: Session, ctx: CompanyContext, data: ProjectCreate) -> Pro
         db, ctx.company_id, "project.created", {"project_id": project.id, "status": project.status}
     )
     _after_lead_change(db, ctx, project, lead_changed=bool(project.lead_agent_id))
-    db.commit()
+    if bind_repository:  # M14: new_project_repository = company_repo binds the company repository
+        from app.services import repositories
+
+        repositories.on_project_created(db, ctx, project)
+    if commit:
+        db.commit()
     return project
 
 

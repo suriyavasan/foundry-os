@@ -2,6 +2,7 @@
 
 This is the operator guide: run it on your own machine, in Docker, upgrade it, back it up, configure it.
 Network access from other devices and the public internet is a separate guide: `docs/deploy-reachability.md`.
+Backing projects with a GitHub repository (tokens, permissions, protection, webhooks, `foundryos repo`) is covered in `docs/github.md`.
 What was and was not verified is listed in section 10 and in `docs/roadmap.md` ("Final verification").
 Installed copies (Homebrew, the one-line installer, Docker) are covered in section 11; this page's other sections describe the same program run from a source checkout.
 

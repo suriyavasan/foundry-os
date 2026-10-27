@@ -1,6 +1,6 @@
 import { useReducer, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { seedCompanyIdea } from '@/api'
+import { seedCompanyIdea, useCompany } from '@/api'
 import { useToast } from '@/components/ui'
 import { canEditPolicy, useCompanyRole } from '@/features/canvas/hooks'
 import { passkeyEnvironment } from '@/lib/webauthn'
@@ -11,14 +11,16 @@ import { AccountStep } from './steps/AccountStep'
 import { PasskeyStep } from './steps/PasskeyStep'
 import { AiStep } from './steps/AiSteps'
 import { CompanyStep } from './steps/CompanyStep'
+import { RepoStep } from './steps/RepoStep'
 import { TeamStep } from './steps/TeamStep'
 import { WelcomeStep } from './steps/WelcomeStep'
 
 /**
- * The onboarding: five full-screen steps for a first run (`setup`), or the one AI step as a gate for a company that is not
+ * The onboarding: six full-screen steps for a first run (`setup`), or the one AI step as a gate for a company that is not
  * AI-ready (`gate`). The step order and what is allowed is lib/onboarding (tested on its own); this component only renders
- * the current step and performs the one side effect that has to wait for a working AI: posting the one-line idea as the
- * first Founder's note (the server refuses notes until the AI is ready).
+ * the current step and performs the one side effect that has to wait for a working AI and for the repository choice: posting the one-line idea as the
+ * first Founder's note (the server refuses notes until the AI is ready, and the Co-founder's triage should see the project with
+ * its repository).
  */
 export function OnboardingFlow({
   mode,
@@ -39,6 +41,7 @@ export function OnboardingFlow({
   const navigate = useNavigate()
   const toast = useToast()
   const companyId = flow.companyId
+  const company = useCompany(companyId ?? undefined)
   // A person who just made the company is its owner; for an existing company the role decides what they may change.
   const role = useCompanyRole(companyId ?? '')
   const canEdit = mode === 'setup' || role === undefined ? true : canEditPolicy(role)
@@ -53,14 +56,21 @@ export function OnboardingFlow({
     onDone()
   }
 
-  async function afterAi() {
+  function afterAi() {
     if (mode === 'setup' && companyId) {
-      const where = await seedCompanyIdea(companyId, flow.idea)
-      if (where === 'failed') toast.error('The company was created, but your idea could not be saved. Add it from the Command Center.')
       dispatch({ type: 'next' })
       return
     }
     onDone()
+  }
+
+  /** The repository step is over (a repository was started, or no GitHub): now the idea becomes the first note. */
+  async function afterRepo() {
+    if (companyId) {
+      const where = await seedCompanyIdea(companyId, flow.idea)
+      if (where === 'failed') toast.error('The company was created, but your idea could not be saved. Add it from the Command Center.')
+    }
+    dispatch({ type: 'repo_done' })
   }
 
   switch (flow.step) {
@@ -101,9 +111,15 @@ export function OnboardingFlow({
           {companyId && <AiStep companyId={companyId} canEdit={canEdit} finishLabel={mode === 'setup' ? 'Save and continue' : 'Save and open my company'} onDone={afterAi} />}
         </StepFrame>
       )
+    case 'repo':
+      return (
+        <StepFrame flow={flow} step="repo" wide onBack={back} fx="spotlight">
+          {companyId && <RepoStep companyId={companyId} companyName={company.data?.name ?? ''} idea={flow.idea} onDone={() => void afterRepo()} />}
+        </StepFrame>
+      )
     case 'team':
       return (
-        <StepFrame flow={flow} step="team" onBack={back} fx="beams">
+        <StepFrame flow={flow} step="team" fx="beams">
           {companyId && <TeamStep companyId={companyId} companyIdea={flow.idea} onLaunch={launch} />}
         </StepFrame>
       )

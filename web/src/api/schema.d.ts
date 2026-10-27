@@ -10437,6 +10437,19 @@ export interface components {
              * @default 0
              */
             tasks_open: number;
+            repository: components["schemas"]["StateRepository"] | null;
+        };
+        /**
+         * StateRepository
+         * @description M14: the repository a project is backed by (nothing secret: no URL, no token).
+         */
+        StateRepository: {
+            /** Full Name */
+            full_name: string;
+            /** Merge Mode */
+            merge_mode: string;
+            /** Status */
+            status: string;
         };
         /** StateSchedule */
         StateSchedule: {

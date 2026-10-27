@@ -63,6 +63,7 @@ from app.services import (
     credentials,
     model_providers,
     policy,
+    repo_reviews,
     reviews,
     standards,
 )
@@ -361,6 +362,12 @@ class CompanyAgentAdapter(RuntimeAdapter):
             if peer_target is not None:
                 # A peer review run decides one thing; nothing else is on offer.
                 company_tools = ["company_decide_peer_review", "company_complete_task"]
+            elif task_peek is not None and repo_reviews.pull_id_of(task_peek) is not None:
+                # M14: the reviewer of a Foundry pull request records its verdict (the server
+                # allows only the assignee of that review task).
+                company_tools = [
+                    *dict.fromkeys([*company_tools, "company_review_pull_request"]),
+                ]
             manager = db.get(Agent, agent.manager_agent_id) if agent.manager_agent_id else None
             reports = agent_toolkit.direct_reports(db, agent)
             role = agent_roles.role_of(db, agent)

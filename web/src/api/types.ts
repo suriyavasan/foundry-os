@@ -3,6 +3,8 @@
  * Replace/augment with `pnpm gen:api` (src/api/schema.d.ts) once the backend is running.
  */
 
+import type { components } from './schema'
+
 export type Uuid = string
 /** ISO-8601 UTC timestamp. */
 export type Timestamp = string
@@ -2364,3 +2366,40 @@ export interface CommandExchange {
   actions: CommandAction[]
   updated_at: Timestamp
 }
+
+/* ------------------------- M14: GitHub-backed projects ------------------------- */
+
+/**
+ * Repository bindings (docs/specs/m14-github-backed-projects.md). These are the generated server schemas, not a second
+ * hand-written copy, so a backend change shows up here as a type error:
+ *   GET   /repositories/status                  RepoAvailability  ({available:false} = git is missing here)
+ *   POST  /github/inspect                       GithubInspectRequest -> GithubInspectResult
+ *   GET   /repositories?project_id=             Page<ProjectRepository>      POST RepositoryCreate -> 201 ProjectRepository
+ *   GET   /repositories/{id}                    ProjectRepository            PATCH RepositoryUpdate
+ *   POST  /repositories/{id}/{sync|pause|resume|disconnect|integration/reset|pull-requests/resume-opening}
+ *   PUT   /repositories/{id}/webhook            {enabled}
+ *   GET   /repositories/{id}/{pull-requests|items|activity}
+ */
+type Schemas = components['schemas']
+export type ProjectRepository = Schemas['ProjectRepository']
+export type RepoPolicy = Schemas['RepoPolicy']
+export type RepoPolicyInput = Schemas['RepoPolicyInput']
+export type RepoPullRequest = Schemas['RepoPullRequest']
+export type RepoPullRequestSummary = Schemas['RepoPullRequestSummary']
+export type RepoItem = Schemas['RepoItem']
+export type RepoAvailability = Schemas['RepoAvailability']
+export type RepoInspect = Schemas['RepoInspect']
+export type GithubInspectRequest = Schemas['GithubInspectRequest']
+export type GithubInspectResult = Schemas['GithubInspectResult']
+export type RepositoryCreate = Schemas['RepositoryCreate']
+export type RepositoryUpdate = Schemas['RepositoryUpdate']
+export type RepoMode = RepositoryCreate['mode']
+export type MergeMode = RepoPolicy['merge_mode']
+export type MergeMethod = RepoPolicy['pr_merge_method']
+export type CiMode = RepoPolicy['ci_mode']
+export type IssueIntake = RepoPolicy['issue_intake']
+export type RepoStatus = ProjectRepository['status']
+export type RepoSyncState = ProjectRepository['sync_state']
+export type PullStage = RepoPullRequestSummary['stage']
+export type RepoItemKind = RepoItem['kind']
+export type RepoItemStatus = RepoItem['status']

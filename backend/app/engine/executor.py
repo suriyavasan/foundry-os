@@ -48,6 +48,7 @@ from app.services import (
     ledger,
     policy,
     project_workspaces,
+    repo_sync,
     reviews,
     runs,
     safety,
@@ -268,6 +269,14 @@ class RunExecutor:
             project = db.get(Project, task.project_id) if task.project_id else None
             project_id = project.id if project and project.company_id == run.company_id else None
             review_target = reviews.target_id_of(task) if task.kind == "review" else None
+            # M14: a GitHub-backed project works on its work branch; None = the M12 defaults
+            try:
+                repo_spec = repo_sync.workspace_spec_for(db, task)
+            except Exception:  # never fail a run because the repository lookup failed
+                logger.warning(
+                    "run %s: could not read the repository binding", run_id, exc_info=True
+                )
+                repo_spec = None
             db.commit()  # no open transaction while git runs
             if review_target:
                 self._wait_for_target_run(review_target, run.company_id)
@@ -277,6 +286,7 @@ class RunExecutor:
                 run_id=run.id,
                 task_kind=task.kind,
                 project_id=project_id,
+                spec=repo_spec,
             )
             workspace = ws.path
             request = ExecutionRequest(
@@ -440,6 +450,24 @@ class RunExecutor:
         artifact and turn a successful run whose work could not be merged into a failure
         (``merge_conflict`` is retryable: the retry starts from the new project files)."""
         succeeded = outcome.status == RunStatus.SUCCEEDED
+        scan = None
+        if ws.spec is not None and ws.spec.scan_secrets:
+            try:  # M14: the push gate runs before anything reaches the work branch
+                scan = repo_sync.scan_context(self.ctx, request.company.id, ws.spec)
+            except Exception:
+                logger.error("run %s: could not prepare the push gate", run_id, exc_info=True)
+                return (
+                    replace(
+                        outcome,
+                        status=RunStatus.FAILED if succeeded else outcome.status,
+                        exit_reason="workspace_error",
+                        error={
+                            "code": "workspace_error",
+                            "message": "The push gate could not run, so nothing was merged",
+                        },
+                    ),
+                    {**ws.ref(), "error": "workspace_error"},
+                )
         try:
             fin = project_workspaces.finalize(
                 ws,
@@ -447,6 +475,7 @@ class RunExecutor:
                 agent_id=request.agent.id,
                 agent_name=request.agent.name,
                 task_title=request.task.title,
+                scan=scan,
             )
         except Exception:  # finalize is meant not to raise; a run must still end
             logger.error("run %s: closing the project workspace raised", run_id, exc_info=True)
@@ -460,6 +489,13 @@ class RunExecutor:
                 error={"code": fin.error_code, "message": fin.error_message or fin.error_code},
             )
         self._audit_workspace(run_id, request, ws, fin)
+        if fin.merged and ws.spec is not None and ws.spec.repository_id:
+            try:  # M14: a merge into the work branch makes the next sync (and PR) due
+                repo_sync.note_run_merged(
+                    self.ctx.session_factory, ws.spec.repository_id, self.ctx.clock()
+                )
+            except Exception:
+                logger.warning("run %s: could not poke the repository sync", run_id, exc_info=True)
         return outcome, fin.ref
 
     def _audit_workspace(
@@ -482,7 +518,14 @@ class RunExecutor:
                     "merge_commit": fin.ref.get("merge_commit"),
                     "conflict_files": fin.ref.get("conflict_files"),
                 }
-                if fin.merged:
+                if fin.ref.get("blocked"):
+                    action, summary = (
+                        "workspace.blocked",
+                        "Run not merged: the push gate found content that must not leave "
+                        "the machine",
+                    )
+                    data["blocked"] = fin.ref.get("blocked")
+                elif fin.merged:
                     action, summary = "workspace.merged", "Run merged into the project repository"
                 elif fin.conflict:
                     action, summary = (

@@ -164,6 +164,7 @@ class FakeGitHub:
         self.orgs: dict[str, set[str]] = {}  # org login -> member logins
         self.calls: list[Call] = []
         self.log_calls: list[Call] = []
+        self.commit_dates: dict[str, str] = {}  # sha -> committer date override (stale branches)
         self.rate_limit = 5000
         self.rate_remaining = 5000
         self.rate_reset = int(time.time()) + 3600
@@ -763,6 +764,7 @@ class FakeGitHub:
         add("DELETE", R + r"/git/refs/heads/(?P<b>.+)", self._r_ref_delete)
         add("GET", R + r"/contents/(?P<path>.+)", self._r_contents)
         add("GET", R + r"/commits", self._r_commits)
+        add("GET", R + r"/commits/(?P<sha>[0-9a-f]{40})", self._r_commit)
         add("GET", R + r"/commits/(?P<ref>[^/]+)/check-runs", self._r_check_runs)
         add("GET", R + r"/commits/(?P<ref>[^/]+)/status", self._r_status)
         add("GET", R + r"/actions/runs", self._r_runs)
@@ -772,6 +774,7 @@ class FakeGitHub:
         add("GET", R + r"/labels", self._r_labels)
         add("GET", R + r"/issues", self._r_issues)
         add("POST", R + r"/issues", self._r_issue_create)
+        add("GET", R + r"/issues/(?P<n>\d+)", self._r_issue_get)
         add("PATCH", R + r"/issues/(?P<n>\d+)", self._r_issue_update)
         add("GET", R + r"/issues/(?P<n>\d+)/comments", self._r_issue_comments)
         add("POST", R + r"/issues/(?P<n>\d+)/comments", self._r_issue_comment_create)
@@ -944,6 +947,23 @@ class FakeGitHub:
                 repo.full_name, repo.default_branch, n=int(q.get("per_page", 30))
             )
         ]
+
+    def _r_commit(self, info, m, q, body):
+        """One commit with its committer date (the stale-branch cleanup dates branches by it)."""
+        repo = self._repo_for(info, m)
+        self._need(info, "contents", "read", repo)
+        sha = m.group("sha")
+        if self.remote is None or not self.remote.commit_exists(repo.full_name, sha):
+            raise GhError(404, "No commit found")
+        stamp = self.commit_dates.get(sha) or self.remote.commit_date(repo.full_name, sha)
+        return {
+            "sha": sha,
+            "commit": {
+                "message": "",
+                "committer": {"date": stamp},
+                "author": {"date": stamp},
+            },
+        }
 
     # -- CI
 
@@ -1144,6 +1164,14 @@ class FakeGitHub:
             repo, body["title"], body.get("body", ""), info.login, "OWNER", body.get("labels", [])
         )
         return 201, self._issue_json(repo, item["number"])
+
+    def _r_issue_get(self, info, m, q, body):
+        repo = self._repo_for(info, m)
+        self._need(info, "issues", "read", repo)
+        number = int(m.group("n"))
+        if number not in repo.issues:
+            raise GhError(404, "Not Found")
+        return self._issue_json(repo, number)
 
     def _r_issue_update(self, info, m, q, body):
         repo = self._repo_for(info, m)

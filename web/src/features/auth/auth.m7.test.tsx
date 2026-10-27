@@ -47,10 +47,10 @@ describe('AuthGate on an M7 backend', () => {
     renderGate()
     // M10: the onboarding opens on a welcome screen; the account form is the second of six steps.
     expect(await screen.findByRole('heading', { name: 'A company that runs itself.' })).toBeInTheDocument()
-    expect(screen.getByText(/Step 1 of 5/)).toBeInTheDocument()
+    expect(screen.getByText(/Step 1 of 6/)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /Start/ }))
     expect(await screen.findByRole('heading', { name: 'Create your account' })).toBeInTheDocument()
-    expect(screen.getByText(/Step 2 of 5/)).toBeInTheDocument()
+    expect(screen.getByText(/Step 2 of 6/)).toBeInTheDocument()
   })
 
   it('keeps the owner-token flow on a backend without /auth/session', async () => {
@@ -287,8 +287,11 @@ describe('setup wizard', () => {
     await screen.findByRole('heading', { name: 'Connect your AI' })
   }
 
+  /** The AI step, then the repository step answered with "No GitHub for now" (this backend has no repositories). */
   async function throughAi() {
     await userEvent.click(screen.getByRole('button', { name: 'Save and continue' }))
+    await screen.findByRole('heading', { name: 'Where should your code live?' })
+    await userEvent.click(screen.getByRole('button', { name: /No GitHub for now/ }))
     await screen.findByRole('heading', { name: 'Meet your team' })
   }
 
@@ -318,11 +321,18 @@ describe('setup wizard', () => {
     const created = api.calls.find((c) => c.method === 'POST' && c.path === '/companies')!
     expect(created.body).toMatchObject({ name: 'Acme', founder: { name: 'Atlas' } })
     expect(typeof (created.body as { timezone: string }).timezone).toBe('string')
-    // The server refuses notes until the AI works, so the idea waits until the AI step is saved.
+    // The server refuses notes until the AI works, and the repository is chosen first, so the idea waits for both.
     expect(api.calls.some((c) => c.path === '/companies/c9/notes')).toBe(false)
     expect(api.calls.some((c) => c.method === 'PATCH')).toBe(false)
 
-    await throughAi()
+    await userEvent.click(screen.getByRole('button', { name: 'Save and continue' }))
+    expect(await screen.findByRole('heading', { name: 'Where should your code live?' })).toBeInTheDocument()
+    expect(api.calls.some((c) => c.path === '/companies/c9/notes')).toBe(false)
+    // This backend has no repositories: the GitHub choices are disabled and say so, "No GitHub" is not.
+    expect(await screen.findByText(/GitHub projects are not built into this server/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Create a new repository/ })).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: /No GitHub for now/ }))
+    await screen.findByRole('heading', { name: 'Meet your team' })
     expect(api.calls.find((c) => c.path === '/companies/c9/notes')!.body).toEqual({ body: 'A newsletter about research papers' })
     expect(api.calls.some((c) => c.method === 'PATCH')).toBe(false)
     await userEvent.click(screen.getByRole('button', { name: /Launch/ }))

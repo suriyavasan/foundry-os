@@ -1,12 +1,14 @@
-import { Plus } from 'lucide-react'
-import { useMemo } from 'react'
-import { errorMessage, isNotDeployed, useAllTasks, useCompany, useGoals, useProjects, useUpdateGoal } from '@/api'
+import { GitBranch, Plus } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { errorMessage, isNotDeployed, useAllTasks, useCompany, useGoals, useProjects, useRepoAvailability, useRepositories, useUpdateGoal } from '@/api'
 import type { Goal, GoalStatus, Project } from '@/api/types'
 import { Button, Card, CardBody, CardHeader, EmptyState, ErrorState, LoadingState, NotAvailable, ProgressBar, Select, useToast } from '@/components/ui'
 import { projectProgress } from '@/features/canvas/widgets/GoalsWidget'
 import { useCanvas } from '@/features/canvas/CanvasContext'
-import { useAgentMap } from '@/features/canvas/hooks'
+import { canEditPolicy, useAgentMap, useCompanyRole } from '@/features/canvas/hooks'
 import { PanelFrame } from '@/features/canvas/PanelFrame'
+import { ConnectRepoDialog } from '@/features/repos/ConnectRepoDialog'
+import { RepoStatusBadge } from '@/features/repos/RepoBadges'
 import { AgentChip } from '@/features/shared/AgentChip'
 import { PriorityBadge, ProjectStatusBadge } from '@/features/shared/badges'
 import { formatUsd } from '@/lib/money'
@@ -22,6 +24,12 @@ export function GoalsPanel() {
   const { map } = useAgentMap(companyId)
   const update = useUpdateGoal(companyId)
   const toast = useToast()
+  // M14: a project's repository, or the way to connect one. Hidden entirely on a backend without repositories or without git.
+  const repoAvailability = useRepoAvailability(companyId)
+  const repos = useRepositories(companyId)
+  const canConnect = canEditPolicy(useCompanyRole(companyId)) && repoAvailability.data?.available === true
+  const repoByProject = useMemo(() => new Map((repos.data ?? []).filter((r) => r.status !== 'disconnected').map((r) => [r.project_id, r])), [repos.data])
+  const [connectFor, setConnectFor] = useState<string | null>(null)
 
   const byGoal = useMemo(() => {
     const m = new Map<string | null, Project[]>()
@@ -53,6 +61,22 @@ export function GoalsPanel() {
                 <ProjectStatusBadge status={p.status} />
                 {p.budget_micros !== null && <span className="text-[12px] text-fg-3">Budget {formatUsd(p.budget_micros)}</span>}
                 <AgentChip agentId={p.lead_agent_id} agents={map} emptyLabel="No lead" />
+                {repoByProject.has(p.id) ? (
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1.5 rounded-sm border border-line px-1.5 py-0.5 text-[12px] text-fg-2 hover:bg-hover hover:text-fg"
+                    aria-label={`Open repository ${repoByProject.get(p.id)!.full_name}`}
+                    onClick={() => openPanel({ kind: 'repo', id: repoByProject.get(p.id)!.id })}
+                  >
+                    <GitBranch className="size-3" aria-hidden />
+                    {repoByProject.get(p.id)!.full_name}
+                    <RepoStatusBadge status={repoByProject.get(p.id)!.status} />
+                  </button>
+                ) : canConnect && repos.isSuccess ? (
+                  <button type="button" className="text-[12px] text-accent-fg hover:underline" onClick={() => setConnectFor(p.id)}>
+                    Connect GitHub
+                  </button>
+                ) : null}
               </div>
               {p.description && <p className="mt-1 text-[12.5px] text-fg-2">{p.description}</p>}
               <div className="mt-2 flex items-center gap-3">
@@ -158,6 +182,7 @@ export function GoalsPanel() {
           </>
         )}
       </div>
+      <ConnectRepoDialog companyId={companyId} open={connectFor !== null} onOpenChange={(o) => !o && setConnectFor(null)} projectId={connectFor} onConnected={(repo) => openPanel({ kind: 'repo', id: repo.id })} />
     </PanelFrame>
   )
 }

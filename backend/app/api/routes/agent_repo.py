@@ -17,4 +17,6 @@ router = APIRouter(prefix="/agent/v1/repo", tags=["agent-api"], dependencies=[De
 def review_pull(pull_id: str, body: PullReviewBody, rc: RunCtx, db: DbSession):
     """Record the verdict (``accept`` | ``request_changes``) of the review task assigned to you.
     A verdict only counts for the head SHA that was reviewed."""
-    return repo_reviews.record_verdict(db, rc, pull_id, body.decision, body.note)
+    return repo_reviews.record_verdict(
+        db, rc, pull_id, body.decision, body.note, head_sha=body.head_sha
+    )

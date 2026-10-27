@@ -335,6 +335,21 @@ class GitRemote:
         )
         return proc.returncode == 0
 
+    def commit_exists(self, full_name: str, sha: str) -> bool:
+        proc = run_git(
+            "cat-file", "-e", f"{sha}^{{commit}}", cwd=self.repo_path(full_name), check=False
+        )
+        return proc.returncode == 0
+
+    def commit_date(self, full_name: str, sha: str) -> str:
+        """The committer date in UTC, ISO-8601 with a trailing Z."""
+        out = run_git(
+            "show", "-s", "--format=%ct", sha, cwd=self.repo_path(full_name)
+        ).stdout.strip()
+        from datetime import UTC, datetime
+
+        return datetime.fromtimestamp(int(out), UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
     def delete_branch(self, full_name: str, branch: str) -> bool:
         proc = run_git(
             "update-ref", "-d", f"refs/heads/{branch}", cwd=self.repo_path(full_name), check=False

@@ -13,7 +13,7 @@ Payloads are deterministic dicts, so an approval binds to exactly what will happ
 * ``github.pr.merge``: ``{repo, number, head_sha, method}``
 * ``github.branch.delete``: ``{repo, branch, sha}``
 
-Step 0: contracts only; WP-B implements ``authorize``.
+
 """
 
 from __future__ import annotations
@@ -23,8 +23,16 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.orm import Session
 
+from app.core.errors import (
+    AppError,
+    ApprovalPending,
+    EmergencyStopped,
+    GuardrailDenied,
+    RateLimited,
+)
+from app.core.principal import CompanyContext, Principal, PrincipalType, Role
+from app.guardrails import engine as guard_engine
 from app.models.repository import ProjectRepository
-from app.services.repo_errors import not_built
 
 if TYPE_CHECKING:
     from app.services.repo_sync import RepoEnv
@@ -41,6 +49,11 @@ class GateDecision:
     reason: str | None = None
 
 
+def agent_ctx(agent: Any) -> CompanyContext:
+    principal = Principal(PrincipalType.AGENT, agent.id, agent.name, agent.company_id)
+    return CompanyContext(agent.company_id, principal, Role.AGENT)
+
+
 def authorize(
     db: Session,
     binding: ProjectRepository,
@@ -53,5 +66,32 @@ def authorize(
 
     The actor is ``repo_sync.actor_for(binding)``. ``ApprovalPending`` -> ``allowed=False`` with
     the approval id (the sync then keeps the exact payload until the approval is decided);
-    ``GuardrailDenied`` / ``RateLimited`` / ``EmergencyStopped`` -> ``allowed=False``."""
-    raise not_built()
+    ``GuardrailDenied`` / ``RateLimited`` / ``EmergencyStopped`` -> ``allowed=False``.
+
+    The engine commits the session (its log, rate hits and approvals are part of the answer)."""
+    from app.services import repo_sync  # local: repo_sync imports this module
+
+    try:
+        actor = repo_sync.actor_for(db, binding)
+    except AppError as exc:
+        return GateDecision(False, reason=f"no_actor: {exc.message}")
+    try:
+        guard_engine.check(
+            db,
+            agent_ctx(actor),
+            action,
+            payload,
+            env=guard_engine.GuardEnv(cipher=env.cipher),
+            now=env.now(),
+        )
+    except ApprovalPending as exc:
+        return GateDecision(
+            False, approval_id=exc.fields.get("approval_id"), reason="approval_pending"
+        )
+    except EmergencyStopped:
+        return GateDecision(False, reason="emergency_stop")
+    except RateLimited as exc:
+        return GateDecision(False, reason=f"rate_limited: {exc.message}")
+    except GuardrailDenied as exc:
+        return GateDecision(False, reason=f"guardrail_denied: {exc.message}"[:500])
+    return GateDecision(True)

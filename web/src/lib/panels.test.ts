@@ -29,6 +29,14 @@ describe('parsePanel', () => {
     expect(parsePanel(withPanel('', { kind: 'note', id: 'abc' }))).toEqual({ kind: 'note', id: 'abc' })
   })
 
+  it('parses the M14 repository panels', () => {
+    expect(parsePanel('?panel=repos')).toEqual({ kind: 'repos' })
+    expect(parsePanel('?panel=repo:r-1')).toEqual({ kind: 'repo', id: 'r-1' })
+    expect(parsePanel('?panel=repo')).toBeNull()
+    expect(parsePanel('?panel=repo:../x')).toBeNull()
+    expect(parsePanel(withPanel('', { kind: 'repo', id: 'abc' }))).toEqual({ kind: 'repo', id: 'abc' })
+  })
+
   it('reads a run id alongside a task panel only', () => {
     expect(parsePanel('?panel=task:t1&run=r1')).toEqual({ kind: 'task', id: 't1', run: 'r1' })
     expect(parsePanel('?panel=agent:a1&run=r1')).toEqual({ kind: 'agent', id: 'a1' })

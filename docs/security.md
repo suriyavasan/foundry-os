@@ -286,3 +286,72 @@ The image runs `uvicorn --proxy-headers --forwarded-allow-ips '*'`: every peer i
   `::test_a_passkey_cannot_be_added_through_a_quick_tunnel`, `::test_a_passkey_from_a_quick_tunnel_origin_is_not_strong_authentication`).
 * The `cloudflared` binary is downloaded only after confirmation and verified against the publisher's SHA-256 (M8). The quick tunnel runs with an empty
   `HOME` and its pid is registered, so a crash does not leave a second tunnel behind (T `test_public_url_announce.py::test_a_stale_registered_tunnel_is_killed_before_a_new_one_starts` kills a real stray process, but a fake tunnel program, not `cloudflared`).
+
+## 7. GitHub-backed projects (M14)
+
+What the git engine (`backend/app/services/repo_git.py`, the only module that runs network git), the
+push gate (`repo_scan.py`, `repo_gate.py`) and the sync loop (`repo_sync.py`) guarantee, and what they
+do not. Everything below was exercised against local bare repositories over smart HTTP and a fake
+GitHub API; **nothing was exercised against github.com** (see `docs/specs/m14-github-backed-projects.md`
+section 9 for the GitHub behaviours that still have to be confirmed).
+
+**Token handling.** The fine-grained token lives only in the encrypted credential vault (the M8
+connected account). It is decrypted per operation inside the control plane and handed to ONE git child
+process through its environment (`FOUNDRY_GIT_TOKEN`) and a static `GIT_ASKPASS` script
+(`<data>/run/git-askpass`, 0700, rewritten if tampered with). It is never in argv, `.git/config`, the
+remote URL (userinfo is refused), FETCH_HEAD, a credential helper, a log, an audit event, an agent's
+context or an API response. The askpass script answers only a prompt that names the expected host
+exactly (`//host'` or `@host'`), so another host, a look-alike host or another port gets nothing.
+git's stderr passes through the token mask and `secrets_scan.scrub` before it is logged or stored.
+
+**Config pinning.** Before every fetch or push `pin_config` rewrites `.git/config` and
+`.git/info/exclude` atomically from the database row and deletes `.git/info/attributes`: a planted
+`url.*.insteadOf`, `credential.helper`, `core.hooksPath`, `core.fsmonitor`, `remote.*.pushurl` or
+filter is gone before the token exists in any process. Global and system git config are never read
+(`GIT_CONFIG_GLOBAL=/dev/null`, `HOME=/nonexistent`). Network calls add `credential.helper=` (reset),
+`protocol.allow=never` + `protocol.https.allow=always`, `http.followRedirects=false`, no submodule
+recursion, `transfer.fsckObjects=true` and `core.sshCommand=/bin/false`; hooks, GPG and fsmonitor are
+disabled for every call; the environment is minimal; there is no shell; a timeout kills the whole
+process group.
+
+**No force push, no rebase, ever.** `repo_git.push` builds exactly
+`git push --porcelain origin <sha>:refs/heads/<branch>` and `assert_safe_push_argv` refuses force,
+`--force-with-lease`, delete, mirror, tags, all, prune, `+` and `:` refspecs and any destination
+outside `refs/heads/`. A test fails if any other module builds a push argv. Upstream changes come in
+as merge commits; a rewritten upstream history stops all pushes (`upstream_rewritten`) until the owner
+resets the integration branch (the old head is kept as a rescue branch). Foundry merges a pull request
+only when GitHub reports `mergeable_state` `clean` or `has_hooks` and the head equals the reviewed SHA
+(sent as `sha`), so an administrator's token cannot make Foundry bypass branch protection.
+
+**The push gate.** Every commit that would leave the machine is scanned: the ADDED lines of every
+commit (a secret added and removed in between is in the history that would be pushed), merge
+resolutions, and commit messages. Blocking findings: credential-shaped strings, the company's own
+stored secrets (including the GitHub token), internal-only memory, blocked file names (`.env`, keys,
+`credentials.json`...), protected paths (`.github/workflows/**`, `.github/actions/**`, `.gitmodules`;
+the workflow globs are lifted only by `allow_workflow_changes`), files over `max_file_bytes`, pushes
+over `max_push_bytes` or 500 commits. E-mail addresses and phone numbers are reported, never blocking.
+Findings carry kind, count and paths, never the matched text. The same scan runs before a run is
+merged into the work branch (`project_workspaces.finalize`), so a secret never reaches the integration
+branch; the run fails with `secret_detected` / `protected_path` / `workspace_too_large` (permanent) and
+its branch is deleted, not kept. Commits made by people on GitHub are excluded from the scan. Very
+long lines are scanned in overlapping windows, and a push over the size limit is refused without
+reading all of it. Limits of the scan: it is pattern-based (an unknown secret shape that is not a
+stored credential passes), binary files are checked by name and size only, and it cannot see what an
+agent sends to a model provider.
+
+**System GitHub operations are guardrail actions.** Push, PR open/update, merge and (WP-A) branch
+delete are `kind="system"` actions checked with `guardrails.engine.check` under the project lead's
+context (else the Co-founder's): the emergency stop, human deny/approval rules, rate limits and the
+guardrail log all apply, and an approval binds to the exact payload (for a merge: repository, number,
+head SHA, method). While the emergency stop is on, a sync makes no network call at all; while the
+company is paused it only fetches and integrates locally.
+
+**Residual risk (documented, not removed).** The token is in the environment of the short-lived git
+child. Agents run as the same operating-system user: a process that can execute arbitrary code (the M10
+CLIs as configured cannot; the company agent with a local terminal could) could read the child's
+environment (`/proc/<pid>/environ` on Linux) during that window. Mitigations: a fine-grained token
+limited to the bound repositories, the push gate, no shell for the CLIs, and the token never being
+reachable from agent-visible files. Other limits: LFS is not supported; GitHub content (issues,
+comments, CI logs) is untrusted input and is handed to agents only in `<untrusted>` blocks; a stolen
+token is as powerful as its permissions, so rotate it from Integrations if in doubt (a revoked token
+puts the repository in `auth_failed`, local work continues and nothing is lost).

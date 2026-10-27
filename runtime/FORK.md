@@ -22,7 +22,7 @@ Rules for this tree: upstream files are modified **only** when unavoidable; each
 |---|---|
 | `company_agent/` | The launcher: `run.py` (entrypoint, stdin spec -> JSONL stdout, signals, limits), `spec.py` (run spec validation), `protocol.py` (event writer: seq, single terminal, redaction), `runner.py` (builds `AIAgent`, callbacks -> events, time/cancel/finish handling), `prompts.py` (role prompt), `home.py` (HERMES_HOME, SOUL.md, enforced `config.yaml`, scrubbed environment), `toolpolicy.py` (toolset mapping/removal), `approvals.py` (deny-all approval callback), `context.py` (tool client config), `guard.py` (M6: tool registry check, untrusted-content tagging, injection flagging). |
 | `company_agent/tests/` | pytest suite incl. a deterministic fake OpenAI-compatible model server and a stub agent API (counts in the milestone report). |
-| `tools/company_tools.py` | The `company` toolset (36 tools: work tools, M4 colleague/hiring/HR tools, M5 autonomy tools, M6 `company_decide_peer_review` and `company_provider_action`, M10 `company_post_reflection` / `company_reply_reflection` / `company_revise_reflection`, M12 `company_plan_project`) calling the Company OS agent API. Auto-discovered by Hermes' tool registry. |
+| `tools/company_tools.py` | The `company` toolset (37 tools: work tools, M4 colleague/hiring/HR tools, M5 autonomy tools, M6 `company_decide_peer_review` and `company_provider_action`, M10 `company_post_reflection` / `company_reply_reflection` / `company_revise_reflection`, M12 `company_plan_project`, M14 `company_review_pull_request`) calling the Company OS agent API. Auto-discovered by Hermes' tool registry. |
 | `company_agent/mcp_server.py` | M10: a hand-written stdio MCP server (JSON-RPC, no new dependency) that exposes a subset of the company tools to coding CLIs (Claude Code, Codex, OpenCode). Config from the environment; the run token is read from a 0600 file. Tests: `company_agent/tests/test_mcp_server.py`. |
 | `scripts/check_imports.py` | Import check for the pruned tree (run after any prune / upstream sync). |
 | `scripts/scan_dropped_imports.py` | Static list of imports of dropped modules still present in kept code. |
@@ -188,3 +188,17 @@ providers (no keys), the HR/hiring tools against a real model (they are covered 
   run (including the new workspace section) is in the task prompt or the first user message, so the stable prefix and the tools
   array are byte-identical across runs of the same agent and the Anthropic early breakpoint can hit across runs.
 * Tests: `test_company_tools.py` (`company_plan_project`), `test_policy.py` (M12 prompts, stable prefix), `test_spec.py` (`workspace`).
+
+## Milestone 14 additions (company layer only, no upstream file touched)
+
+* `tools/company_tools.py`: `company_review_pull_request` (37 company tools in total): the assignee of a pull request review
+  task records its one verdict (`accept` | `request_changes`, a note, an optional `head_sha`) with `POST /repo/pulls/{pull_id}/review`.
+  Decision words models use (`approve`, `LGTM`, `reject` ...) are normalised; `request_changes` needs a note. A recorded verdict
+  marks the task completed (the control plane completes the review task itself); a `pull_request_changed` error carries a hint
+  not to retry. `company_provider_action`'s description now lists the bound-repository GitHub actions (read, comment, create/update
+  issue, draft release) instead of `github.pr.open`: pushes, pull requests and merges are made by the control plane, never by an agent.
+* `company_agent/spec.py`: the tool name (`COMPANY_TOOL_NAMES`; it must equal the keys of `backend/app/guardrails/tools.json`
+  `company_tools`, which `test_guard_registry.py` checks). `company_agent/prompts.py`: the Co-founder playbook says to link an
+  existing project that already fits the idea (the Founder created it during setup, shown with its repository in the state) to the
+  new goal instead of creating a duplicate.
+* Tests: `test_company_tools.py` (the new tool, the provider-action description), `stub_agent_api.py` (the review route).

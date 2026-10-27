@@ -33,32 +33,41 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
+import re
 import shutil
 import stat
 import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.runtimes.base import ArtifactRef
-from app.services import secrets_scan
+from app.services import repo_git, secrets_scan
+from app.services.repo_git import (  # noqa: F401  (re-exported: M12 code and tests use these names)
+    COMMITTER_EMAIL,
+    COMMITTER_NAME,
+    EXCLUDES,
+    GIT_TIMEOUT_SECONDS,
+    GitError,
+)
 
 try:  # POSIX only; without it the project repository is reported as unavailable
     import fcntl
 except ImportError:  # pragma: no cover - non-POSIX
     fcntl = None  # type: ignore[assignment]
 
+if TYPE_CHECKING:
+    from app.services.repo_scan import ScanContext
+    from app.services.repo_sync import WorkspaceSpec
+
 logger = logging.getLogger("company_os.project_workspaces")
 
-GIT_TIMEOUT_SECONDS = 60
 LOCK_TIMEOUT_SECONDS = 120
 MAX_STAGED_BYTES = 50 * 1024 * 1024
 MAX_CHANGESET_BYTES = 200 * 1024
 MAX_WORKSPACE_FILES = 60
 MAIN_BRANCH = "main"
-COMMITTER_NAME = "Foundry AI OS"
-COMMITTER_EMAIL = "noreply@foundry.invalid"
 
 KIND_PROJECT = "project"  # a worktree on branch run/<run_id>
 KIND_REVIEW = "review"  # a detached, read-only worktree; changes are discarded
@@ -67,42 +76,6 @@ KIND_RUN_DIR = "run_dir"  # a plain per-run directory
 ERR_MERGE_CONFLICT = "merge_conflict"  # exactly this string: WP2's retry policy may classify it
 ERR_TOO_LARGE = "workspace_too_large"
 ERR_WORKSPACE = "workspace_error"
-
-# Never committed: dependency trees, caches and the CLIs' own configuration directories.
-EXCLUDES = (
-    "node_modules/",
-    ".venv/",
-    "venv/",
-    "__pycache__/",
-    "*.pyc",
-    ".DS_Store",
-    ".claude/",
-    ".codex/",
-    ".opencode/",
-    ".agents/",
-    ".gemini/",
-)
-
-_HARDENING = (
-    "-c",
-    "core.hooksPath=/dev/null",
-    "-c",
-    "commit.gpgsign=false",
-    "-c",
-    "core.fsmonitor=false",
-    "-c",
-    "gc.auto=0",
-    "-c",
-    "maintenance.auto=false",
-)
-
-
-class GitError(Exception):
-    """A git call failed. The message is safe to show (no secrets, no run output)."""
-
-    def __init__(self, message: str, returncode: int | None = None) -> None:
-        super().__init__(message)
-        self.returncode = returncode
 
 
 def git_binary() -> str | None:
@@ -126,22 +99,7 @@ def status() -> dict[str, Any]:
 
 
 def _env(identity: tuple[str, str] | None = None) -> dict[str, str]:
-    env = {
-        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-        "HOME": "/nonexistent",
-        "XDG_CONFIG_HOME": "/nonexistent",
-        "LC_ALL": "C",
-        "GIT_CONFIG_NOSYSTEM": "1",
-        "GIT_CONFIG_GLOBAL": "/dev/null",
-        "GIT_ATTR_NOSYSTEM": "1",
-        "GIT_TERMINAL_PROMPT": "0",
-        "GIT_COMMITTER_NAME": COMMITTER_NAME,
-        "GIT_COMMITTER_EMAIL": COMMITTER_EMAIL,
-    }
-    name, email = identity or (COMMITTER_NAME, COMMITTER_EMAIL)
-    env["GIT_AUTHOR_NAME"] = name
-    env["GIT_AUTHOR_EMAIL"] = email
-    return env
+    return repo_git.base_env(identity)
 
 
 def _git(
@@ -156,30 +114,17 @@ def _git(
     binary = git_binary()
     if binary is None:
         raise GitError("git is not installed")
-    argv = [binary, *_HARDENING]
-    if git_dir is not None:
-        argv += ["--git-dir", str(git_dir)]
-    if work_tree is not None:
-        argv += ["--work-tree", str(work_tree)]
-    argv += args
-    try:
-        proc = subprocess.run(
-            argv,
-            cwd=cwd,
-            env=_env(identity),
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            timeout=GIT_TIMEOUT_SECONDS,
-            shell=False,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise GitError(f"git {args[0]} timed out after {GIT_TIMEOUT_SECONDS}s") from exc
-    except OSError as exc:
-        raise GitError(f"cannot run git ({type(exc).__name__})") from exc
-    if check and proc.returncode != 0:
-        detail = " ".join(proc.stderr.decode("utf-8", "replace").split())[:300]
-        raise GitError(f"git {args[0]} failed: {detail}", proc.returncode)
-    return proc
+    return repo_git.run_git(
+        args,
+        cwd=cwd,
+        git_dir=git_dir,
+        work_tree=work_tree,
+        identity=identity,
+        check=check,
+        timeout=GIT_TIMEOUT_SECONDS,
+        text=False,
+        binary=binary,
+    )
 
 
 def _out(proc: subprocess.CompletedProcess[bytes]) -> str:
@@ -227,6 +172,9 @@ def _project_lock(repo: Path):
     return _file_lock(repo / ".git" / "foundry.lock")
 
 
+project_lock = _project_lock  # public name for repo_git / repo_sync
+
+
 def _has_main(repo: Path) -> bool:
     proc = _git(["rev-parse", "--verify", "-q", f"refs/heads/{MAIN_BRANCH}"], cwd=repo, check=False)
     return proc.returncode == 0
@@ -269,6 +217,9 @@ class Workspace:
     files: list[str] = field(default_factory=list)
     available: bool = True
     note: str | None = None  # why a project run fell back to a per-run directory
+    integration: str = MAIN_BRANCH  # the branch a successful run is merged into (M14: work branch)
+    spec: WorkspaceSpec | None = None  # M14: how repo_sync asked for this workspace
+    conflict_files: list[str] = field(default_factory=list)  # upstream_merge: files to resolve
 
     def ref(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -311,6 +262,14 @@ def _list_files(repo: Path, ref: str) -> list[str]:
     return names[:MAX_WORKSPACE_FILES]
 
 
+def _existing_repo(root: Path, company_id: str, project_id: str) -> Path:
+    """A remote-backed project's clone (never created here: ``repo_sync`` clones it)."""
+    repo = main_repo(root, company_id, project_id)
+    if not (repo / ".git").is_dir():
+        raise GitError("the project's repository clone is not ready")
+    return repo
+
+
 def prepare(
     root: Path,
     *,
@@ -318,9 +277,14 @@ def prepare(
     run_id: str,
     task_kind: str,
     project_id: str | None,
+    spec: WorkspaceSpec | None = None,
 ) -> Workspace:
     """The directory a run works in. Never raises for a git problem: the run falls back to a
-    per-run directory and the result says so (``available`` False, ``note``)."""
+    per-run directory and the result says so (``available`` False, ``note``).
+
+    ``spec`` (M14, from ``repo_sync.workspace_spec_for``) names the integration branch of a
+    GitHub-backed project and the special workspace kinds (read-only review of a commit, an
+    upstream merge in progress); without it everything is M12: branch ``main``."""
     path = Path(root) / _safe_component(company_id) / _safe_component(run_id)
     wants_repo = project_id is not None and task_kind in ("work", "review")
     if not wants_repo:
@@ -329,23 +293,59 @@ def prepare(
     state = status()
     if not state["available"]:
         return _scratch(path, run_id, available=False, note=state["reason"])
-    read_only = task_kind == "review"
+    branch_name = spec.branch if spec is not None else MAIN_BRANCH
+    remote_backed = spec is not None and spec.repository_id is not None
+    read_only = task_kind == "review" or (
+        spec is not None and (spec.read_only or spec.kind == KIND_REVIEW)
+    )
+    upstream = spec is not None and spec.kind == "upstream_merge" and not read_only
     try:
-        repo = ensure_repo(Path(root), company_id, project_id)
+        if remote_backed:
+            repo = _existing_repo(Path(root), company_id, project_id)
+        else:
+            repo = ensure_repo(Path(root), company_id, project_id)
         branch = f"run/{run_id}"
         path.parent.mkdir(parents=True, exist_ok=True)
+        conflicts: list[str] = []
         with _project_lock(repo):
             _git(["worktree", "prune"], cwd=repo, check=False)
             if path.exists():  # leftover of a crashed earlier attempt with this run id
                 shutil.rmtree(path, ignore_errors=True)
             _git(["branch", "-D", branch], cwd=repo, check=False)
-            base = _out(_git(["rev-parse", f"refs/heads/{MAIN_BRANCH}"], cwd=repo))
+            if (
+                _git(
+                    ["rev-parse", "--verify", "-q", f"refs/heads/{branch_name}"],
+                    cwd=repo,
+                    check=False,
+                ).returncode
+                != 0
+            ):
+                raise GitError(f"the project branch {branch_name} does not exist")
+            start = spec.ref if spec is not None and spec.ref else f"refs/heads/{branch_name}"
+            base = _out(_git(["rev-parse", f"{start}^{{commit}}"], cwd=repo))
             if read_only:
-                _git(["worktree", "add", "-q", "--detach", str(path), MAIN_BRANCH], cwd=repo)
+                _git(["worktree", "add", "-q", "--detach", str(path), base], cwd=repo)
             else:
-                _git(["worktree", "add", "-q", "-b", branch, str(path), MAIN_BRANCH], cwd=repo)
+                _git(["worktree", "add", "-q", "-b", branch, str(path), base], cwd=repo)
             gitdir = Path(_out(_git(["rev-parse", "--absolute-git-dir"], cwd=path)))
-            files = _list_files(repo, MAIN_BRANCH)
+            if upstream:
+                assert spec is not None and spec.upstream_sha
+                _git(
+                    ["merge", "--no-ff", "--no-commit", spec.upstream_sha],
+                    cwd=path,
+                    git_dir=gitdir,
+                    work_tree=path,
+                    check=False,
+                )
+                unmerged = _git(
+                    ["diff", "--name-only", "-z", "--diff-filter=U"],
+                    cwd=path,
+                    git_dir=gitdir,
+                    work_tree=path,
+                    check=False,
+                )
+                conflicts = [n for n in unmerged.stdout.decode("utf-8", "replace").split("\0") if n]
+            files = _list_files(repo, base)
         if read_only:
             _make_read_only(path)
         return Workspace(
@@ -358,6 +358,9 @@ def prepare(
             branch=None if read_only else branch,
             base=base,
             files=files,
+            integration=branch_name,
+            spec=spec,
+            conflict_files=conflicts,
         )
     except (GitError, OSError, ValueError) as exc:
         logger.warning("project repository unavailable for run %s: %s", run_id, exc)
@@ -514,6 +517,9 @@ def _merge(ws: Workspace, agent_name: str, task_title: str) -> tuple[str | None,
             _git(["merge", "--abort"], cwd=repo, check=False)
             _git(["reset", "-q", "--hard"], cwd=repo, check=False)
             _git(["clean", "-fdq"], cwd=repo, check=False)
+        current = _out(_git(["symbolic-ref", "-q", "--short", "HEAD"], cwd=repo, check=False))
+        if current != ws.integration:
+            _git(["checkout", "-q", "-f", ws.integration], cwd=repo)
         message = f"Merge {ws.branch}: {task_title[:120]}\n\nBy {agent_name}."
         proc = _git(
             ["merge", "--no-ff", "--no-edit", "-m", message, ws.branch], cwd=repo, check=False
@@ -530,6 +536,77 @@ def _merge(ws: Workspace, agent_name: str, task_title: str) -> tuple[str | None,
         return None, files
 
 
+_CONFLICT_MARKER = re.compile(r"^(<{7}|={7}|>{7})( |$)", re.MULTILINE)
+ERR_SECRET = "secret_detected"
+ERR_PROTECTED = "protected_path"
+ERR_UNRESOLVED = "merge_conflict_unresolved"
+
+
+def _unresolved_files(ws: Workspace) -> list[str]:
+    """Files of an upstream merge that still carry conflict markers."""
+    bad: list[str] = []
+    for name in ws.conflict_files:
+        target = (ws.path / name).resolve()
+        if ws.path.resolve() not in target.parents:
+            continue
+        try:
+            text = target.read_text(errors="replace")
+        except OSError:
+            continue
+        if _CONFLICT_MARKER.search(text):
+            bad.append(name)
+    return bad
+
+
+def _blocked_by_gate(
+    ws: Workspace, commit: str, scan: ScanContext | None
+) -> tuple[str, str, list[dict[str, Any]]] | None:
+    """Run the push gate over the run's commit before it can reach the integration branch of a
+    remote-backed project. Returns (error code, message, findings) or None. The message names
+    kinds and paths, never the matched text."""
+    if (
+        scan is None
+        or ws.spec is None
+        or not ws.spec.scan_secrets
+        or not ws.base
+        or ws.repo is None
+    ):
+        return None
+    from app.services import repo_scan  # local: repo_scan imports repo_git, not this module
+
+    findings = repo_scan.blocking(
+        repo_scan.scan_commit_for_merge(
+            ws.repo,
+            ws.base,
+            commit,
+            policy=scan.policy,
+            own_secrets=scan.own_secrets,
+            internal=scan.internal,
+            exclude=scan.exclude(ws.spec),
+        )
+    )
+    if not findings:
+        return None
+    kinds = {f.kind for f in findings}
+    if kinds & {"secret", "own_token", "internal_memory", "blocked_file"}:
+        code = ERR_SECRET
+    elif "protected_path" in kinds:
+        code = ERR_PROTECTED
+    else:
+        code = ERR_TOO_LARGE
+    parts = []
+    for f in findings:
+        where = f" ({', '.join(f.paths[:5])})" if f.paths else ""
+        parts.append(f"{f.description}{where}")
+    message = (
+        "The run's changes were NOT merged because they must not leave the machine: "
+        + "; ".join(parts)
+        + ". Remove them from the project files (a secret must be read from the environment, "
+        "never written to a file) and try again."
+    )
+    return code, message[:900], [f.as_dict() for f in findings]
+
+
 def finalize(
     ws: Workspace,
     *,
@@ -537,17 +614,34 @@ def finalize(
     agent_id: str,
     agent_name: str,
     task_title: str,
+    scan: ScanContext | None = None,
 ) -> Finalized:
     """Commit what the run left, merge it on success, produce the "Changes" artifact and remove
     the worktree. Never raises. A *successful* run that could not be merged comes back with
-    ``error_code`` set (``merge_conflict``, ``workspace_too_large``, ``workspace_error``)."""
+    ``error_code`` set (``merge_conflict``, ``workspace_too_large``, ``workspace_error``, and for
+    GitHub-backed projects ``secret_detected``, ``protected_path``,
+    ``merge_conflict_unresolved``)."""
     ref = ws.ref()
     if ws.kind == KIND_RUN_DIR or ws.repo is None or ws.gitdir is None:
         return Finalized(ref)
     if ws.kind == KIND_REVIEW:
         return _finalize_review(ws, ref)
     out = Finalized(ref)
+    upstream = ws.spec is not None and ws.spec.kind == "upstream_merge"
     try:
+        if upstream and succeeded:
+            unresolved = _unresolved_files(ws)
+            if unresolved:
+                ref["error"] = ERR_UNRESOLVED
+                out.error_code = ERR_UNRESOLVED
+                out.error_message = (
+                    "Conflict markers are still present in: "
+                    + ", ".join(unresolved[:10])
+                    + ". Resolve every conflict (remove the <<<<<<<, ======= and >>>>>>> lines) "
+                    "and finish again."
+                )
+                _finish_failed(ws)
+                return out
         _sanitize(ws.path)
         _worktree_git(ws, ["add", "-A"])
         size = _staged_bytes(ws)
@@ -561,7 +655,11 @@ def finalize(
             )
             _finish_failed(ws)
             return out
-        has_changes = (
+        merging = upstream and (
+            _worktree_git(ws, ["rev-parse", "-q", "--verify", "MERGE_HEAD"], check=False).returncode
+            == 0
+        )
+        has_changes = merging or (
             _worktree_git(ws, ["diff", "--cached", "--quiet"], check=False).returncode == 1
         )
         if has_changes:
@@ -571,6 +669,24 @@ def finalize(
         commit = _out(_worktree_git(ws, ["rev-parse", "HEAD"]))
         ref["commit"] = commit
         out.changed = has_changes
+        if (
+            upstream
+            and merging
+            and ws.spec is not None
+            and ws.spec.upstream_sha
+            and not repo_git.is_ancestor(ws.repo, ws.spec.upstream_sha, commit)
+        ):
+            raise GitError("the upstream merge was not completed")
+        if has_changes:
+            blocked = _blocked_by_gate(ws, commit, scan)
+            if blocked is not None:
+                code, message, findings = blocked
+                ref["error"] = code
+                ref["blocked"] = findings
+                out.error_code = code if succeeded else None
+                out.error_message = message
+                _finish_failed(ws)  # the branch is deleted, not kept: it holds the secret
+                return out
         merged = conflict = False
         if has_changes and succeeded:
             merge_commit, files = _merge(ws, agent_name, task_title)
