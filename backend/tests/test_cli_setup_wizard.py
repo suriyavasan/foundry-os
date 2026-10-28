@@ -26,6 +26,7 @@ from tests.accounts_helpers import PASSWORD, browser, do_setup
 from tests.helpers import api
 from tests.m10_helpers import (
     CODEX_OK,
+    CURSOR_OK,
     install_fake_cli,
     make_ready,
     register_cli_adapters,
@@ -100,7 +101,9 @@ def calls(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Calls:
     monkeypatch.setattr(headless, "DOCKERENV", tmp_path / "no-dockerenv")
     monkeypatch.setattr(headless, "is_headless", lambda *a, **k: True)
     monkeypatch.setattr(onboard, "sleep", lambda s: None)
-    monkeypatch.setattr(onboard, "run_interactive", lambda argv: rec.logins.append(list(argv)) or 0)
+    monkeypatch.setattr(
+        onboard, "run_interactive", lambda argv, env=None: rec.logins.append(list(argv)) or 0
+    )
     return rec
 
 
@@ -180,11 +183,11 @@ def test_full_interactive_setup_creates_everything(app, wiz, calls, cfg_dir):
             "Acme Labs",  # company
             IDEA,
             "",  # timezone: this machine's
-            "1",  # OpenRouter
+            "2",  # OpenRouter (1 is Your Claude plan)
             KEY,  # API key (hidden)
             MODEL,  # model
             "n",  # pick from the provider's list? no
-            "1",  # work mode: API only
+            "n",  # add another AI? no
             "3",  # GitHub: no repository
             "y",  # download and open the tunnel
         ]
@@ -210,9 +213,11 @@ def test_full_interactive_setup_creates_everything(app, wiz, calls, cfg_dir):
     assert company["name"] == "Acme Labs"
     notes = admin(app).get(api(company["id"], "/notes")).json()["items"]
     assert [n["body"] for n in notes] == [IDEA]
-    ai = admin(app).get(api(company["id"], "/ai-setup")).json()
-    assert ai["ready"] is True and ai["work_mode"] == "api" and ai["management"]["model"] == MODEL
-    assert ai["management"]["kind"] == "openrouter"
+    ai = admin(app).get(api(company["id"], "/ai-stack")).json()
+    assert ai["ready"] is True and [(i["option"], i["model"]) for i in ai["items"]] == [
+        ("openrouter", MODEL)
+    ]
+    assert ai["items"][0]["use_for"] == "everything" and ai["items"][0]["share"] == 4
     providers = admin(app).get(api(company["id"], "/model-providers")).json()["items"]
     assert [(p["name"], p["enabled"]) for p in providers] == [("OpenRouter", True)]
     creds = admin(app).get(api(company["id"], "/credentials")).json()["items"]
@@ -314,16 +319,12 @@ def test_non_interactive_run_keeps_secrets_out_of_argv_output_and_audit(app, wiz
     assert summary["local_url"] == "http://127.0.0.1:8700"
     assert summary["remote_access"] and summary["headless"] is True
     assert summary["token_file"].endswith("token")
-    assert summary["ai"] == {
-        "ready": True,
-        "provider": "OpenAI-compatible",
-        "kind": "openai_compatible",
-        "model": "big-model",
-    }
-    assert summary["work"]["mode"] == "api"
+    assert summary["ai"]["ready"] is True and summary["ai"]["model"] == "big-model"
+    assert [c["option"] for c in summary["ai"]["connections"]] == ["openai_compatible"]
+    assert "work" not in summary
     assert summary["steps"] == {
         "service": "already_done", "account": "done", "2fa": "skipped", "company": "done",
-        "ai": "done", "work": "done", "repo": "skipped", "public-url": "done", "idea": "note",
+        "ai": "done", "repo": "skipped", "public-url": "done", "idea": "note",
     }  # fmt: skip
     # stdout is exactly one JSON document; progress went to stderr
     assert r.out.lstrip().startswith("{") and "Created the owner account" in r.err
@@ -347,7 +348,7 @@ def test_a_rerun_skips_what_is_done(app, wiz, calls):
     r = wiz("setup", "--non-interactive", "--no-service", "--json")
     s = r.json()
     assert s["steps"]["account"] == "already_done" and s["steps"]["company"] == "already_done"
-    assert s["steps"]["ai"] == "already_done" and s["steps"]["work"] == "already_done"
+    assert s["steps"]["ai"] == "already_done" and "work" not in s["steps"]
     assert "Already done" in r.err
     # nothing was created twice
     assert len(companies(app)) == 1
@@ -484,12 +485,13 @@ def test_a_failed_provider_test_loops_and_the_bad_provider_ends_disabled(
         "setup", "--only", "ai",
         input="\n".join(
             [
-                "1",  # OpenRouter
+                "2",  # OpenRouter
                 BAD_KEY, MODEL,
                 "o",  # the key was rejected: use another provider
                 "4",  # OpenAI-compatible
                 "https://llm.example.com/v1", KEY, "big-model",
                 "n",  # no model list
+                "n",  # add another AI? no
             ]
         ) + "\n",
     )  # fmt: skip
@@ -499,8 +501,8 @@ def test_a_failed_provider_test_loops_and_the_bad_provider_ends_disabled(
     providers = {p["name"]: p for p in admin(app).get(api(cid, "/model-providers")).json()["items"]}
     assert providers["OpenRouter"]["enabled"] is False
     assert providers["OpenAI-compatible"]["enabled"] is True
-    ai = admin(app).get(api(cid, "/ai-setup")).json()
-    assert ai["ready"] is True and ai["management"]["provider_name"] == "OpenAI-compatible"
+    ai = admin(app).get(api(cid, "/ai-stack")).json()
+    assert ai["ready"] is True and [i["label"] for i in ai["items"]] == ["OpenAI-compatible"]
     for secret in (BAD_KEY, KEY):
         assert secret not in out and secret not in everything_written(app)
 
@@ -509,7 +511,7 @@ def test_retrying_the_same_provider_reuses_it_and_replaces_the_key(app, wiz, cal
     b, _, cid = prepared(app, monkeypatch)
     r = wiz(
         "setup", "--only", "ai",
-        input="\n".join(["1", BAD_KEY, MODEL, "r", KEY, MODEL, "n"]) + "\n",
+        input="\n".join(["2", BAD_KEY, MODEL, "r", KEY, MODEL, "n", "n"]) + "\n",
     )  # fmt: skip
     providers = admin(app).get(api(cid, "/model-providers")).json()["items"]
     assert [(p["name"], p["enabled"]) for p in providers] == [("OpenRouter", True)]
@@ -537,11 +539,11 @@ def test_picking_the_model_from_the_providers_list(app, wiz, calls, monkeypatch)
     b, _, cid = prepared(app, monkeypatch)
     r = wiz(
         "setup", "--only", "ai",
-        input="\n".join(["1", KEY, "not-a-real-model", "y", "gpt", "1"]) + "\n",
+        input="\n".join(["2", KEY, "not-a-real-model", "y", "gpt", "1", "n"]) + "\n",
     )  # fmt: skip
     assert "offers 3 models" in r.out and "but not 'not-a-real-model'" in r.out
-    ai = admin(app).get(api(cid, "/ai-setup")).json()
-    assert ai["ready"] is True and ai["management"]["model"] == "gpt-4.1"
+    ai = admin(app).get(api(cid, "/ai-stack")).json()
+    assert ai["ready"] is True and ai["items"][0]["model"] == "gpt-4.1"
 
 
 def test_ollama_is_detected_and_registered(app, wiz, calls, monkeypatch):
@@ -549,10 +551,12 @@ def test_ollama_is_detected_and_registered(app, wiz, calls, monkeypatch):
 
     b, _, cid = prepared(app, monkeypatch)
     use_ollama(app, FakeOllama(served=32768))
-    r = wiz("setup", "--only", "ai", input="5\n\n\n")  # Ollama, default address, recommended model
+    r = wiz(
+        "setup", "--only", "ai", input="6\n\n\nn\n"
+    )  # Ollama, default address, recommended model, no more
     assert "qwen2.5:7b" in r.out and "[ok] Context window" in r.out
-    ai = admin(app).get(api(cid, "/ai-setup")).json()
-    assert ai["ready"] is True and ai["management"]["kind"] == "ollama"
+    ai = admin(app).get(api(cid, "/ai-stack")).json()
+    assert ai["ready"] is True and ai["items"][0]["option"] == "ollama"
     # an unreachable Ollama is an error in a script
     use_ollama(app, FakeOllama(up=False))
     err = wiz(
@@ -600,81 +604,141 @@ for name in ({cli!r}, {cli + ".script.json"!r}):
     return write_script(bin_dir, "npm", source)
 
 
-def test_hybrid_installs_a_cli_signs_in_tests_and_selects_it(
-    app, wiz, client, company, cli_world, calls, tmp_path
-):
+def test_a_cli_with_an_api_key_is_added_from_the_menu(app, wiz, client, company, cli_world, calls):
     bin_dir = cli_world
-    fake_npm_that_installs(bin_dir, tmp_path, "codex", CODEX_OK)
     cid = company["id"]
-    r = wiz(
-        "setup", "--only", "work", "--work-mode", "hybrid", "--cli", "codex", "--cli-auth", "own-login",
-        "--install-cli", input="y\ny\n",
-    )  # fmt: skip
+    install_fake_cli(bin_dir, "codex", CODEX_OK)
+    # --only ai on a ready company: add another? yes; 9 = Codex; the key (hidden); run the test; no more
+    r = wiz("setup", "--only", "ai", input=f"y\n9\n{CLI_KEY}\ny\nn\n")
     out = r.out + r.err
-    # install: exactly npm's command, polled to success; then the headless login ran in this terminal
-    assert json.loads((bin_dir / "npm.argv").read_text()) == ["install", "-g", "@openai/codex"]
-    assert "Installing: npm install -g @openai/codex" in out and "added 1 package" in out
-    assert calls.logins == [[str(bin_dir / "codex"), "login", "--device-auth"]]
-    assert "at most $0.05" in out
-    status = client.get("/api/cli-runtimes/codex").json()
-    assert status["installed"] and status["auth"]["mode"] == "own_login"
-    assert status["auth"]["last_test"]["ok"] is True
-    ai = client.get(api(cid, "/ai-setup")).json()
-    assert ai["work_mode"] == "hybrid" and ai["work_runtime"] == "cli:codex" and ai["ready"] is True
+    assert "at most $0.05" in out and CLI_KEY not in out + everything_written(app)
+    items = client.get(api(cid, "/ai-stack")).json()["items"]
+    codex = next(i for i in items if i["option"] == "codex_api")
+    assert codex["status"]["state"] == "ready" and codex["share"] == 2
+    creds = [c["name"] for c in client.get(api(cid, "/credentials")).json()["items"]]
+    assert "codex-cli-key" in creds
 
 
-def test_hybrid_in_a_script_with_an_api_key_and_a_failing_cli(
+def test_declining_the_test_of_a_new_cli_stops_the_step(
+    app, wiz, client, company, cli_world, calls
+):
+    install_fake_cli(cli_world, "codex", CODEX_OK)
+    r = wiz("setup", "--only", "ai", input=f"y\n9\n{CLI_KEY}\nn\n", expect=1)
+    assert "cannot do company work until it passes its test" in r.err
+    assert CLI_KEY not in r.out + r.err
+
+
+def test_a_script_adds_a_signed_in_claude_plan_and_a_signed_out_one_is_told_how(
     app, wiz, client, company, cli_world, calls
 ):
     bin_dir = cli_world
     cid = company["id"]
-    install_fake_cli(bin_dir, "claude", [], exit=2, stderr="login required")
-    args = ["setup", "--only", "work", "--non-interactive", "--secrets-stdin", "--work-mode", "hybrid",
-            "--cli", "claude_code", "--cli-auth", "api-key"]  # fmt: skip
-    r = wiz(*args, input=f"cli_api_key={CLI_KEY}\n", expect=1)
-    assert "failed its test" in r.err and CLI_KEY not in r.out + r.err
-    assert client.get(api(cid, "/ai-setup")).json()["work_mode"] == "api"  # nothing was selected
-    # now it works
-    install_fake_cli(
-        bin_dir, "claude",
-        [{"type": "result", "subtype": "success", "is_error": False, "result": "OK", "usage": {}}],
-    )  # fmt: skip
-    r = wiz(*args, "--json", input=f"cli_api_key={CLI_KEY}\n")
-    assert r.json()["work"] == {"mode": "hybrid", "runtime": "cli:claude_code"}
-    ai = client.get(api(cid, "/ai-setup")).json()
-    assert ai["work_mode"] == "hybrid" and ai["work_runtime"] == "cli:claude_code"
-    creds = [c["name"] for c in client.get(api(cid, "/credentials")).json()["items"]]
-    assert "claude_code-cli-key" in creds
-    assert CLI_KEY not in everything_written(app) and CLI_KEY not in r.out + r.err
-    # back to API only
-    r = wiz("setup", "--only", "work", "--non-interactive", "--work-mode", "api")
-    assert client.get(api(cid, "/ai-setup")).json()["work_mode"] == "api"
+    install_fake_cli(bin_dir, "claude", [
+        {"type": "result", "subtype": "success", "is_error": False, "result": "OK", "usage": {}}
+    ], auth={"signed_in": False})  # fmt: skip
+    args = ["setup", "--only", "ai", "--non-interactive", "--provider", "claude-plan"]
+    r = wiz(*args, expect=1)
+    assert "foundryos ai login Claude Code" in r.err and "not signed in" in r.err
+    [conn] = [
+        i for i in client.get(api(cid, "/ai-stack")).json()["items"] if i["option"] == "claude_plan"
+    ]
+    assert conn["status"]["state"] == "needs_sign_in"
+    # the person signs in with the CLI's own login (here: the fake's state file), then reruns the same line
+    login = client.post(api(cid, f"/ai-stack/{conn['id']}/login"), json={})
+    assert login.status_code == 202
+    deadline = __import__("time").time() + 15
+    while __import__("time").time() < deadline:
+        if (
+            client.get(api(cid, f"/ai-stack/{conn['id']}/login")).json()["login"]["state"]
+            == "succeeded"
+        ):
+            break
+        __import__("time").sleep(0.05)
+    r = wiz(*args, "--json")
+    items = client.get(api(cid, "/ai-stack")).json()["items"]
+    assert [i["option"] for i in items].count("claude_plan") == 1  # the rerun reused the connection
+    assert next(i for i in items if i["option"] == "claude_plan")["status"]["state"] == "ready"
+    assert r.json()["steps"] == {"ai": "done"}
+
+
+def test_the_interactive_plan_flow_signs_in_in_this_terminal(
+    app, wiz, client, company, cli_world, calls, monkeypatch
+):
+    import subprocess
+
+    from app.cli.commands import ai as ai_cmd
+
+    bin_dir = cli_world
+    cid = company["id"]
+    install_fake_cli(bin_dir, "claude", [
+        {"type": "result", "subtype": "success", "is_error": False, "result": "OK", "usage": {}}
+    ], auth={"signed_in": False})  # fmt: skip
+    monkeypatch.setattr(
+        ai_cmd, "local_env", lambda: (app.state.cli_env, app.state.settings.resolved_data_dir)
+    )
+    ran = []
+    monkeypatch.setattr(
+        onboard,
+        "run_interactive",
+        lambda argv, env=None: ran.append(argv) or subprocess.run(argv, env=env).returncode,
+    )
+    # add another? yes; 1 = Claude plan; the sign-in runs here; run the test; no more
+    r = wiz("setup", "--only", "ai", input="y\n1\ny\nn\n")
+    assert ran and ran[0][1:] == ["auth", "login", "--claudeai"]
+    assert "Personal plans assume ordinary individual use" in r.out
+    conn = next(
+        i for i in client.get(api(cid, "/ai-stack")).json()["items"] if i["option"] == "claude_plan"
+    )
+    assert conn["status"]["state"] == "ready" and conn["share"] == 2
 
 
 def test_antigravity_is_never_installed_by_the_wizard(app, wiz, client, company, cli_world, calls):
-    r = wiz(
-        "setup", "--only", "work", "--non-interactive", "--work-mode", "hybrid", "--cli", "antigravity",
-        "--cli-auth", "api-key", "--install-cli", "--secrets-stdin", input=f"cli_api_key={CLI_KEY}\n", expect=1,
-    )  # fmt: skip
+    # add another? yes; 11 = Antigravity; "Press Enter once it is installed" -> no
+    r = wiz("setup", "--only", "ai", input="y\n11\nn\n", expect=1)
     assert "curl -fsSL https://antigravity.google/cli/install.sh | bash" in r.out + r.err
-    assert "is not installed" in r.err
     assert client.get("/api/cli-runtimes/antigravity").json()["install"]["status"] == "none"
     assert calls.logins == []
 
 
-def test_a_cli_is_not_offered_a_login_it_does_not_have(app, wiz, client, company, cli_world):
-    wiz(
-        "setup",
-        "--only",
-        "work",
-        "--work-mode",
-        "hybrid",
-        "--cli",
-        "antigravity",
-        "--cli-auth",
-        "own-login",
-        expect=2,
+def test_ai_commands_list_test_login_logout_remove(
+    app, wiz, client, company, cli_world, calls, monkeypatch
+):
+    import subprocess
+
+    from app.cli.commands import ai as ai_cmd
+
+    bin_dir = cli_world
+    cid = company["id"]
+    install_fake_cli(bin_dir, "agent", CURSOR_OK, auth={"email": "dev@example.com"})
+    monkeypatch.setattr(
+        ai_cmd, "local_env", lambda: (app.state.cli_env, app.state.settings.resolved_data_dir)
     )
+    monkeypatch.setattr(
+        onboard, "run_interactive", lambda argv, env=None: subprocess.run(argv, env=env).returncode
+    )
+    cursor = client.post(api(cid, "/ai-stack"), json={"option": "cursor_plan"}).json()
+    r = wiz("ai", "list")
+    assert "Cursor CLI" in r.out and "Heavy lifting:" in r.out
+    listed = wiz("ai", "list", "--json").json()
+    assert {i["label"] for i in listed["items"]} == {"Local Ollama", "Cursor CLI"}
+    wiz(
+        "ai", "login", "cursor cli"
+    )  # label, case-insensitive: the CLI's own login, in this terminal
+    assert client.get(api(cid, f"/ai-stack/{cursor['id']}/login") + "?refresh=1").json()[
+        "signed_in"
+    ]
+    r = wiz("ai", "test", cursor["id"][:8])
+    assert "ok" in r.out
+    wiz("ai", "logout", "Cursor CLI")
+    assert not client.get(api(cid, f"/ai-stack/{cursor['id']}/login") + "?refresh=1").json()[
+        "signed_in"
+    ]
+    wiz("ai", "login", "Local Ollama", expect=1)  # not a plan connection
+    wiz("ai", "remove", "Cursor CLI", "--yes")
+    assert [i["label"] for i in client.get(api(cid, "/ai-stack")).json()["items"]] == [
+        "Local Ollama"
+    ]
+    wiz("ai", "remove", "nothing-like-that", "--yes", expect=5)
 
 
 # ------------------------------------------------------------------ the contracts of other packages
@@ -836,29 +900,9 @@ def test_an_existing_account_without_a_token_signs_in_and_saves_one(app, wiz, ca
 
 def test_changing_the_provider_of_a_ready_setup_needs_a_say_so(app, wiz, calls, monkeypatch):
     b, _, cid = prepared(app, monkeypatch)
-    wiz("setup", "--only", "ai", input="\n".join(["1", KEY, MODEL, "n"]) + "\n")
-    r = wiz("setup", "--only", "ai", input="n\n")  # "Change it?" -> no
-    assert "Already connected" in r.out or "already connected" in r.out
+    wiz("setup", "--only", "ai", input="\n".join(["2", KEY, MODEL, "n", "n"]) + "\n")
+    r = wiz("setup", "--only", "ai", input="n\n")  # "Add another AI?" -> no
+    assert "Already done" in r.out
     r = wiz("setup", "--only", "ai", "--non-interactive")  # nothing asked for, nothing changed
     assert "Already done" in r.out
     assert len(admin(app).get(api(cid, "/model-providers")).json()["items"]) == 1
-
-
-def test_the_work_mode_and_cli_menus(app, wiz, client, company, cli_world, calls):
-    bin_dir = cli_world
-    cid = company["id"]
-    ok = [{"type": "result", "subtype": "success", "is_error": False, "result": "OK", "usage": {}}]
-    install_fake_cli(bin_dir, "claude", ok)
-    # --only work asks: work mode (2 = API + CLIs), which CLI (1 = Claude Code), how to sign in
-    # (2 = API key), the key (hidden), and whether to run the test
-    r = wiz("setup", "--only", "work", input=f"2\n1\n2\n{CLI_KEY}\ny\n")
-    assert "Claude Code (installed" in r.out and "Codex CLI (not installed)" in r.out
-    assert "How should it sign in?" in r.out and "at most $0.05" in r.out
-    ai = client.get(api(cid, "/ai-setup")).json()
-    assert ai["work_mode"] == "hybrid" and ai["work_runtime"] == "cli:claude_code"
-    assert CLI_KEY not in r.out + r.err + everything_written(app)
-    # declining the test keeps the work on the API
-    wiz("setup", "--only", "work", "--work-mode", "api")
-    r = wiz("setup", "--only", "work", input=f"2\n1\n2\n{CLI_KEY}\nn\n", expect=1)
-    assert "cannot do company work until it passes its test" in r.err
-    assert client.get(api(cid, "/ai-setup")).json()["work_mode"] == "api"

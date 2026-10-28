@@ -5,7 +5,6 @@ import type { Agent } from '@/api/types'
 import { Avatar } from '@/components/avatar'
 import { MovingBorderButton } from '../fx/MovingBorderButton'
 import { StepHeading } from '../StepFrame'
-import { WORK_MODE_LABEL } from '@/lib/aiSetup'
 import { codeSummary } from '@/lib/repos'
 import { usePrefersReducedMotion } from '@/lib/motion'
 import { AI_COFOUNDER_LABEL, findCofounder } from '@/lib/terms'
@@ -40,8 +39,6 @@ export function TeamStep({ companyId, companyIdea, onLaunch }: { companyId: stri
   const list = agents.data ?? []
   const cofounder = findCofounder(list)
   const hr = list.find((a) => a.status !== 'retired' && a.status !== 'rejected' && a.kind !== 'founder' && inferRoleFamily(a) === 'hr')
-  const m = ai.data?.management
-  const runtime = ai.data?.work_runtime
   return (
     <div>
       <StepHeading eyebrow="Meet your team" title="Meet your team">
@@ -60,22 +57,10 @@ export function TeamStep({ companyId, companyIdea, onLaunch }: { companyId: stri
             <dd className="min-w-0 break-words text-fg">{companyIdea}</dd>
           </>
         )}
-        {m?.provider_name && (
+        {ai.data && ai.data.stack_count > 0 && (
           <>
-            <dt className="text-fg-3">AI model</dt>
-            <dd className="min-w-0 break-words text-fg">
-              {m.provider_name}
-              {m.model ? <span className="font-mono text-fg-2"> · {m.model}</span> : null}
-            </dd>
-          </>
-        )}
-        {ai.data && (
-          <>
-            <dt className="text-fg-3">Work</dt>
-            <dd className="text-fg">
-              {WORK_MODE_LABEL[ai.data.work_mode]}
-              {ai.data.work_mode === 'hybrid' && runtime ? <span className="text-fg-2"> · {runtime.replace(/^cli:/, '').replace(/_/g, ' ')}</span> : null}
-            </dd>
+            <dt className="text-fg-3">AI</dt>
+            <dd className="text-fg">{ai.data.stack_count === 1 ? '1 AI connected' : `${ai.data.stack_count} AIs connected`}</dd>
           </>
         )}
         {repo && (

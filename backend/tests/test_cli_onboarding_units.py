@@ -169,23 +169,17 @@ def test_options_are_validated_before_anything_happens():
     ok = onboarding.WizardOptions
     onboarding.validate_options(ok())
     for bad in (
-        ok(only="nope"), ok(work_mode="both"), ok(cli="vim"), ok(cli_auth="magic"), ok(public_url="lan"),
-        ok(provider="gemini"), ok(public_url="named"), ok(idea="x" * 300), ok(timezone="Mars/Base"),
-        ok(base_url="ftp://x"), ok(cli="codex", cli_auth="provider"), ok(cli="antigravity", cli_auth="own-login"), ok(cli="cursor", cli_auth="own-login"),
-        ok(work_mode="api", cli="codex"),
+        ok(only="nope"), ok(only="work"), ok(public_url="lan"), ok(provider="gemini"),
+        ok(public_url="named"), ok(idea="x" * 300), ok(timezone="Mars/Base"),
+        ok(base_url="ftp://x"), ok(provider="claude-plan", model="opus"),
+        ok(provider="cursor-plan", base_url="https://x.example"),
     ):  # fmt: skip
         with pytest.raises(CliError) as exc:
             onboarding.validate_options(bad)
         assert exc.value.exit_code == 2, bad
-    onboarding.validate_options(
-        ok(
-            public_url="named",
-            hostname="foundry.example.com",
-            work_mode="hybrid",
-            cli="opencode",
-            cli_auth="provider",
-        )
-    )
+    onboarding.validate_options(ok(public_url="named", hostname="foundry.example.com"))
+    onboarding.validate_options(ok(provider="claude-plan"))
+    onboarding.validate_options(ok(provider="cursor-plan"))
 
 
 def test_qr_text_draws_or_returns_none():
@@ -194,7 +188,7 @@ def test_qr_text_draws_or_returns_none():
 
 
 def test_headless_login_argv_is_defined_for_the_own_login_clis_and_is_safe():
-    assert CLIS["claude_code"].headless_login_argv == ("claude",)
+    assert CLIS["claude_code"].headless_login_argv == ("claude", "auth", "login")
     assert CLIS["codex"].headless_login_argv == ("codex", "login", "--device-auth")
     assert CLIS["opencode"].headless_login_argv == ("opencode", "auth", "login")
     assert CLIS["antigravity"].headless_login_argv is None  # api_key only

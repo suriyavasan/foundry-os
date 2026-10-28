@@ -356,13 +356,7 @@ export interface AgentLive {
 
 export type AutonomyMode = 'autonomous' | 'supervised'
 export type ApprovalKind =
-  | 'external_purchase'
-  | 'budget_increase'
-  | 'external_communication'
-  | 'production_deploy'
-  | 'sensitive_action'
-  | 'hire'
-  | 'other'
+  'external_purchase' | 'budget_increase' | 'external_communication' | 'production_deploy' | 'sensitive_action' | 'hire' | 'other'
 
 export interface CompanyPolicy {
   company_id?: Uuid
@@ -474,15 +468,7 @@ export type UpdateProjectRequest = Partial<CreateProjectRequest>
 
 export type TaskKind = 'work' | 'review' | 'planning' | 'hiring' | 'routine'
 export type TaskStatus =
-  | 'backlog'
-  | 'ready'
-  | 'in_progress'
-  | 'in_review'
-  | 'revision_requested'
-  | 'blocked'
-  | 'done'
-  | 'failed'
-  | 'cancelled'
+  'backlog' | 'ready' | 'in_progress' | 'in_review' | 'revision_requested' | 'blocked' | 'done' | 'failed' | 'cancelled'
 
 export interface TaskError {
   code: string
@@ -1419,7 +1405,11 @@ export interface FinanceSummary {
   from: string
   to: string
   timezone: string
-  totals: CostSplit & { input_tokens: number; output_tokens: number; runs: number }
+  totals: CostSplit & {
+    input_tokens: number
+    output_tokens: number
+    runs: number
+  }
   /** Spend of failed, cancelled and timed-out runs. */
   wasted: CostSplit & { runs: number }
   /** Human-recorded external expenses in the period (a separate figure, not model usage). */
@@ -1489,7 +1479,6 @@ export interface ExternalExpenseCreate {
   project_id?: Uuid | null
   incurred_on: string
 }
-
 
 /* ======================================================================== *
  * Milestone 7 (docs/specs/m7-accounts-and-team.md): accounts, login, team, notifications.
@@ -1925,7 +1914,8 @@ export interface DnsRecord {
   status?: 'ok' | 'missing' | 'mismatch' | 'pending' | null
 }
 
-export type DomainRegistrationStatus = 'awaiting_approval' | 'submitted' | 'pr_open' | 'merged' | 'awaiting_founder' | 'purchased' | 'rejected' | 'failed' | 'cancelled'
+export type DomainRegistrationStatus =
+  'awaiting_approval' | 'submitted' | 'pr_open' | 'merged' | 'awaiting_founder' | 'purchased' | 'rejected' | 'failed' | 'cancelled'
 
 export interface DomainRegistration {
   id: Uuid
@@ -2022,7 +2012,13 @@ export type DomainRegistrationCreate =
   | { path: 'github_registry'; registry_id: string; name: string }
   | { path: 'free_provider'; provider_id: string; domain: string }
   /** `max_price_micros` binds the approval: a higher price at purchase time fails instead of charging. */
-  | { path: 'paid_registrar'; registrar: string; domain: string; years: number; max_price_micros: number | null }
+  | {
+      path: 'paid_registrar'
+      registrar: string
+      domain: string
+      years: number
+      max_price_micros: number | null
+    }
 
 export type HostedUiStatus = 'none' | 'deploying' | 'ready' | 'error'
 
@@ -2078,7 +2074,8 @@ export interface MailboxCreate {
   display_name?: string | null
 }
 
-export type ConnectedProvider = 'cloudflare' | 'vercel' | 'github' | 'agentmail' | 'resend' | 'tailscale' | 'porkbun' | 'namecheap' | 'gmail' | 'outlook'
+export type ConnectedProvider =
+  'cloudflare' | 'vercel' | 'github' | 'agentmail' | 'resend' | 'tailscale' | 'porkbun' | 'namecheap' | 'gmail' | 'outlook'
 export type ConnectedAccountStatus = 'connected' | 'invalid' | 'revoked'
 
 /** Metadata only: no response ever carries a token. */
@@ -2131,7 +2128,7 @@ export interface ProviderCheck {
  * Stream events: reflection.created|updated|responded, standard.adopted|updated, command.updated.
  * ======================================================================== */
 
-/** Provider test (spec §1): `POST /model-providers/{id}/test`, also embedded in `AiSetupStatus.management.last_test`. */
+/** Provider test (spec §1): `POST /model-providers/{id}/test`. */
 export type ProviderCheckName = 'reachable' | 'auth' | 'tool_calling' | 'context' | 'model_exists'
 export interface ProviderTestCheck {
   name: ProviderCheckName | (string & {})
@@ -2148,10 +2145,25 @@ export interface ProviderTest {
   tested_at: Timestamp | null
 }
 
-export type AiBlockingReason = 'no_tested_provider' | 'provider_test_failed' | 'no_default_model'
-export type WorkMode = 'api' | 'hybrid'
+export type AiBlockingReason = 'no_ai' | 'no_tested_ai' | 'no_heavy_ai' | 'no_everyday_ai'
+
+/** `GET /companies/{cid}/ai-stack/{id}/login` (B9 rules, per connection). Only the sign-in link is ever carried: never a code or token. */
+export interface ClaudeLoginStatus {
+  signed_in: boolean
+  auth_method: string | null
+  email: string | null
+  checked_at: Timestamp | null
+  config_dir_ok: boolean
+  login: {
+    state: 'idle' | 'running' | 'succeeded' | 'failed'
+    started_at: Timestamp | null
+    finished_at: Timestamp | null
+    url: string | null
+    message: string | null
+  }
+}
+
 export type CliRuntimeId = 'claude_code' | 'codex' | 'opencode' | 'antigravity' | 'cursor'
-export type WorkRuntime = 'company_agent' | 'cli:claude_code' | 'cli:codex' | 'cli:opencode' | 'cli:antigravity' | 'cli:cursor'
 export type CliAuthMode = 'own_login' | 'api_key'
 export type CliSandboxKind = 'os' | 'docker' | 'none'
 
@@ -2179,49 +2191,29 @@ export interface CliRuntimeStatus {
     model?: string | null
   }
   sandbox: { available: boolean; kind: CliSandboxKind; detail: string | null }
+  /** B9, claude_code only: cached `claude auth status`. */
+  login?: {
+    signed_in: boolean
+    auth_method: string | null
+    email: string | null
+  } | null
   /** `manual`: a command the person runs themselves when there is no automatic install (Antigravity, Cursor). */
-  install: { available: boolean; command?: string | null; requires: string[]; manual?: string | null }
+  install: {
+    available: boolean
+    command?: string | null
+    requires: string[]
+    manual?: string | null
+  }
   login_hint: string | null
   warnings: string[]
 }
 
-export interface AiSetupManagement {
-  provider_id: Uuid | null
-  provider_name: string | null
-  kind: ProviderKind | (string & {}) | null
-  model: string | null
-  last_test: ProviderTest | null
-}
-
-/** `GET /companies/{cid}/ai-setup`. */
+/** `GET /companies/{cid}/ai-setup` (M17): readiness derived from the AI stack. The stack itself is `GET /ai-stack`. */
 export interface AiSetupStatus {
   ready: boolean
   blocking_reason: AiBlockingReason | null
-  management: AiSetupManagement
-  /** M12: the optional separate model for heavy work runs; null/absent = work runs follow the routing mode. */
-  work_model?: AiSetupManagement | null
-  work_mode: WorkMode
-  work_runtime: WorkRuntime | null
+  stack_count: number
   clis: CliRuntimeStatus[]
-}
-
-/** `PUT /companies/{cid}/ai-setup` (owner/admin). 409 `ai_not_ready` carries the reason. */
-export interface AiSetupUpdate {
-  management_provider_id: Uuid
-  management_model: string
-  work_mode: WorkMode
-  work_runtime: WorkRuntime | null
-  /** M12. Omit = unchanged; both null = cleared; otherwise both set and the provider's latest test passed for that model. */
-  work_model_provider_id?: Uuid | null
-  work_model_name?: string | null
-}
-
-export interface CliAuthUpdate {
-  mode: CliAuthMode
-  credential_id?: Uuid
-  /** OpenCode only. */
-  model_provider_id?: Uuid
-  model?: string
 }
 
 /** `GET /cli-runtimes/{id}/install-log` (shape assumed; read defensively by lib/aiSetup `normalizeInstallLog`). */
@@ -2320,7 +2312,12 @@ export interface CompanyStandardCreate {
   applies_to?: string[]
 }
 
-export type CompanyStandardUpdate = Partial<{ title: string; statement: string; applies_to: string[]; status: StandardStatus }>
+export type CompanyStandardUpdate = Partial<{
+  title: string
+  statement: string
+  applies_to: string[]
+  status: StandardStatus
+}>
 
 /* ------------------------------- command center -------------------------------- */
 

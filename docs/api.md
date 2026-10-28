@@ -1100,14 +1100,15 @@ agent and key within ten minutes raises a `rate_limit` alert. Agent-API endpoint
   reservation is extended (by headroom, else by just what was spent) when every task/project/agent/company budget still fits (audit
   `budget.reservation_extended`); if not, the run is cancelled with `exit_reason: budget_exhausted` and billed what it measured (cost kind
   as reported); its task returns to `ready` and the dispatcher parks it as `blocked` / `budget_exceeded` with `retry_after`.
-- **Model routing** (`policy.model_routing`, default `free_first`; `allow_paid_fallback`, default true; company-agent runtime only):
-  `free_first` uses the agent's own model if free, else the first enabled **free** provider (local, or priced at zero; the company default
-  first), else the paid one - which, with `allow_paid_fallback: false`, is the `spend`-tier action `model.paid_fallback` (payload: task,
-  provider, model, `amount_micros` = the reservation): the task is `blocked` with `error.code = paid_model_approval` and `error.approval_id`
-  until the approval (human above `auto_spend_limit_micros`, else the Co-founder) is decided; approving releases the task and the next
-  dispatch spends the approval (single use, per task). `pinned` = the agent's own model; `quality_first` = the agent's own paid model, else
-  the paid provider with the highest output price (the only quality signal available), else free. The decision is stored on the run
-  (`TaskRun.routing_reason`, `model_provider_id`, `model_used`) and a free route reserves 0.
+- **Model routing** (M17; replaces `policy.model_routing` / `free_first` / paid-fallback approvals, whose columns stay but are no longer
+  read): every run of a `company_agent` / `unassigned` employee is routed through the company's AI stack (`docs/specs/m17-ai-stack.md`
+  section 4, `app/services/routing.py`): owner pins (`runtime_config.pin_runtime` / `pin_model`, or an agent whose runtime is a CLI) win;
+  else the class (heavy = management run, else everyday) picks the usable connections (enabled, tested, installed/signed in, not paused,
+  provider enabled and in `allowed_model_providers`, below `max_concurrency`), the one with the smallest `(runs in 24 h + 1) / share`
+  wins (ties: lower position; backups only when nothing else can). The decision is stored on the run (`TaskRun.ai_connection_id`,
+  `routing_reason` like "AI stack: Claude Code (primary, Most) for heavy work", `runtime`, `model_provider_id`, `model_used`); a free
+  route (local model, plan subscription) reserves 0. With no candidate the task waits (`waiting_for_runtime`, reason in the dispatch
+  report). `model.paid_fallback` is no longer raised by the dispatcher.
 - **Threshold alerts**: `policy.budget_alert_thresholds` (default `[50, 80, 100]`) for company daily/monthly and every agent daily/monthly
   budget; one `budget_threshold` alert (the highest newly crossed threshold) per (scope, period, threshold), remembered in
   `budget_alert_marks` so resolving an alert does not re-fire it within the period.
@@ -1119,7 +1120,7 @@ agent and key within ten minutes raises a `rate_limit` alert. Agent-API endpoint
   always; agents: `day` + `month` for every active/paused agent and any other agent with a limit, `limit_micros` null = no limit); `GET /breakdown?group_by=agent|project|provider|model|runtime` ->
   `{group_by, from, to, items [{key, label, <split>, input_tokens, output_tokens, runs}]}` (costliest first, `unassigned` for none);
   `GET /trend` -> `{from, to, points [{date, <split>}]}` (one point per local day, zero-filled); `GET /runs` (page, newest finished first)
-  -> `FinanceRun {run_id, task_id, task_title, agent_id, status, started_at, finished_at, cost_micros, cost_kind, model, provider}`.
+  -> `FinanceRun {run_id, task_id, task_title, agent_id, status, started_at, finished_at, cost_micros, cost_kind, model, provider, ai_connection_id, ai_connection}` (M17: the connection id and its label; null for pinned runs).
 - **CLI usage** (B8): `GET /companies/{cid}/finance/cli-usage?from=&to=` (same access and range rules) -> `{from, to, timezone, items [{runtime
   (`cli:<id>`), runs, succeeded, failed (failed + cancelled + timed out), input_tokens, output_tokens, duration_seconds, verified_micros,
   estimated_micros, unknown_micros, subscription_runs, agents [agent_id]}]}`. One row per CLI in the catalog (zeros when unused), `cli:*`
@@ -1536,25 +1537,18 @@ Migration `0009_ai_setup_cli_reflections` (existing companies get the `daily-ref
 | code | when |
 |---|---|
 | `ai_setup_required` | creating a note, command, task or agent while the company has no working AI (`details.reason` = the blocking reason) |
-| `ai_not_ready` | `PUT /ai-setup` with a provider/model/CLI that is not ready (`details.reason` is a blocking reason, or `cli_not_installed` / `cli_not_configured`) |
+| `ai_not_ready` | (removed with `PUT /ai-setup` in M17) |
 
 ### The readiness gate (`/api/companies/{cid}/ai-setup`)
 
-`GET` (any member) → `AiSetupStatus`:
+Since M17 the gate reads the AI stack (below). `GET` (any member; agents 403) → `AiSetupStatus`:
 
 ```json
-{ "ready": false, "blocking_reason": "no_tested_provider",
-  "management": { "provider_id": null, "provider_name": null, "kind": null, "model": null, "last_test": null },
-  "work_mode": "api", "work_runtime": null, "clis": [CliRuntimeStatus] }
+{ "ready": false, "blocking_reason": "no_ai", "stack_count": 0, "clis": [CliRuntimeStatus] }
 ```
 
-`blocking_reason` is `no_tested_provider` | `provider_test_failed` | `no_default_model` | `null`. A company is **ready** when an enabled model provider is the company
-default (`policy.default_model_provider_id` + `default_model_name`) and its latest test **for that model** has `ok: true`. Providers tested before M10 carry no
-`checks`, so an existing company is not ready until its provider is tested again.
-
-`PUT` (owner/admin) `AiSetupUpdate {management_provider_id, management_model, work_mode: "api"|"hybrid", work_runtime: "cli:claude_code"|"cli:codex"|"cli:opencode"|"cli:antigravity"|"cli:cursor"|null}`
-→ `AiSetupStatus`. Makes the provider the company default (equipping the Co-founder and HR), stores the work mode. `hybrid` needs a `cli:*` runtime that is installed and has
-a sign-in mode; `api` clears the runtime. 409 `ai_not_ready` otherwise, 404 for a provider of another company, 403 for viewers/members.
+`blocking_reason` is `no_ai` | `no_tested_ai` | `no_heavy_ai` | `no_everyday_ai` | `null`. A company is **ready** when the stack has an enabled connection with a passing test that covers heavy work and
+one that covers everyday work (may be the same). `PUT /ai-setup` is **removed** (410 `gone`, "Use /ai-stack"); `ai_not_ready` is no longer returned by it.
 
 **What the gate does while not ready:** tasks stay in `backlog` with `blocked_reason: "ai_setup_required"` (they are released by the next scheduler tick once ready), nothing
 is dispatched, the wake queue wakes nobody (requests wait), and creating notes / commands / tasks / agents is 409 `ai_setup_required`. Reads, policy, providers,
@@ -1588,14 +1582,15 @@ has one, else `context_length` of the provider). OpenRouter's public model list 
 | `GET /cli-runtimes/{id}/install-log` → `CliInstallLog` | `{id, status: none|running|succeeded|failed, command, started_at, finished_at, exit_code, lines[≤400]}`, output scrubbed of secret-looking spans |
 | `PUT /cli-runtimes/{id}/auth` `{mode: "own_login"|"api_key", credential_id?, model_provider_id?, model?}` → `CliRuntimeStatus` | `mode` must be in the CLI's `auth_modes` (Antigravity CLI: `api_key` only, a Gemini API key; Cursor CLI: `api_key` only, a Cursor API key; `own_login` → 422). `api_key` needs `credential_id` (a credential of a company you administer; never returned). `model_provider_id` (OpenCode only) points the CLI at a company model provider (endpoint and key). OpenCode needs `model_provider_id` or a `provider/model` name in `model`. Clears `last_test` |
 | `POST /cli-runtimes/{id}/test` → `CliRuntimeStatus` | one tiny headless prompt ("Reply with the single word OK.") in a temp dir, 60 s limit, `$0.05` cap where the CLI supports one, no tools / no company tools; stores `auth.last_test` |
+| ~~`GET\|POST\|DELETE /cli-runtimes/claude_code/login`~~ | **Removed in M17** (never released): sign-in is per connection, `GET\|POST\|DELETE /ai-stack/{id}/login` |
 
 `CliRuntimeStatus`: `{id, display_name, installed, binary_path, version, auth_modes: ["own_login","api_key"], auth: {mode, configured, credential_id, last_test: {ok, detail, tested_at}|null, model_provider_id, model},
-sandbox: {available, kind: "os"|"docker"|"none", detail}, install: {available, command|null, requires: ["npm"]|[], status, manual|null}, login_hint, warnings[]}`. `install.available` = the CLI has an npm package, npm is present and the CLI is not installed; `install.manual` is a command the person runs themselves (Antigravity CLI), never run by the server.
-Interactive logins (`claude` /login, `codex login`, `opencode auth login`) are the person's step in a terminal and are never automated.
+sandbox: {available, kind: "os"|"docker"|"none", detail}, install: {available, command|null, requires: ["npm"]|[], status, manual|null}, login_hint, login: null, warnings[]}` (`login` is always `null` since M17: sign-in state is per AI connection). `install.available` = the CLI has an npm package, npm is present and the CLI is not installed; `install.manual` is a command the person runs themselves (Antigravity CLI), never run by the server.
+Other CLIs' interactive logins (`codex login`, `opencode auth login`) are the person's step in a terminal and are never automated. Claude Code's login (B9) runs only through its own flow (`claude auth login`), never through `setup-token`, and Foundry never reads its credential files; the paste-the-code fallback exists only in a terminal (`foundryos ai login`), never through this API.
 
 ### Work modes and routing
 
-`policy.work_mode` / `policy.work_runtime` (set only through `PUT /ai-setup`; `GET /policy` also shows them). The dispatcher chooses the runtime **per run** and writes it to
+`policy.work_mode` / `policy.work_runtime` (legacy since M17: `PUT /ai-setup` is gone; they are only the input of the one-time stack bootstrap and are read by routing until the routing step moves to the stack; `GET /policy` still shows them). The dispatcher chooses the runtime **per run** and writes it to
 `run.runtime` with `run.routing_reason` (`hybrid: work task on cli:opencode`, `agent runtime pinned by the owner`, …):
 
 * `api`: the agent's own runtime (usually `company_agent`).
@@ -1858,3 +1853,47 @@ accepting an idea whose text looks like instructions), `429` with `details.key =
 
 **Verified and not verified (M16 WP-2).** Verified with fakes: every route, role and refusal above, the page reader, the
 UI-search parsers (JSON and SSE fixtures) and the routines. Not verified: any real feed or service response.
+
+---
+
+## Milestone 17 — One AI stack
+
+Spec: `docs/specs/m17-ai-stack.md`. Migration `0017_ai_stack` (`ai_connections`, `task_runs.ai_connection_id`, `company_policies.ai_stack_bootstrapped`). Schema names:
+`AiStackOut`, `AiConnectionOut`, `AiConnectionCreate`, `AiConnectionPatch`, `AiOrder`, `AiOption`, `AiSummary`, `ClaudeLoginStatus` (also used for Cursor). Owners and admins write; members and viewers read;
+**agents get 403 on everything** (they never read or change their own AI); non-members 404. Every write is audited (`ai_connection.added|updated|reordered|removed|tested|login_started|login_finished|logout|paused|resumed`,
+`ai_stack.bootstrapped`), with ids only, never a key.
+
+| Method & path | Purpose |
+|---|---|
+| `GET /companies/{cid}/ai-stack` → `AiStackOut` | `{items: [AiConnectionOut], ready, blocking_reason: null\|"no_ai"\|"no_tested_ai"\|"no_heavy_ai"\|"no_everyday_ai", summary: {heavy: [SummaryEntry], everyday: [SummaryEntry]}, options: [AiOption]}`. The first read of a company with no connections builds them from its legacy settings (see below) |
+| `POST .../ai-stack` `AiConnectionCreate` → `201 AiConnectionOut` | `{option, label?, use_for = "everything", share = 2 (0..4), model?, model_provider_id?, credential_id?, cli_provider_id?}`, appended at the end. API options need `model_provider_id` (a provider of this company, of the option's kind; `model` defaults to its default model). `cursor_api`, `codex_api`, `antigravity_api` need `credential_id`; `opencode` needs `cli_provider_id`, or `credential_id` + a `provider/model` `model`; plan options take neither. Another company's provider / credential → 404; wrong kind or missing field → 422; a second plan of the same CLI → 409 `plan_already_connected` |
+| `PATCH .../ai-stack/{id}` `{label?, use_for?, share?, enabled?, model?}` → `AiConnectionOut` | changing `model` clears the test (test again) |
+| `PUT .../ai-stack/order` `{ids: [...]}` → `AiStackOut` | `ids` must be exactly the company's connection ids, each once (422 otherwise); position = index |
+| `DELETE .../ai-stack/{id}` → 204 | a plan connection is signed out (the CLI's own logout) and its private home deleted; a model provider or credential is never deleted (and a provider used by a connection cannot be deleted: 409) |
+| `POST .../ai-stack/{id}/test` → `AiConnectionOut` | API: the provider's live test for the connection's model. CLI: the adapter's tiny headless prompt with THIS connection's auth (its key, OpenCode provider or plan home); 60 s, $0.05 cap. Stores `status.last_test` |
+| `GET .../ai-stack/{id}/login[?refresh=1]` → `ClaudeLoginStatus` | plan connections only (others 404). `{signed_in, auth_method, email, checked_at, config_dir_ok, login: {state: idle\|running\|succeeded\|failed, started_at, finished_at, url, message}}` from the CLI's own status command (`claude auth status` JSON / `agent status` exit code and wording, parsed leniently), cached 30 s. 409 `cli_not_installed` |
+| `POST .../ai-stack/{id}/login` `{method?: "claudeai"\|"console"}` → `202 ClaudeLoginStatus` | runs the CLI's own login in the background (`claude auth login --claudeai\|--console`; `agent login` with `NO_OPEN_BROWSER=1`, `method` ignored). Single-flight per connection (409 `login_in_progress`), 10 min watchdog. Only the https sign-in URL is kept (hosts claude.ai / claude.com / anthropic.com; cursor.com / cursor.sh); nothing else of the output is stored or logged. Clears `last_test` |
+| `DELETE .../ai-stack/{id}/login` → `ClaudeLoginStatus` | the CLI's own logout in this connection's home; clears `last_test`; 409 while a sign-in runs |
+| `PUT /companies/{cid}/ai-setup` | **410 `gone`** ("Use /ai-stack") |
+
+`AiConnectionOut`: `{id, position, rank_label ("Primary"|"Secondary"|"Third"|…), label, engine: "api"|"cli", option ("claude_plan"|"anthropic_api"|"openai_api"|"openrouter"|"openai_compatible"|"ollama"|"cursor_plan"|"cursor_api"|"codex_api"|"opencode"|"antigravity_api"),
+provider_kind|null, model_provider_id|null, model|null, cli_id|null, auth_mode: "plan"|"api_key"|"provider"|null, credential_id|null, cli_provider_id|null, use_for: "everything"|"heavy"|"everyday", share (4 Most, 3 More, 2 Normal, 1 Less, 0 Backup only), enabled,
+status: {state: "ready"|"needs_test"|"test_failed"|"needs_sign_in"|"not_installed"|"paused"|"disabled", message|null, last_test: {ok, detail, tested_at, model}|null, signed_in|null, account|null, paused_until|null},
+runs_24h, max_concurrency|null, home_dir|null, created_at}`. `max_concurrency` is `1` for a Cursor plan connection (see `docs/cli-runtimes.md`); `home_dir` (plan connections) is relative to the data directory and holds no secret.
+
+`SummaryEntry`: `{connection_id, label, percent, backup?: true}` — the share-weighted split among enabled, ready, non-backup connections that cover the class; backups are listed with `percent: 0` and `backup: true`.
+
+`AiOption`: `{option, label, group: "plan"|"api"|"local", engine, cli_id|null, provider_kind|null, available, reason|null ("plan_already_connected" | "ollama_not_detected"), needs_install, install: {available, command}|null, warning|null}`.
+Ollama is `available` only when the company already has an Ollama provider (create one with `POST /model-providers/detect-ollama`).
+
+**Readiness**: ready iff an enabled connection with a passing test covers `heavy` and one covers `everyday`. A paused (usage-limited) or signed-out connection still counts. An API connection follows its provider: testing the
+provider for the connection's model passes or fails the connection, editing the provider asks for a new test, switching the provider off removes it from readiness.
+
+**Bootstrap** (first read or first add of a company without connections, one audited transaction, system principal, then `company_policies.ai_stack_bootstrapped = true` forever): the management provider becomes an API connection
+(`heavy` if a separate work model or a hybrid CLI exists, else `everything`, share 2); a separate work model an `everyday` API connection; a hybrid `work_runtime` with its installation-level sign-in an `everyday` CLI connection
+(`own_login` of Claude Code, an `api_key` credential of this company, OpenCode's provider; other shapes are listed in the audit's `skipped`); `ai_engine = claude_plan` a Claude plan connection reusing the B9 home `claude-code`.
+Adding a connection that equals one the bootstrap just built adopts it instead of duplicating it.
+
+### Removed
+
+`PUT /companies/{cid}/ai-setup` (410), `GET|POST|DELETE /cli-runtimes/claude_code/login` (never released), `foundryos claude …` (now `foundryos ai …`), the setup wizard's `work` step and its `--work-mode`, `--cli`, `--cli-auth` options.

@@ -49,7 +49,6 @@ from app.services import (
     goals,
     notes,
     overview,
-    policy,
     role_templates,
     standards,
     tasks,
@@ -152,7 +151,6 @@ def _cmd_help(db, ctx, arg) -> _Result:
 
 def _cmd_status(db, ctx, arg) -> _Result:
     ov = overview.build_overview(db, ctx)
-    limits = policy.load_policy(db, ctx.company_id)
     state = ai_setup.evaluate(db, ctx.company_id)
     by_status = ov.agents.by_status
     spend = ov.spending
@@ -160,9 +158,7 @@ def _cmd_status(db, ctx, arg) -> _Result:
         f"Company: {ov.company.name} ({ov.company.status})",
         "AI: "
         + (
-            f"ready ({state.provider.name if state.provider else '?'} / {state.model}); "
-            f"work mode {limits.work_mode}"
-            + (f" on {limits.work_runtime}" if limits.work_runtime else "")
+            f"ready ({state.stack_count} connection(s))"
             if state.ready
             else f"not ready ({state.blocking_reason})"
         ),

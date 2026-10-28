@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 import subprocess
@@ -28,6 +29,20 @@ def base_env() -> dict[str, str]:
     return {k: os.environ[k] for k in (*SAFE_ENV_KEYS, *PROXY_ENV_KEYS) if k in os.environ}
 
 
+CLAUDE_CONFIG_DIRNAME = "claude-code"
+
+
+def claude_config_dir(data_dir: Path) -> Path:
+    """Foundry's own Claude Code configuration directory (``<data dir>/claude-code``, 0700). It is the
+    ``CLAUDE_CONFIG_DIR`` of every own-login Claude Code process, so the person's own ``~/.claude`` is never
+    used or touched."""
+    path = Path(data_dir) / CLAUDE_CONFIG_DIRNAME
+    path.mkdir(parents=True, exist_ok=True)
+    with contextlib.suppress(OSError):
+        os.chmod(path, 0o700)
+    return path
+
+
 @dataclass
 class CliEnvironment:
     """Where to look for binaries. ``extra_dirs`` come first (tests point it at a temp dir)."""
@@ -36,6 +51,8 @@ class CliEnvironment:
     home: Path = field(default_factory=Path.home)
     # False: look only in ``extra_dirs`` (tests use this so a developer's real CLIs never matter).
     use_system_path: bool = True
+    # The installation's data directory (set by the app); locates Foundry's Claude Code config dir.
+    data_dir: Path | None = None
 
     def search_path(self, spec: CliSpec | None = None) -> str:
         dirs = [str(d) for d in self.extra_dirs]

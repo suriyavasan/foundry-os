@@ -34,7 +34,7 @@ from app.models.run import TaskRun
 from app.models.work import Goal, Project, Task
 from tests.autonomy_helpers import scripted_world, tasks_of
 from tests.helpers import api, set_policy
-from tests.m10_helpers import make_ready
+from tests.m10_helpers import add_connection, make_ready
 
 # ------------------------------------------------------------------ shared helpers
 
@@ -110,7 +110,7 @@ def test_api_mode_a_note_becomes_finished_work_and_the_next_goal_without_a_human
     w = scripted_world(client, scripted, anon_client, with_team=False)
     cid = w.cid
     make_ready(app, client, cid)  # API mode: one model provider, no coding CLI
-    assert client.get(api(cid, "/ai-setup")).json()["work_mode"] == "api"
+    assert client.get(api(cid, "/policy")).json()["work_mode"] == "api"
     set_policy(client, cid, initiative_interval_seconds=600, max_planning_runs_per_hour=60)
     with app.state.session_factory() as db:  # start from a quiet company
         db.execute(delete(WakeRequest))
@@ -520,7 +520,7 @@ def test_hybrid_mode_management_on_the_api_work_on_the_cli_and_task_two_sees_tas
 
     company = client.post("/api/companies", json={"name": "Hybrid Co", "mission": "Ship"}).json()
     cid = company["id"]
-    provider = make_ready(app, client, cid)
+    make_ready(app, client, cid)
     bin_dir = tmp_path / "bin"
     app.state.cli_env.extra_dirs.append(bin_dir)
     write_script(bin_dir, "opencode", FAKE_OPENCODE)
@@ -535,23 +535,16 @@ def test_hybrid_mode_management_on_the_api_work_on_the_cli_and_task_two_sees_tas
             }
         )
     )
-    assert (
-        client.put(
-            "/api/cli-runtimes/opencode/auth",
-            json={"mode": "own_login", "model": "anthropic/claude-x"},
-        ).status_code
-        == 200
-    )
-    ai = client.put(
-        api(cid, "/ai-setup"),
-        json={
-            "management_provider_id": provider["id"],
-            "management_model": provider["default_model"],
-            "work_mode": "hybrid",
-            "work_runtime": "cli:opencode",
-        },
-    )
-    assert ai.status_code == 200 and ai.json()["work_mode"] == "hybrid", ai.text
+    # the stack: the API model for management (heavy), OpenCode with a key for work (everyday)
+    first = client.get(api(cid, "/ai-stack")).json()["items"][0]
+    client.patch(api(cid, f"/ai-stack/{first['id']}"), json={"use_for": "heavy"})
+    cred = client.post(
+        api(cid, "/credentials"), json={"name": "oc", "value": "sk-test-0123456789abcdef"}
+    ).json()
+    add_connection(
+        app, client, cid, "opencode", credential_id=cred["id"], model="anthropic/claude-x",
+        use_for="everyday",
+    )  # fmt: skip
     set_policy(client, cid, max_planning_runs_per_hour=60)
 
     founder = next(
@@ -698,7 +691,7 @@ def test_hybrid_mode_management_on_the_api_work_on_the_cli_and_task_two_sees_tas
         assert by_kind["planning"] == {"company_agent"}  # the Co-founder's and the lead's wakes
         assert by_kind["review"] == {"company_agent"}
         assert all(
-            "hybrid: work task on cli:opencode" in (run.routing_reason or "")
+            (run.routing_reason or "").endswith("for everyday work") and run.ai_connection_id
             for run, task, _ in rows
             if task.kind == "work"
         )

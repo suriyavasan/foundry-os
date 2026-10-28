@@ -5,6 +5,7 @@
  */
 import type { components } from './schema'
 import type * as T from './types'
+import type { AddAiBody, AiAuthMode, AiConnection, AiConnectionStatus, AiConnState, AiGroup, AiLastTest, AiOption, AiOptionId, AiStackBlocking, AiStackData, AiSummaryEntry, AiUseFor, PatchAiBody } from '@/lib/aiStack'
 
 type S = components['schemas']
 
@@ -185,9 +186,11 @@ check<WhenInSchema<'DomainPlan', Same<T.DomainStatus, M<'DomainPlan'>['status']>
 // are the expected ones (docs/specs/m10-ai-setup-cli-reflections.md). Each check switches itself on when a schema with that
 // name appears after `pnpm gen:api`, and then fails typecheck on any drift.
 check<WhenInSchema<'CliRuntimeStatus', Accepts<T.CliRuntimeStatus, M<'CliRuntimeStatus'>>>>()
-check<WhenInSchema<'AiSetupStatus', Accepts<T.AiSetupStatus, M<'AiSetupStatus'>>>>()
-check<WhenInSchema<'AiSetupUpdate', Accepts<M<'AiSetupUpdate'>, T.AiSetupUpdate>>>()
-check<WhenInSchema<'CliAuthUpdate', Accepts<M<'CliAuthUpdate'>, T.CliAuthUpdate>>>()
+// M17: `GET /ai-setup` is derived from the AI stack; `PUT /ai-setup` is gone (410), so there is no update type.
+// `clis` is the UI's looser CliRuntimeStatus (checked above, one-way); every other field is exact.
+check<Same<Omit<T.AiSetupStatus, 'clis'>, Omit<S['AiSetupStatus'], 'clis'>>>()
+check<Accepts<T.AiSetupStatus, S['AiSetupStatus']>>()
+check<Same<T.AiBlockingReason, NonNullable<S['AiSetupStatus']['blocking_reason']>>>()
 // `ProviderTest` already exists in the schema with the pre-M10 shape (status/message); the check switches on once it carries `checks`.
 check<'ProviderTest' extends keyof S ? ('checks' extends keyof M<'ProviderTest'> ? Accepts<T.ProviderTest, M<'ProviderTest'>> : true) : true>()
 check<WhenInSchema<'CommandRequest', Accepts<M<'CommandRequest'>, T.CommandRequest>>>()
@@ -208,9 +211,6 @@ check<WhenInSchema<'CompanyStandard', Same<T.StandardStatus, M<'CompanyStandard'
 check<WhenInSchema<'CommandExchange', Same<T.CommandStatus, M<'CommandExchange'>['status']>>>()
 check<WhenInSchema<'CommandExchange', Same<T.CommandInputKind, M<'CommandExchange'>['input_kind']>>>()
 check<WhenInSchema<'CommandOutput', Same<T.CommandOutputKind, M<'CommandOutput'>['kind']>>>()
-check<WhenInSchema<'AiSetupStatus', Same<T.WorkMode, M<'AiSetupStatus'>['work_mode']>>>()
-check<WhenInSchema<'AiSetupUpdate', Same<T.WorkRuntime, NonNullable<M<'AiSetupUpdate'>['work_runtime']>>>>()
-check<WhenInSchema<'AiSetupStatus', Same<T.AiBlockingReason, NonNullable<M<'AiSetupStatus'>['blocking_reason']>>>>()
 check<WhenInSchema<'CliRuntimeStatus', Same<T.CliAuthMode, M<'CliRuntimeStatus'>['auth_modes'][number]>>>()
 check<WhenInSchema<'CliRuntimeStatus', Same<T.CliRuntimeId, M<'CliRuntimeStatus'>['id']>>>()
 
@@ -220,3 +220,24 @@ check<WhenInSchema<'CliRuntimeStatus', Same<T.CliRuntimeId, M<'CliRuntimeStatus'
 check<WhenInSchema<'PasskeyInfo', Accepts<T.PasskeyInfo, M<'PasskeyInfo'>>>>()
 check<WhenInSchema<'PasskeyRegistrationOptions', Accepts<T.PasskeyRegistrationOptions, M<'PasskeyRegistrationOptions'>>>>()
 check<WhenInSchema<'PasskeyLoginOptions', Accepts<T.PasskeyLoginOptions, M<'PasskeyLoginOptions'>>>>()
+
+// ---- Milestone 17 (one AI stack) ----
+// The UI's AI-stack types (lib/aiStack.ts) are the normalized view of the wire shapes and are field-for-field the same, so
+// the server shapes must be accepted by them, and the bodies the UI sends must be accepted by the server schemas.
+check<Accepts<AiStackData, S['AiStackOut']>>()
+check<Accepts<AiConnection, S['AiConnectionOut']>>()
+check<Accepts<AiConnectionStatus, S['AiStatus']>>()
+check<Accepts<AiOption, S['AiOption']>>()
+check<Accepts<AiLastTest, S['AiLastTest']>>()
+check<Accepts<AiSummaryEntry, S['SummaryEntry']>>()
+check<Accepts<T.ClaudeLoginStatus, S['ClaudeLoginStatus']>>()
+check<Accepts<S['AiConnectionCreate'], AddAiBody>>()
+check<Accepts<S['AiConnectionPatch'], PatchAiBody>>()
+// The enums the UI switches on must be exactly the server's.
+check<Same<AiOptionId, S['AiOption']['option']>>()
+check<Same<AiOptionId, S['AiConnectionOut']['option']>>()
+check<Same<AiUseFor, S['AiConnectionOut']['use_for']>>()
+check<Same<AiConnState, S['AiStatus']['state']>>()
+check<Same<AiGroup, S['AiOption']['group']>>()
+check<Same<AiAuthMode, NonNullable<S['AiConnectionOut']['auth_mode']>>>()
+check<Same<AiStackBlocking, NonNullable<S['AiStackOut']['blocking_reason']>>>()

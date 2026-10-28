@@ -188,11 +188,13 @@ class CursorAdapter(CliAdapter):
         }
 
     def build(self, prep: RunPrep) -> Invocation:
-        if prep.auth_mode != "api_key" or not prep.secret:
+        plan = prep.auth_mode == "own_login" and prep.isolated_home
+        if not plan and (prep.auth_mode != "api_key" or not prep.secret):
             raise RuntimeAdapterError(
                 RuntimeErrorKind.CONFIG,
-                "Cursor CLI runs only with a Cursor API key (Settings > AI): Foundry AI OS "
-                "never writes into your own ~/.cursor",
+                "Cursor CLI runs only with a Cursor API key or a Cursor plan sign-in made "
+                "through Foundry's own home (Settings > AI): Foundry AI OS never writes into "
+                "your own ~/.cursor",
             )
         home = prep.home / ".cursor"
         run = prep.mode != "test"
@@ -224,7 +226,8 @@ class CursorAdapter(CliAdapter):
             argv += ["--model", prep.model]
         argv.append(prep.prompt)
         env = self.child_env(prep)
-        env["CURSOR_API_KEY"] = prep.secret
+        if prep.secret:  # a plan sign-in lives in the isolated HOME instead
+            env["CURSOR_API_KEY"] = prep.secret
         return Invocation(
             argv=argv,
             env=env,

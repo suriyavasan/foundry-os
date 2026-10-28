@@ -18,6 +18,7 @@ from app.api.routes import (
     agent_repo,
     agents,
     ai_setup,
+    ai_stack,
     alerts,
     approvals,
     artifacts,
@@ -191,7 +192,13 @@ def create_app(
     app.state.owner_token = OwnerTokenProvider(settings)
     app.state.cipher = CredentialCipher(app.state.keys)
     app.state.auth = AuthService(settings, app.state.keys, app.state.cipher, app.state.owner_token)
-    app.state.cli_env = CliEnvironment(extra_dirs=[Path(p) for p in settings.cli_search_paths])
+    app.state.cli_env = CliEnvironment(
+        extra_dirs=[Path(p) for p in settings.cli_search_paths],
+        data_dir=settings.resolved_data_dir,
+    )
+    from app.services import cli_runtimes as _cli_runtimes
+
+    _cli_runtimes.bind_environment(app.state.cli_env)
     app.state.runtimes = runtime_registry or build_default_registry(
         settings,
         session_factory=session_factory,
@@ -280,6 +287,7 @@ def create_app(
         policy.router,
         providers.router,
         ai_setup.router,
+        ai_stack.router,
         cli_runtimes.router,
         reflections.router,
         commands.router,

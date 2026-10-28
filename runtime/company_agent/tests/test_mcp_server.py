@@ -77,7 +77,7 @@ def test_initialize_list_and_call(api, tmp_path):
     listed = mcp.request("tools/list")["result"]["tools"]
     assert [t["name"] for t in listed] == [
         "get_context", "report_progress", "submit_artifact", "complete_task",
-        "update_task", "request_help", "find_colleagues",
+        "update_task", "request_help", "find_colleagues", "request_purchase",
     ]
     assert all(t["inputSchema"]["type"] == "object" and t["description"] for t in listed)
     out = mcp.request("tools/call", {"name": "report_progress", "arguments": {"message": "halfway"}})["result"]
@@ -147,3 +147,24 @@ def test_missing_configuration_exits_with_an_error(tmp_path):
         input="", timeout=30,
     )
     assert done.returncode != 0 and "COMPANY_OS_API_URL" in done.stderr
+
+
+def test_default_tools_include_request_purchase_and_all_are_known():
+    from company_agent import mcp_server
+    from tools import company_tools as ct
+
+    assert "request_purchase" in mcp_server.DEFAULT_TOOLS
+    assert all(mcp_server.PREFIX + t in ct._TOOLS for t in mcp_server.DEFAULT_TOOLS)
+
+
+def test_cli_brief_uses_the_company_agent_playbooks():
+    from company_agent import prompts
+
+    founder = prompts.cli_brief({"role": "founder", "task": {"title": "Wake", "kind": "planning"}})
+    assert prompts.FOUNDER_PLAYBOOK in founder and "company_get_state" in founder
+    assert "BUYING THINGS" not in founder  # the Co-founder does not request purchases
+    hr = prompts.cli_brief(
+        {"role": "HR", "company_tools": ["company_request_purchase"], "task": {"title": "Hire"}}
+    )
+    assert prompts.HR_PLAYBOOK in hr and "BUYING THINGS" in hr
+    assert prompts.SPECIALIST_PLAYBOOK in prompts.cli_brief({"role": "nonsense", "task": {"title": "x"}})

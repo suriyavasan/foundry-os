@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { normalizeAiSetup, normalizeCli, normalizeCliTest, normalizeInstallLog, normalizeModelList, normalizeProviderTest, type ModelOption } from '@/lib/aiSetup'
+import { normalizeAiSetup, normalizeCli, normalizeInstallLog, normalizeModelList, normalizeProviderTest, type ModelOption } from '@/lib/aiSetup'
 import { apiFetch } from './client'
 import { qk } from './keys'
-import type { AiSetupStatus, AiSetupUpdate, CliAuthUpdate, CliInstallLog, CliLastTest, CliRuntimeStatus, ProviderTest } from './types'
+import type { AiSetupStatus, CliInstallLog, CliRuntimeStatus, ProviderTest } from './types'
 import { isNotDeployed } from './work'
 
 const co = (cid: string | undefined) => `/companies/${cid}`
@@ -24,19 +24,6 @@ export function useAiSetup(cid: string | undefined) {
       const status = normalizeAiSetup(raw)
       if (!status) throw new Error('The server answered the AI setup request with something unexpected.')
       return status
-    },
-  })
-}
-
-export function useUpdateAiSetup(cid: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async (body: AiSetupUpdate): Promise<AiSetupStatus | null> => normalizeAiSetup(await apiFetch<unknown>(`${co(cid)}/ai-setup`, { method: 'PUT', body })),
-    onSuccess: (status) => {
-      if (status) qc.setQueryData(qk.aiSetup(cid), status)
-      void qc.invalidateQueries({ queryKey: qk.aiSetup(cid) })
-      void qc.invalidateQueries({ queryKey: qk.policy(cid) })
-      void qc.invalidateQueries({ queryKey: qk.modelProviders(cid) })
     },
   })
 }
@@ -85,7 +72,10 @@ function useCliInvalidate(cid?: string) {
   const qc = useQueryClient()
   return () => {
     void qc.invalidateQueries({ queryKey: qk.cliRuntimes })
-    if (cid) void qc.invalidateQueries({ queryKey: qk.aiSetup(cid) })
+    if (cid) {
+      void qc.invalidateQueries({ queryKey: qk.aiSetup(cid) })
+      void qc.invalidateQueries({ queryKey: qk.aiStack(cid) })
+    }
   }
 }
 
@@ -93,7 +83,11 @@ function useCliInvalidate(cid?: string) {
 export function useInstallCli(cid?: string) {
   const invalidate = useCliInvalidate(cid)
   return useMutation({
-    mutationFn: (id: string) => apiFetch<unknown>(`${idPath(id)}/install`, { method: 'POST', body: { confirm: true } }),
+    mutationFn: (id: string) =>
+      apiFetch<unknown>(`${idPath(id)}/install`, {
+        method: 'POST',
+        body: { confirm: true },
+      }),
     onSettled: invalidate,
   })
 }
@@ -106,22 +100,5 @@ export function useCliInstallLog(id: string | null, active: boolean) {
     retry: false,
     refetchInterval: (q) => (active && q.state.data?.state !== 'succeeded' && q.state.data?.state !== 'failed' ? 1000 : false),
     queryFn: async ({ signal }): Promise<CliInstallLog> => normalizeInstallLog(await apiFetch<unknown>(`${idPath(id!)}/install-log`, { signal })),
-  })
-}
-
-export function useSetCliAuth(cid?: string) {
-  const invalidate = useCliInvalidate(cid)
-  return useMutation({
-    mutationFn: ({ id, body }: { id: string; body: CliAuthUpdate }) => apiFetch<unknown>(`${idPath(id)}/auth`, { method: 'PUT', body }),
-    // The secret lives only in the credential endpoint's request; the cached variables here carry just an id.
-    onSettled: invalidate,
-  })
-}
-
-export function useTestCli(cid?: string) {
-  const invalidate = useCliInvalidate(cid)
-  return useMutation({
-    mutationFn: async (id: string): Promise<CliLastTest | null> => normalizeCliTest(await apiFetch<unknown>(`${idPath(id)}/test`, { method: 'POST', body: {} })),
-    onSettled: invalidate,
   })
 }

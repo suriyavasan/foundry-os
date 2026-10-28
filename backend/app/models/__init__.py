@@ -2,6 +2,7 @@
 
 from app.models.accounts import ApiToken, AuthSession, Invitation, LoginThrottle, Notification
 from app.models.agent import Agent
+from app.models.ai_stack import AiConnection
 from app.models.artifact import Artifact, ArtifactVersion
 from app.models.audit import AuditEvent
 from app.models.autonomy import (
@@ -61,6 +62,7 @@ from app.models.user import User
 from app.models.work import Goal, Project, Task, TaskDependency
 
 __all__ = [
+    "AiConnection",
     "Agent",
     "AgentCard",
     "Alert",

@@ -31,9 +31,9 @@ from app.models.enums import MemberRole, MemberStatus
 from app.models.provider import Credential, ModelProvider
 from app.runtimes.cli import store
 from app.runtimes.cli.catalog import CLIS, CliSpec, sandbox_for
-from app.runtimes.cli.env import CliEnvironment, base_env
+from app.runtimes.cli.env import CliEnvironment, base_env, claude_config_dir
 from app.schemas.ai_setup import CliAuthUpdate
-from app.services import audit, events, reachability
+from app.services import audit, events, plan_login, reachability
 
 logger = logging.getLogger("company_os.cli_runtimes")
 
@@ -47,6 +47,10 @@ OWN_LOGIN_WARNING = (
 )
 _running: dict[str, threading.Thread] = {}
 _lock = threading.Lock()
+
+CLAUDE_ID = "claude_code"
+CliNotInstalled = plan_login.CliNotInstalled
+LoginInProgress = plan_login.LoginInProgress
 
 
 def _spec(cli_id: str) -> CliSpec:
@@ -139,6 +143,7 @@ def status_of(db: Session, cli_env: CliEnvironment, cli_id: str) -> dict[str, An
             "Claude Code's own sandbox is not verified by Foundry AI OS, so its shell (Bash) tool is never "
             "enabled: it works with files in its workspace and the company tools."
         )
+    login: dict[str, Any] | None = None  # removed in M17 (per-connection: /ai-stack/{id}/login)
     return {
         "id": spec.id,
         "display_name": spec.display_name,
@@ -156,6 +161,7 @@ def status_of(db: Session, cli_env: CliEnvironment, cli_id: str) -> dict[str, An
             "manual": spec.manual_install,
         },
         "login_hint": spec.login_hint,
+        "login": login,
         "warnings": warnings,
     }
 
@@ -304,6 +310,9 @@ def run_test(
     if not state.get("auth_mode"):
         raise Conflict(f"Choose how {spec.display_name} signs in first")
     ok, detail = adapter.run_test(db, state)
+    if spec.id == CLAUDE_ID and cli_env.data_dir is not None:
+        # the connectivity test also proves the sign-in works: refresh the cached status
+        invalidate_claude_login(cli_env, cli_env.data_dir)
     store.save(
         db, spec.id, last_test={"ok": ok, "detail": detail[:300], "tested_at": format_ts(utcnow())}
     )
@@ -485,3 +494,32 @@ def _redact_line(line: str) -> str:
     from app.services import secrets_scan
 
     return secrets_scan.scrub(line) or ""
+
+
+# ---------------------------------------------------------------- environment binding
+
+_bound_env: CliEnvironment | None = None
+
+
+def bind_environment(cli_env: CliEnvironment) -> None:
+    """The app's CLI environment, for checks that run without a request."""
+    global _bound_env
+    _bound_env = cli_env
+
+
+def bound_environment() -> CliEnvironment | None:
+    return _bound_env
+
+
+def claude_login_cached(
+    cli_env: CliEnvironment, data_dir: Path, *, refresh: bool = False
+) -> dict[str, Any]:
+    """Sign-in state of the installation-level Claude home ``<data>/claude-code`` (the B9 location, reused
+    by a bootstrapped plan connection). Per-connection state: ``plan_login.status_cached``."""
+    return plan_login.status_cached(
+        cli_env, CLAUDE_ID, claude_config_dir(data_dir), refresh=refresh
+    )
+
+
+def invalidate_claude_login(cli_env: CliEnvironment, data_dir: Path) -> None:
+    plan_login.invalidate(claude_config_dir(data_dir))

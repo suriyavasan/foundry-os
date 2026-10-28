@@ -1,4 +1,5 @@
-"""M10 section 2: API-only vs hybrid work mode. The dispatcher picks the runtime per run."""
+"""M10 section 2 on the M17 AI stack: API-only vs API + coding CLI. The dispatcher picks the runtime per
+run from the stack (a heavy API connection plus an everyday CLI connection is the old \"hybrid\")."""
 
 from __future__ import annotations
 
@@ -8,7 +9,7 @@ from app.main import create_app
 from app.runtimes.registry import RuntimeRegistry
 from app.runtimes.scripted import ScriptedRuntime
 from tests.helpers import api, get_task, new_agent, new_task, settle
-from tests.m10_helpers import install_fake_cli, make_ready
+from tests.m10_helpers import add_connection, install_fake_cli, make_ready
 
 
 class FakeCompanyAgent(ScriptedRuntime):
@@ -38,23 +39,23 @@ def app(make_settings, scripted, skills_env_override):
 
 
 def hybrid(app, client, cid, tmp_path):
-    p = make_ready(app, client, cid)
+    """The API model for management (heavy) and OpenCode for work (everyday)."""
+    make_ready(app, client, cid)
+    first = client.get(api(cid, "/ai-stack")).json()["items"][0]
+    assert (
+        client.patch(api(cid, f"/ai-stack/{first['id']}"), json={"use_for": "heavy"}).status_code
+        == 200
+    )
     d = tmp_path / "bin"
     app.state.cli_env.extra_dirs.append(d)
     install_fake_cli(d, "opencode", [])
-    client.put(
-        "/api/cli-runtimes/opencode/auth", json={"mode": "own_login", "model": "anthropic/claude-x"}
-    )
-    r = client.put(
-        api(cid, "/ai-setup"),
-        json={
-            "management_provider_id": p["id"],
-            "management_model": p["default_model"],
-            "work_mode": "hybrid",
-            "work_runtime": "cli:opencode",
-        },
-    )
-    assert r.status_code == 200, r.text
+    cred = client.post(
+        api(cid, "/credentials"), json={"name": "k", "value": "sk-test-0123456789abcdef"}
+    ).json()
+    add_connection(
+        app, client, cid, "opencode", credential_id=cred["id"], model="anthropic/claude-x",
+        use_for="everyday",
+    )  # fmt: skip
 
 
 def run_of(client, cid, task_id) -> dict:
@@ -75,7 +76,7 @@ def test_api_mode_runs_everything_on_the_agents_runtime(app, client, company, sc
     assert run["runtime"] == "company_agent" and run["status"] == "succeeded"
 
 
-def test_hybrid_sends_work_tasks_of_workers_to_the_cli(
+def test_a_heavy_api_plus_everyday_cli_stack_sends_work_tasks_of_workers_to_the_cli(
     app, client, company, scheduler, worker, tmp_path
 ):
     cid = company["id"]
@@ -85,7 +86,8 @@ def test_hybrid_sends_work_tasks_of_workers_to_the_cli(
     settle(scheduler, worker)
     run = run_of(client, cid, task["id"])
     assert run["runtime"] == "cli:opencode"
-    assert run["routing_reason"] and "hybrid: work task on cli:opencode" in run["routing_reason"]
+    assert run["routing_reason"] == "AI stack: OpenCode (secondary, Normal) for everyday work"
+    assert run["ai_connection_id"]
     assert get_task(client, cid, task["id"])["status"] == "done"
 
 
@@ -205,22 +207,15 @@ def test_a_cli_on_a_local_provider_reserves_nothing(
 
     cid = company["id"]
     p = make_ready(app, client, cid)
+    first = client.get(api(cid, "/ai-stack")).json()["items"][0]
+    client.patch(api(cid, f"/ai-stack/{first['id']}"), json={"use_for": "heavy"})
     d = tmp_path / "bin"
     app.state.cli_env.extra_dirs.append(d)
     install_fake_cli(d, "opencode", [])
-    client.put(
-        "/api/cli-runtimes/opencode/auth",
-        json={"mode": "api_key", "model_provider_id": p["id"], "model": "qwen2.5:7b"},
-    )
-    client.put(
-        api(cid, "/ai-setup"),
-        json={
-            "management_provider_id": p["id"],
-            "management_model": "qwen2.5:7b",
-            "work_mode": "hybrid",
-            "work_runtime": "cli:opencode",
-        },
-    )
+    add_connection(
+        app, client, cid, "opencode", cli_provider_id=p["id"], model="qwen2.5:7b",
+        use_for="everyday",
+    )  # fmt: skip
     agent = worker_agent(client, cid)
     new_task(client, cid, assignee_agent_id=agent["id"])
     scheduler.tick()
@@ -228,27 +223,3 @@ def test_a_cli_on_a_local_provider_reserves_nothing(
         assert (
             db.scalars(select(BudgetReservation.amount_micros)).one() == 0
         )  # a local model: nothing to hold
-
-
-def test_cli_role_families_keep_research_on_the_company_agent_end_to_end(
-    app, client, company, scheduler, worker, tmp_path
-):
-    """M12: with ``cli_role_families`` set, only the listed families go to the CLI; research (it needs the
-    web, which a coding CLI does not have) stays on the company agent and the run says why."""
-    from tests.guardrail_helpers import set_family
-
-    cid = company["id"]
-    hybrid(app, client, cid, tmp_path)
-    r = client.patch(api(cid, "/policy"), json={"cli_role_families": ["engineering"]})
-    assert r.status_code == 200, r.text
-    engineer = worker_agent(client, cid, name="Eli")
-    researcher = worker_agent(client, cid, name="Ray")
-    set_family(app, engineer["id"], "engineering")
-    set_family(app, researcher["id"], "research")
-    t_eng = new_task(client, cid, assignee_agent_id=engineer["id"])
-    t_res = new_task(client, cid, assignee_agent_id=researcher["id"])
-    settle(scheduler, worker, rounds=30)
-    eng, res = run_of(client, cid, t_eng["id"]), run_of(client, cid, t_res["id"])
-    assert eng["runtime"] == "cli:opencode"
-    assert res["runtime"] == "company_agent" and "needs web" in res["routing_reason"]
-    assert get_task(client, cid, t_res["id"])["status"] == "done"

@@ -154,6 +154,9 @@ class ExecutionRequest:
     # directory). ``workspace_files`` are up to 60 paths already in the repository.
     workspace_kind: str = "run_dir"
     workspace_files: list[str] = field(default_factory=list)
+    # M17: the AI connection this run was routed to (``ai_connections.id``). CLI adapters take their
+    # sign-in (plan home, key, OpenCode provider) from it instead of the installation-level setting.
+    ai_connection_id: str | None = None
 
     def __repr__(self) -> str:  # the token must never reach logs
         return f"ExecutionRequest(run_id={self.run_id!r}, task_id={self.task.id!r})"

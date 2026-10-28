@@ -371,6 +371,9 @@ def update_provider(
     if changed:
         row.updated_at = utcnow()
         row.last_test = None  # the old test no longer describes this configuration
+        from app.services import ai_stack
+
+        ai_stack.sync_provider(db, row)
         audit.record(
             db,
             company_id=ctx.company_id,
@@ -406,6 +409,16 @@ def delete_provider(db: Session, ctx: CompanyContext, provider_id: str) -> None:
         raise Conflict(
             "Model provider is used by agents: " + ", ".join(users[:5]) + ". Reassign them first."
         )
+    from app.models.ai_stack import AiConnection
+
+    in_stack = db.scalar(
+        select(AiConnection.label).where(
+            AiConnection.company_id == ctx.company_id,
+            (AiConnection.model_provider_id == row.id) | (AiConnection.cli_provider_id == row.id),
+        )
+    )
+    if in_stack is not None:
+        raise Conflict(f"Model provider is used by the AI stack ({in_stack}). Remove that first.")
     pol = policy.load_policy(db, ctx.company_id)
     if pol.default_model_provider_id == row.id:
         pol.default_model_provider_id = None
@@ -446,6 +459,9 @@ def test_provider(
         db, row, cipher, transport, model=model, allow_private_network=allow_private_network
     )
     row.last_test = outcome.as_dict()
+    from app.services import ai_stack
+
+    ai_stack.sync_provider(db, row)
     audit.record(
         db,
         company_id=ctx.company_id,

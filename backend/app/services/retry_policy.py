@@ -39,6 +39,10 @@ _TRANSIENT_PHRASES = (
     "connection reset",
     "connection refused",
     "temporarily unavailable",
+    # B9: Claude Code's plan limit and an expired login. The task waits for the runtime (health), it
+    # is not a failure of the task; see runtimes/cli/claude_code.py.
+    "hit its usage limit",
+    "sign in to claude again",
 )
 # HTTP statuses only as whole numbers (not inside an id or a port such as 15032).
 _TRANSIENT_STATUS = re.compile(r"(?<![0-9])(?:429|502|503|504|529)(?![0-9])")

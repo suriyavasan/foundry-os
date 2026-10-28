@@ -26,7 +26,7 @@ export function AiGate({ companyId, onDone }: { companyId: string; onDone: () =>
             <Lock className="mb-3 size-5 text-fg-3" aria-hidden />
             <h1 className="text-[20px] font-semibold text-fg">This company is waiting for its AI to be connected</h1>
             <p className="mt-2 text-[13.5px] text-fg-2">{blockingReasonText(ai.data?.blocking_reason)}</p>
-            <p className="mt-2 text-[13.5px] text-fg-2">An owner or admin has to connect and test an AI provider before anyone can use this company.</p>
+            <p className="mt-2 text-[13.5px] text-fg-2">An owner or admin has to add an AI (a plan sign-in or an API key) and test it before anyone can use this company.</p>
             <div className="mt-5 flex gap-2">
               <Button onClick={() => void ai.refetch()} loading={ai.isFetching}>
                 Check again

@@ -2,7 +2,8 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { jsonResponse, mockApi, page } from '@/test/factories'
-import { makeAiSetup, readyAiSetup } from '@/test/m10'
+import { makeAiSetup, makeProviderTest, readyAiSetup } from '@/test/m10'
+import { makeConn, makeStack } from '@/test/m17'
 import { baseRoutes, renderCanvas } from '@/test/m5'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -13,6 +14,7 @@ const routes = (ai: unknown, extra: Record<string, unknown> = {}) => ({
   '/companies/c1/ai-setup': ai,
   '/companies/c1/model-providers': page([]),
   '/companies/c1/model-providers/detect': { reachable: false, models: [] },
+  '/companies/c1/ai-stack': makeStack([]),
   '/cli-runtimes': { items: [] },
   ...extra,
 })
@@ -23,7 +25,7 @@ describe('the AI gate on the canvas', () => {
     renderCanvas()
     expect(await screen.findByRole('heading', { name: 'Connect your AI' })).toBeInTheDocument()
     expect(screen.getByText('Step 1 of 1 · Connect your AI')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Save and open my company' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Open my company' })).toBeDisabled()
     // no canvas, no top bar, no widgets, no command palette
     expect(screen.queryByRole('region', { name: 'Organization' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Open command palette' })).not.toBeInTheDocument()
@@ -57,49 +59,57 @@ describe('the AI gate on the canvas', () => {
     expect(screen.queryByRole('heading', { name: 'Connect your AI' })).not.toBeInTheDocument()
   }, 15_000)
 
-  it('tests the model API, then one save lets the person into the company', async () => {
-    let ai = notReady()
+  it('adds an AI in the gate, and Continue opens the company only once the stack is ready', async () => {
+    let ai = notReady({ blocking_reason: 'no_ai' })
+    let stack = makeStack([])
     const api = mockApi(
       routes(() => jsonResponse(ai), {
+        '/companies/c1/ai-stack': () => jsonResponse(stack),
         'POST /companies/c1/credentials': { id: 'cr1', name: 'k', kind: 'api_key' },
         'POST /companies/c1/model-providers': { id: 'p1', name: 'OpenRouter', kind: 'openrouter', default_model: 'm', enabled: true },
         '/companies/c1/model-providers/p1/models': { items: [] },
-        'POST /companies/c1/model-providers/p1/test': {
-          ok: true,
-          served_context: 65536,
-          latency_ms: 10,
-          tested_at: null,
-          checks: ['reachable', 'auth', 'tool_calling', 'context', 'model_exists'].map((name) => ({ name, ok: true, detail: null })),
-        },
-        'PUT /companies/c1/ai-setup': () => {
+        'POST /companies/c1/model-providers/p1/test': makeProviderTest(),
+        'POST /companies/c1/ai-stack': () => {
+          stack = makeStack([makeConn({ id: 'k1', option: 'openrouter', label: 'OpenRouter' })])
           ai = readyAiSetup()
-          return jsonResponse(ai)
+          return jsonResponse(stack.items[0], 201)
         },
       }),
     )
     vi.stubGlobal('fetch', api.impl)
     renderCanvas()
-    await userEvent.click(await screen.findByRole('radio', { name: /OpenRouter/ }))
-    await userEvent.type(screen.getByLabelText(/OpenRouter API key/), 'sk-key')
-    await userEvent.type(screen.getByLabelText(/^Model(?! API)\b/, { selector: 'input' }), 'm')
-    await userEvent.click(screen.getByRole('button', { name: 'Test connection' }))
-    const save = screen.getByRole('button', { name: 'Save and open my company' })
-    await waitFor(() => expect(save).toBeEnabled())
-    // testing saves nothing, so the server is still not ready and the gate stays until the save
-    expect(api.calls.some((c) => c.method === 'PUT')).toBe(false)
-    expect(screen.queryByRole('region', { name: 'Organization' })).not.toBeInTheDocument()
-    await userEvent.click(save)
+    const user = userEvent.setup()
+    expect(await screen.findByRole('heading', { name: 'Connect your AI' })).toBeInTheDocument()
+    expect(screen.getByText(/Add the AI your company will use/)).toBeInTheDocument()
+    expect(await screen.findByText('No AI yet')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open my company' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Add AI' }))
+    await user.click(within(await screen.findByRole('dialog', { name: 'Add an AI' })).getByRole('button', { name: 'OpenRouter' }))
+    const flow = await screen.findByRole('dialog', { name: 'Add OpenRouter' })
+    await user.type(within(flow).getByLabelText(/OpenRouter API key/), 'sk-or')
+    await user.type(within(flow).getByLabelText(/^Model/, { selector: 'input' }), 'm')
+    await user.click(within(flow).getByRole('button', { name: 'Test and add' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Open my company' })).toBeEnabled())
+    await user.click(screen.getByRole('button', { name: 'Open my company' }))
     expect(await screen.findByRole('region', { name: 'Organization' })).toBeInTheDocument()
   })
 
-  it('tells a member who cannot change the setup who can, instead of showing the steps', async () => {
-    const api = mockApi({ ...routes(notReady({ blocking_reason: 'provider_test_failed' })), '/me': { user: { id: 'u', email: 'o@x', display_name: 'Sam' }, memberships: [{ company_id: 'c1', company_name: 'Acme', role: 'member' }] } })
-    vi.stubGlobal('fetch', api.impl)
-    renderCanvas()
-    expect(await screen.findByRole('heading', { name: /waiting for its AI to be connected/ })).toBeInTheDocument()
-    expect(screen.getByText(/did not pass/)).toBeInTheDocument()
-    expect(screen.getByText(/An owner or admin has to connect and test an AI provider/)).toBeInTheDocument()
-    expect(screen.queryByRole('radiogroup', { name: 'Provider' })).not.toBeInTheDocument()
-    expect(within(document.body).queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument()
+  it('explains each stack blocking reason to a member who cannot change the setup', async () => {
+    const reasons: Array<[string, RegExp]> = [
+      ['no_ai', /No AI yet/],
+      ['no_tested_ai', /Test your AI/],
+      ['no_heavy_ai', /heavy lifting/i],
+      ['no_everyday_ai', /everyday work/i],
+    ]
+    for (const [reason, text] of reasons) {
+      const api = mockApi({ ...routes(notReady({ blocking_reason: reason as never })), '/me': { user: { id: 'u', email: 'o@x', display_name: 'Sam' }, memberships: [{ company_id: 'c1', company_name: 'Acme', role: 'member' }] } })
+      vi.stubGlobal('fetch', api.impl)
+      const r = renderCanvas()
+      expect(await screen.findByRole('heading', { name: /waiting for its AI to be connected/ })).toBeInTheDocument()
+      expect(screen.getByText(text)).toBeInTheDocument()
+      expect(screen.getByText(/An owner or admin has to add an AI/)).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Add AI' })).not.toBeInTheDocument()
+      r.unmount()
+    }
   })
 })

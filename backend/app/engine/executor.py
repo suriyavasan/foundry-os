@@ -328,6 +328,7 @@ class RunExecutor:
                 workspace_dir=str(workspace),
                 workspace_kind=ws.kind,
                 workspace_files=list(ws.files),
+                ai_connection_id=run.ai_connection_id,
             )
             max_run_seconds = limits.max_run_seconds
             guard = containment.RunGuard.for_policy(limits)

@@ -18,24 +18,11 @@ export function makeProviderTest(over: Partial<ProviderTest> & { failing?: strin
 }
 
 export function makeAiSetup(over: Partial<AiSetupStatus> = {}): AiSetupStatus {
-  return {
-    ready: false,
-    blocking_reason: 'no_tested_provider',
-    management: { provider_id: null, provider_name: null, kind: null, model: null, last_test: null },
-    work_mode: 'api',
-    work_runtime: null,
-    clis: [],
-    ...over,
-  }
+  return { ready: false, blocking_reason: 'no_ai', stack_count: 0, clis: [], ...over }
 }
 
 export function readyAiSetup(over: Partial<AiSetupStatus> = {}): AiSetupStatus {
-  return makeAiSetup({
-    ready: true,
-    blocking_reason: null,
-    management: { provider_id: 'p1', provider_name: 'OpenRouter', kind: 'openrouter', model: 'anthropic/claude-sonnet-4.5', last_test: makeProviderTest() },
-    ...over,
-  })
+  return makeAiSetup({ ready: true, blocking_reason: null, stack_count: 1, ...over })
 }
 
 export function makeCli(over: Partial<CliRuntimeStatus> = {}): CliRuntimeStatus {

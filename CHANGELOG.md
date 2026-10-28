@@ -10,6 +10,18 @@ automatically with the next patch version (see `docs/install.md`, "Cut a release
 
 ### Added
 
+- One **AI stack** replaces the separate model API / work model / coding CLI settings, in onboarding and in
+  Settings. Add any number of AIs of any type — Claude through your plan (the official Claude Code, signed in on
+  Anthropic's own page) or the Anthropic API; OpenAI, OpenRouter, OpenAI-compatible or a local Ollama model;
+  Cursor through your plan or a Cursor API key; Codex, OpenCode or Antigravity with a key — then order them
+  (primary, secondary…), choose what each is for (everything, heavy lifting such as planning, reviews and
+  management, or everyday work) and how much to use it (most, more, normal, less, backup only). Foundry spreads
+  runs by those shares, skips an AI that is paused or signed out, and falls back to backups; budgets, approvals
+  and permissions apply to every one. Existing setups are carried over automatically.
+- Plan sign-ins happen only through the CLI's own flow (`claude auth login`, `agent login`; `foundryos ai login`
+  in a terminal). Foundry never sees or stores passwords, codes or tokens and allows one plan sign-in per CLI per
+  company; any number of API keys is fine. When a plan hits its usage limit, that AI pauses until the reset and
+  its work moves to the rest of the stack. `foundryos ai list|add|remove|test|login|logout`.
 - Cursor CLI (`agent`) as a fifth coding-CLI work runtime (`cli:cursor`). It runs only with a Cursor API key in an
   isolated per-agent home, with shell commands and web fetches denied by generated permission rules. It is coded
   from Cursor's documentation and tested with a fake binary; it has not been run against the real CLI. Cursor's
@@ -46,6 +58,9 @@ automatically with the next patch version (see `docs/install.md`, "Cut a release
 
 ### Changed
 
+- `PUT /ai-setup` is gone (410); use `/ai-stack`. `GET /ai-setup` now reports readiness from the stack. Model
+  routing modes (free first / quality first / paid-fallback approval) no longer apply: the AI stack's order, use
+  and importance decide. `foundryos setup` has no separate "work" step any more.
 - Finance leads with the estimate: most providers never report a charge, so "Estimated" comes first and "Charged"
   second (with a note when it is $0) in the totals, the wasted-runs strip, budget rows and the spend blocks.
 - The organization chart reads left to right by default (compact cards, levels side by side). One button switches

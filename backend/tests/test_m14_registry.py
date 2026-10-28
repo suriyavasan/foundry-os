@@ -7,13 +7,18 @@ from __future__ import annotations
 import pytest
 
 from app.core.errors import ApprovalPending, GuardrailDenied
-from app.engine.dispatcher import _agent_ctx
+from app.core.principal import CompanyContext, Principal, PrincipalType, Role
 from app.guardrails import engine as guard_engine
 from app.guardrails import ratelimit, registry, rules
 from app.models.agent import Agent
 from app.services import policy
 from tests.guardrail_helpers import add_rule, connect_mail, events, make_team, run_as
 from tests.helpers import api
+
+
+def _agent_ctx(agent: Agent) -> CompanyContext:
+    principal = Principal(PrincipalType.AGENT, agent.id, agent.name, agent.company_id)
+    return CompanyContext(agent.company_id, principal, Role.AGENT)
 
 
 @pytest.fixture

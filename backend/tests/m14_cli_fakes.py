@@ -216,8 +216,22 @@ class FakeApi:
             return 200, {"user": {"username": "alice"}}
         if key == ("GET", "") or key == ("GET", "/companies"):
             return 200, page([self.company])
-        if rel == "/ai-setup":
-            return 200, {"ready": True, "management": {"provider_name": "P", "model": "m"}}
+        if rel in ("/ai-setup", "/ai-stack"):
+            return 200, {
+                "ready": True,
+                "blocking_reason": None,
+                "stack_count": 1,
+                "items": [
+                    {
+                        "id": "c1",
+                        "rank_label": "Primary",
+                        "label": "P",
+                        "option": "openrouter",
+                        "model": "m",
+                    }
+                ],
+                "options": [],
+            }
         if rel == "/notes":
             if method == "POST":
                 self.notes.append(body["body"])

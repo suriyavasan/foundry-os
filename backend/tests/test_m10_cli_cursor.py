@@ -17,12 +17,10 @@ from app.runtimes.base import CancelToken, RuntimeAdapterError
 from app.runtimes.cli import store
 from app.runtimes.cli.catalog import CLIS, FORBIDDEN_ARGV, assert_safe_argv, sandbox_for
 from app.runtimes.cli.cursor import CursorAdapter
-from tests.helpers import api
 from tests.m10_helpers import (
     CURSOR_OK,
     install_fake_cli,
     record_of,
-    register_cli_adapters,
 )
 from tests.test_m10_cli_adapters import API_KEY, RUN_TOKEN, Sink, World
 from tests.test_m10_cli_adapters import world as world  # noqa: F401  (the shared fixture)
@@ -349,25 +347,6 @@ def test_the_install_endpoint_never_runs_the_curl_installer(world):
     assert r.status_code == 409
     assert "cursor.com/install" in r.json()["error"]["message"]
     assert world.client.get("/api/cli-runtimes/cursor").json()["install"]["status"] == "none"
-
-
-def test_work_mode_accepts_cli_cursor_once_it_is_installed_and_configured(world):
-    cid = world.cid
-    p = world.client.get(api(cid, "/model-providers")).json()["items"][0]
-    body = {
-        "management_provider_id": p["id"],
-        "management_model": p["default_model"],
-        "work_mode": "hybrid",
-        "work_runtime": "cli:cursor",
-    }
-    r = world.client.put(api(cid, "/ai-setup"), json=body)
-    assert r.status_code == 409 and r.json()["error"]["details"]["reason"] == "cli_not_installed"
-    install_fake_cli(world.bin_dir, BINARY, [])
-    configure(world)
-    register_cli_adapters(world.app)
-    r = world.client.put(api(cid, "/ai-setup"), json=body)
-    assert r.status_code == 200, r.text
-    assert r.json()["work_runtime"] == "cli:cursor"
 
 
 def test_a_successful_run_keeps_its_files_but_not_the_cli_configuration(world):

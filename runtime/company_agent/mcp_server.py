@@ -41,6 +41,7 @@ DEFAULT_TOOLS = (
     "update_task",
     "request_help",
     "find_colleagues",
+    "request_purchase",
 )
 PREFIX = "company_"
 MAX_MESSAGE_BYTES = 4_000_000

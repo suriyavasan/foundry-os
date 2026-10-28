@@ -2,12 +2,10 @@ import { describe, expect, it } from 'vitest'
 import type { AiSetupStatus, CliRuntimeStatus, ProviderTest } from '@/api/types'
 import {
   aiGateState,
-  aiSetupUpdate,
   cliBrief,
   blockingReasonText,
   canTestProvider,
   cardFor,
-  cliReady,
   cliStatusLine,
   filterModels,
   installCommandOf,
@@ -19,11 +17,8 @@ import {
   normalizeModelList,
   normalizeProviderTest,
   providerFormFor,
-  readyClis,
-  runtimeIdOf,
   sandboxSummary,
   testPassed,
-  workModeProblem,
 } from './aiSetup'
 
 function cli(over: Partial<CliRuntimeStatus> = {}): CliRuntimeStatus {
@@ -52,7 +47,7 @@ const passing: ProviderTest = {
 }
 
 describe('AI gate rule', () => {
-  const status = (ready: boolean): AiSetupStatus => ({ ready, blocking_reason: ready ? null : 'no_tested_provider', management: { provider_id: null, provider_name: null, kind: null, model: null, last_test: null }, work_mode: 'api', work_runtime: null, clis: [] })
+  const status = (ready: boolean): AiSetupStatus => ({ ready, blocking_reason: ready ? null : 'no_ai', stack_count: 0, clis: [] })
   it('blocks only on an explicit ready:false', () => {
     expect(aiGateState({ isPending: true })).toBe('loading')
     expect(aiGateState({ isPending: false, data: status(false) })).toBe('blocked')
@@ -63,19 +58,21 @@ describe('AI gate rule', () => {
     expect(aiGateState({ isPending: false, data: null })).toBe('open')
   })
   it('says what blocks it, in plain words', () => {
-    expect(blockingReasonText('no_tested_provider')).toMatch(/Connect an AI provider/)
-    expect(blockingReasonText('provider_test_failed')).toMatch(/did not pass/)
-    expect(blockingReasonText('no_default_model')).toMatch(/Choose the model/)
+    expect(blockingReasonText('no_ai')).toMatch(/No AI yet/)
+    expect(blockingReasonText('no_tested_ai')).toMatch(/Test your AI/)
+    expect(blockingReasonText('no_heavy_ai')).toMatch(/heavy lifting/)
+    expect(blockingReasonText('no_everyday_ai')).toMatch(/everyday work/)
     expect(blockingReasonText('something_new')).toMatch(/not ready/)
   })
   it('normalises the status and refuses a body that is not one', () => {
     expect(normalizeAiSetup({ nope: true })).toBeNull()
     expect(normalizeAiSetup(null)).toBeNull()
-    const n = normalizeAiSetup({ ready: false, blocking_reason: 'no_default_model', management: { provider_id: 'p1', provider_name: 'OR', kind: 'openrouter', model: 'm', last_test: passing }, work_mode: 'hybrid', work_runtime: 'cli:codex', clis: [{ id: 'codex' }, 7] })!
+    const n = normalizeAiSetup({ ready: false, blocking_reason: 'no_tested_ai', stack_count: 2, clis: [{ id: 'codex' }, 7] })!
     expect(n.ready).toBe(false)
-    expect(n.management.last_test!.checks).toHaveLength(5)
-    expect(n.work_mode).toBe('hybrid')
+    expect(n.blocking_reason).toBe('no_tested_ai')
+    expect(n.stack_count).toBe(2)
     expect(n.clis.map((c) => c.id)).toEqual(['codex'])
+    expect(normalizeAiSetup({ ready: true, blocking_reason: 'legacy_reason' })).toMatchObject({ blocking_reason: null, stack_count: 0, clis: [] })
   })
 })
 
@@ -168,59 +165,13 @@ describe('provider cards and models', () => {
   })
 })
 
-describe('work-mode selection rules', () => {
-  const ready = cli()
-  const notTested = cli({ id: 'codex', display_name: 'Codex', auth: { mode: 'api_key', configured: true, credential_id: 'c', last_test: null } })
-  const notInstalled = cli({ id: 'opencode', installed: false })
-  const failed = cli({ id: 'x', auth: { mode: 'api_key', configured: true, credential_id: 'c', last_test: { ok: false, detail: 'no', tested_at: null } } })
-
-  it('a CLI is ready only when installed and its test passed', () => {
-    expect(cliReady(ready)).toBe(true)
-    expect(cliReady(notTested)).toBe(false)
-    expect(cliReady(notInstalled)).toBe(false)
-    expect(cliReady(failed)).toBe(false)
-    expect(readyClis([ready, notTested, notInstalled, failed])).toEqual([ready])
-  })
-
-  it('API only is always fine', () => {
-    expect(workModeProblem('api', null, [])).toBeNull()
-    expect(workModeProblem('api', 'cli:codex', [notTested])).toBeNull()
-  })
-
-  it('hybrid needs a work runtime that tested OK', () => {
-    expect(workModeProblem('hybrid', null, [])).toMatch(/Install a coding CLI/)
-    expect(workModeProblem('hybrid', 'cli:claude_code', [notTested])).toMatch(/Install a coding CLI|test/)
-    expect(workModeProblem('hybrid', null, [ready])).toMatch(/Choose which CLI/)
-    expect(workModeProblem('hybrid', 'company_agent', [ready])).toMatch(/Choose which CLI/)
-    expect(workModeProblem('hybrid', 'cli:codex', [ready, notTested])).toMatch(/has not tested OK/)
-    expect(workModeProblem('hybrid', 'cli:claude_code', [ready, notTested])).toBeNull()
-  })
-
-  it('builds the PUT body: API only runs on the company agent, hybrid names the CLI', () => {
-    const ai = { management: { provider_id: 'p1', provider_name: 'OR', kind: 'openrouter', model: 'm1', last_test: null } }
-    expect(aiSetupUpdate(ai, 'api', 'cli:codex')).toEqual({ management_provider_id: 'p1', management_model: 'm1', work_mode: 'api', work_runtime: 'company_agent' })
-    expect(aiSetupUpdate(ai, 'hybrid', 'cli:codex')).toEqual({ management_provider_id: 'p1', management_model: 'm1', work_mode: 'hybrid', work_runtime: 'cli:codex' })
-    expect(aiSetupUpdate({ management: { ...ai.management, provider_id: null } }, 'api', null)).toBeNull()
-  })
-
-  it('a just-tested management selection wins over the saved one, and makes a body even when none is saved', () => {
-    const ai = { management: { provider_id: 'p1', provider_name: 'OR', kind: 'openrouter', model: 'm1', last_test: null } }
-    expect(aiSetupUpdate(ai, 'api', null, { providerId: 'p2', model: 'm2' })).toEqual({ management_provider_id: 'p2', management_model: 'm2', work_mode: 'api', work_runtime: 'company_agent' })
-    const none = { management: { ...ai.management, provider_id: null, model: null } }
-    expect(aiSetupUpdate(none, 'hybrid', 'cli:codex', { providerId: 'p2', model: 'm2' })).toMatchObject({ management_provider_id: 'p2', work_runtime: 'cli:codex' })
-  })
-
+describe('CLI summary', () => {
   it('briefs a CLI in one phrase for the summary line', () => {
     const base = { id: 'codex', display_name: 'Codex', installed: true, version: null, auth: { mode: null, configured: false, credential_id: null, last_test: null } } as unknown as CliRuntimeStatus
     expect(cliBrief({ ...base, installed: false })).toBe('not installed')
     expect(cliBrief(base)).toBe('installed, not tested')
     expect(cliBrief({ ...base, auth: { ...base.auth, last_test: { ok: true, detail: null, tested_at: null } } })).toBe('ready')
     expect(cliBrief({ ...base, auth: { ...base.auth, last_test: { ok: false, detail: null, tested_at: null } } })).toBe('test failed')
-  })
-
-  it('maps a CLI id to its runtime id once', () => {
-    expect(runtimeIdOf({ id: 'claude_code' })).toBe('cli:claude_code')
-    expect(runtimeIdOf({ id: 'cli:codex' })).toBe('cli:codex')
   })
 })
 

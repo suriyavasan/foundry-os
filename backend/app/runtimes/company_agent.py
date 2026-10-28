@@ -63,7 +63,6 @@ from app.services import (
     credentials,
     model_providers,
     policy,
-    repo_reviews,
     reviews,
     standards,
 )
@@ -350,35 +349,13 @@ class CompanyAgentAdapter(RuntimeAdapter):
             toolsets = agent_toolkit.toolsets_for(
                 db, agent, sandbox=sandbox, runtime_config=runtime_config
             )
-            company_tools = agent_toolkit.company_tools_for(
-                db, agent, runtime_config.get("company_tools")
-            )
             task_peek = db.get(Task, request.task.id)
+            company_tools = agent_toolkit.run_company_tools(db, agent, task_peek, runtime_config)
             peer_target = (
                 peer.review_target(db, task_peek)
                 if task_peek is not None and task_peek.kind == "review"
                 else None
             )
-            if peer_target is not None:
-                # A peer review run decides one thing; nothing else is on offer.
-                company_tools = ["company_decide_peer_review", "company_complete_task"]
-            elif task_peek is not None and repo_reviews.pull_id_of(task_peek) is not None:
-                # M14: the reviewer of a Foundry pull request records its verdict (the server
-                # allows only the assignee of that review task).
-                company_tools = [
-                    *dict.fromkeys([*company_tools, "company_review_pull_request"]),
-                ]
-            elif (
-                task_peek is not None
-                and task_peek.idempotency_key
-                and task_peek.idempotency_key.startswith("subrev:")
-            ):
-                # M15: the subscription renewal review (services/subscriptions.py) goes to the
-                # owning agent, its manager or the Co-founder; whichever it is, it gets the tool
-                # (``subscriptions.review`` accepts the assignee of that task).
-                company_tools = [
-                    *dict.fromkeys([*company_tools, agent_toolkit.SUBSCRIPTION_REVIEW_TOOL]),
-                ]
             manager = db.get(Agent, agent.manager_agent_id) if agent.manager_agent_id else None
             reports = agent_toolkit.direct_reports(db, agent)
             role = agent_roles.role_of(db, agent)

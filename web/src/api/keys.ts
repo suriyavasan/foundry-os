@@ -96,6 +96,9 @@ export const qk = {
   mailboxes: (cid: string) => ['company', cid, 'email', 'mailboxes'] as const,
   // M10 AI setup, CLI runtimes, reflections, command center. Everything company scoped lives under ['company', cid, ...].
   aiSetup: (cid: string) => ['company', cid, 'ai-setup'] as const,
+  aiStack: (cid: string) => ['company', cid, 'ai-stack'] as const,
+  aiLogin: (cid: string, id: string) => ['company', cid, 'ai-login', id] as const,
+  aiLoginAll: (cid: string) => ['company', cid, 'ai-login'] as const,
   providerModels: (cid: string, providerId: string) => ['company', cid, 'model-providers', 'models', providerId] as const,
   cliRuntimes: ['cli-runtimes'] as const,
   cliInstallLog: (id: string) => ['cli-runtimes', 'install-log', id] as const,

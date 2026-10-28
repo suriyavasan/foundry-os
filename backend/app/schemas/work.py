@@ -317,6 +317,7 @@ class TaskRun(ApiModel):
     routing_reason: str | None = None
     model_provider_id: str | None = None
     model_used: str | None = None
+    ai_connection_id: str | None = None  # M17: the AI stack connection the run was routed to
     created_at: Timestamp
     updated_at: Timestamp
 

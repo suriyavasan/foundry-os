@@ -1,4 +1,5 @@
-"""M10 section 1: the AI readiness gate, the extended provider test, the model list."""
+"""M10 section 1 (as reshaped by M17): the AI readiness gate, the extended provider test, the model list.
+The gate now reads the AI stack (``/ai-stack``); ``PUT /ai-setup`` is gone."""
 
 from __future__ import annotations
 
@@ -33,9 +34,7 @@ def status(client, cid) -> dict:
 
 def test_a_new_company_is_not_ready(client, company):
     s = status(client, company["id"])
-    assert s["ready"] is False and s["blocking_reason"] == "no_tested_provider"
-    assert s["management"]["provider_id"] is None and s["management"]["last_test"] is None
-    assert s["work_mode"] == "api" and s["work_runtime"] is None
+    assert s["ready"] is False and s["blocking_reason"] == "no_ai" and s["stack_count"] == 0
     assert {c["id"] for c in s["clis"]} == {
         "claude_code",
         "codex",
@@ -57,7 +56,7 @@ def test_creation_is_blocked_until_ready_but_settings_stay_available(app, client
         r = client.post(api(cid, path), json=body)
         assert r.status_code == 409, (path, r.text)
         assert r.json()["error"]["code"] == "ai_setup_required"
-        assert r.json()["error"]["details"]["reason"] == "no_tested_provider"
+        assert r.json()["error"]["details"]["reason"] == "no_ai"
     # owner settings, providers, credentials, policy, ai-setup, team and reads stay available
     assert client.get(api(cid, "/overview")).status_code == 200
     assert client.get(api(cid, "/notes")).status_code == 200
@@ -80,73 +79,31 @@ def test_reasons_follow_the_state_of_the_providers(app, client, company):
     p = client.post(api(cid, "/model-providers"), json=provider_body()).json()
     # the first provider became the company default, but nobody tested it
     assert client.get(api(cid, f"/model-providers/{p['id']}")).json()["is_company_default"] is True
-    assert status(client, cid)["blocking_reason"] == "no_tested_provider"
+    assert status(client, cid)["blocking_reason"] == "no_tested_ai"
     client.post(api(cid, f"/model-providers/{p['id']}/test"))
-    # tested and passing, but the default model name was never confirmed through AI setup... the
-    # default model of the provider is used until then, so the company is ready
-    assert status(client, cid)["ready"] is True
-    # clear the default: a tested provider exists but none is selected
-    client.patch(
-        api(cid, "/policy"), json={"default_model_provider_id": None, "default_model_name": None}
-    )
+    assert (
+        status(client, cid)["ready"] is True
+    )  # the stack's connection follows its provider's test
+    # the owner switches the connection off: no AI is left
+    stack = client.get(api(cid, "/ai-stack")).json()["items"]
+    client.patch(api(cid, f"/ai-stack/{stack[0]['id']}"), json={"enabled": False})
     s = status(client, cid)
-    assert s["ready"] is False and s["blocking_reason"] == "no_default_model"
+    assert s["ready"] is False and s["blocking_reason"] == "no_ai"
 
 
-def test_a_failed_test_blocks_with_provider_test_failed(app, client, company):
+def test_a_failed_test_blocks_until_a_new_test_passes(app, client, company):
     cid = company["id"]
     use_ollama(app, FakeOllama(served=4096))  # 4K served: the context check fails
     p = client.post(api(cid, "/model-providers"), json=provider_body()).json()
     client.post(api(cid, f"/model-providers/{p['id']}/test"))
     s = status(client, cid)
-    assert s["ready"] is False and s["blocking_reason"] == "provider_test_failed"
-    assert s["management"]["last_test"]["ok"] is False
-    # the owner can not select it either
-    r = client.put(
-        api(cid, "/ai-setup"),
-        json={"management_provider_id": p["id"], "management_model": "qwen2.5:7b"},
-    )
-    assert r.status_code == 409 and r.json()["error"]["code"] == "ai_not_ready"
-    assert r.json()["error"]["details"]["reason"] == "provider_test_failed"
+    assert s["ready"] is False and s["blocking_reason"] == "no_tested_ai"
+    conn = client.get(api(cid, "/ai-stack")).json()["items"][0]
+    assert conn["status"]["state"] == "test_failed"
     # fix the server and re-test: ready
     use_ollama(app, FakeOllama(served=32768))
     client.post(api(cid, f"/model-providers/{p['id']}/test"))
-    r = client.put(
-        api(cid, "/ai-setup"),
-        json={"management_provider_id": p["id"], "management_model": "qwen2.5:7b"},
-    )
-    assert r.status_code == 200 and r.json()["ready"] is True
-    m = r.json()["management"]
-    assert (m["provider_name"], m["kind"], m["model"]) == ("Local Ollama", "ollama", "qwen2.5:7b")
-    assert m["last_test"]["ok"] is True
-
-
-def test_put_validations(app, client, company):
-    cid = company["id"]
-    p = make_ready(app, client, cid)
-    put = lambda **kw: client.put(  # noqa: E731
-        api(cid, "/ai-setup"),
-        json={"management_provider_id": p["id"], "management_model": "qwen2.5:7b", **kw},
-    )
-    # untested model of a tested provider
-    r = client.put(
-        api(cid, "/ai-setup"),
-        json={"management_provider_id": p["id"], "management_model": "other:1b"},
-    )
-    assert r.status_code == 409 and r.json()["error"]["details"]["reason"] == "provider_test_failed"
-    assert put(work_mode="hybrid").status_code == 422  # needs a work_runtime
-    assert put(work_mode="hybrid", work_runtime="company_agent").status_code == 422
-    r = put(work_mode="hybrid", work_runtime="cli:opencode")
-    assert r.status_code == 409 and r.json()["error"]["details"]["reason"] == "cli_not_installed"
-    assert put(work_mode="bogus").status_code == 422
-    assert (
-        client.put(
-            api(cid, "/ai-setup"),
-            json={"management_provider_id": "nope", "management_model": "m"},
-        ).status_code
-        == 404
-    )
-    assert status(client, cid)["ready"] is True  # the failed attempts changed nothing
+    assert status(client, cid)["ready"] is True
 
 
 def test_re_testing_a_provider_with_a_new_failure_closes_the_gate_again(app, client, company):
@@ -155,7 +112,7 @@ def test_re_testing_a_provider_with_a_new_failure_closes_the_gate_again(app, cli
     use_ollama(app, FakeOllama(up=False))
     client.post(api(cid, f"/model-providers/{p['id']}/test"))
     s = status(client, cid)
-    assert s["ready"] is False and s["blocking_reason"] == "provider_test_failed"
+    assert s["ready"] is False and s["blocking_reason"] == "no_tested_ai"
     assert client.post(api(cid, "/tasks"), json={"title": "x"}).status_code == 409
 
 
@@ -182,8 +139,6 @@ def test_existing_company_with_a_pre_m10_test_is_not_ready(app, client, company)
             "warnings": [],
         }
         db.commit()
-    s = status(client, cid)
-    assert s["ready"] is False and s["blocking_reason"] == "provider_test_failed"
     t = client.get(api(cid, f"/model-providers/{p['id']}")).json()["last_test"]
     assert t["ok"] is False and t["checks"] == []  # legacy tests are served, never as passing
 
@@ -215,11 +170,7 @@ def test_tasks_wait_with_a_reason_and_nothing_is_dispatched_or_woken(
     # the AI works again: the same task is picked up with no human step
     client.patch(api(cid, f"/model-providers/{p['id']}"), json={"enabled": True})
     client.post(api(cid, f"/model-providers/{p['id']}/test"))
-    r = client.put(
-        api(cid, "/ai-setup"),
-        json={"management_provider_id": p["id"], "management_model": "qwen2.5:7b"},
-    )
-    assert r.status_code == 200
+    assert status(client, cid)["ready"] is True
     settle(scheduler, worker)
     with app.state.session_factory() as db:
         row = db.get(Task, task["id"])
@@ -434,24 +385,20 @@ def test_testing_another_model_and_the_model_list(app, client, company):
     assert listing["available"] is False and listing["items"] == [] and listing["detail"]
 
 
-def test_ai_setup_is_tenant_scoped_and_admin_only(
+def test_ai_setup_is_tenant_scoped_and_read_only(
     app, client, company, make_user, add_member, client_as
 ):
     from tests.conftest import human
 
     cid = company["id"]
-    p = make_ready(app, client, cid)
+    make_ready(app, client, cid)
     stranger = client_as(human(make_user("s@x.test")))
     assert stranger.get(api(cid, "/ai-setup")).status_code == 404
     viewer_user = make_user("v@x.test")
     add_member(cid, viewer_user.id, "viewer")
     viewer = client_as(human(viewer_user))
     assert viewer.get(api(cid, "/ai-setup")).status_code == 200  # read-only is fine
-    r = viewer.put(
-        api(cid, "/ai-setup"),
-        json={"management_provider_id": p["id"], "management_model": "qwen2.5:7b"},
-    )
-    assert r.status_code == 403
+    assert viewer.put(api(cid, "/ai-setup"), json={}).status_code == 410  # gone for everyone
 
 
 def test_schedules_do_not_fire_until_the_ai_works(app, client, company, scheduler, clock):
@@ -468,116 +415,3 @@ def test_schedules_do_not_fire_until_the_ai_works(app, client, company, schedule
         assert any(
             s.last_fired_at is not None for s in db.scalars(select(Schedule))
         )  # now they fire
-
-
-# ------------------------------------------------------------------ M12: the optional work model
-
-
-def second_provider(app, client, cid, name="Work Ollama", *, test=True) -> dict:
-    p = client.post(api(cid, "/model-providers"), json=provider_body(name=name)).json()
-    if test:
-        t = client.post(api(cid, f"/model-providers/{p['id']}/test"))
-        assert t.json()["last_test"]["ok"] is True, t.text
-    return p
-
-
-def put_setup(client, cid, p, **extra):
-    return client.put(
-        api(cid, "/ai-setup"),
-        json={"management_provider_id": p["id"], "management_model": "qwen2.5:7b", **extra},
-    )
-
-
-def test_the_work_model_is_optional_and_unset_by_default(app, client, company):
-    cid = company["id"]
-    make_ready(app, client, cid)
-    assert status(client, cid)["work_model"] is None
-
-
-def test_set_change_and_clear_the_work_model_with_audit(app, client, company):
-    from app.models.audit import AuditEvent
-
-    cid = company["id"]
-    p = make_ready(app, client, cid)
-    w = second_provider(app, client, cid)
-    r = put_setup(client, cid, p, work_model_provider_id=w["id"], work_model_name="qwen2.5:7b")
-    assert r.status_code == 200, r.text
-    wm = r.json()["work_model"]
-    assert (wm["provider_id"], wm["provider_name"], wm["model"]) == (
-        w["id"],
-        w["name"],
-        "qwen2.5:7b",
-    )
-    assert wm["last_test"]["ok"] is True
-    assert r.json()["management"]["provider_id"] == p["id"]  # management is untouched
-    pol = client.get(api(cid, "/policy")).json()
-    assert (pol["work_model_provider_id"], pol["work_model_name"]) == (w["id"], "qwen2.5:7b")
-    with app.state.session_factory() as db:
-        ev = [e for e in db.scalars(select(AuditEvent)) if e.action == "ai_setup.updated"][-1]
-        assert (
-            ev.data["work_model_provider_id"] == w["id"] and ev.data["work_model"] == "qwen2.5:7b"
-        )
-        assert {"work_model_provider_id", "work_model_name"} <= set(ev.data["changed"])
-    # omitted: unchanged (an older client does not wipe the owner's choice)
-    assert put_setup(client, cid, p).json()["work_model"]["provider_id"] == w["id"]
-    # both null: cleared
-    r = put_setup(client, cid, p, work_model_provider_id=None, work_model_name=None)
-    assert r.status_code == 200 and r.json()["work_model"] is None
-    assert client.get(api(cid, "/policy")).json()["work_model_provider_id"] is None
-
-
-def test_the_work_model_must_pass_the_same_checks_as_the_management_model(app, client, company):
-    cid = company["id"]
-    p = make_ready(app, client, cid)
-    untested = second_provider(app, client, cid, "Untested", test=False)
-    r = put_setup(
-        client, cid, p, work_model_provider_id=untested["id"], work_model_name="qwen2.5:7b"
-    )
-    assert r.status_code == 409 and r.json()["error"]["details"]["reason"] == "no_tested_provider"
-    tested = second_provider(app, client, cid, "Tested")
-    r = put_setup(client, cid, p, work_model_provider_id=tested["id"], work_model_name="other:1b")
-    assert r.status_code == 409 and r.json()["error"]["details"]["reason"] == "provider_test_failed"
-    r = put_setup(client, cid, p, work_model_provider_id="nope", work_model_name="qwen2.5:7b")
-    assert r.status_code == 404
-    # a pair or nothing
-    assert put_setup(client, cid, p, work_model_provider_id=tested["id"]).status_code == 422
-    assert put_setup(client, cid, p, work_model_name="qwen2.5:7b").status_code == 422
-    # a failing disabled provider is refused too, and nothing changed
-    client.patch(api(cid, f"/model-providers/{tested['id']}"), json={"enabled": False})
-    r = put_setup(client, cid, p, work_model_provider_id=tested["id"], work_model_name="qwen2.5:7b")
-    assert r.status_code == 409
-    assert status(client, cid)["work_model"] is None and status(client, cid)["ready"] is True
-
-
-def test_a_failing_work_model_does_not_change_the_management_model(app, client, company):
-    cid = company["id"]
-    p = make_ready(app, client, cid)
-    use_ollama(app, FakeOllama(served=4096))  # the work provider's context check fails
-    bad = second_provider(app, client, cid, "Small", test=False)
-    client.post(api(cid, f"/model-providers/{bad['id']}/test"))
-    use_ollama(app, FakeOllama(served=32768))
-    r = put_setup(client, cid, p, work_model_provider_id=bad["id"], work_model_name="qwen2.5:7b")
-    assert r.status_code == 409 and r.json()["error"]["details"]["reason"] == "provider_test_failed"
-    assert status(client, cid)["management"]["provider_id"] == p["id"]
-
-
-def test_an_agent_cannot_change_the_work_model(app, client, company):
-    from tests.test_agent_api import start_run
-
-    cid = company["id"]
-    p = make_ready(app, client, cid)
-    w = second_provider(app, client, cid)
-    agent = new_agent(client, cid, runtime="company_agent", script={"summary": "x"})
-    session = start_run(app, client, cid, agent["id"])
-    r = client.put(
-        api(cid, "/ai-setup"),
-        json={
-            "management_provider_id": p["id"],
-            "management_model": "qwen2.5:7b",
-            "work_model_provider_id": w["id"],
-            "work_model_name": "qwen2.5:7b",
-        },
-        headers=session.headers,
-    )
-    assert r.status_code == 403
-    assert status(client, cid)["work_model"] is None

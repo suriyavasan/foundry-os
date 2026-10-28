@@ -64,10 +64,11 @@ from app.runtimes.base import (
     UsageReport,
 )
 from app.runtimes.cli import prompt as prompt_builder
+from app.runtimes.cli import role_brief as role_brief_module
 from app.runtimes.cli import store, workspace
 from app.runtimes.cli.catalog import CliSpec, assert_safe_argv
 from app.runtimes.cli.env import CliEnvironment, base_env
-from app.services import credentials, standards, task_briefs
+from app.services import agent_roles, agent_toolkit, credentials, routing, standards, task_briefs
 from app.services import memory as memory_service
 from app.storage.local import LocalFileStorage
 
@@ -132,6 +133,14 @@ class RunPrep:
     runtime_dir: Path | None = None
     secrets: list[str] = field(default_factory=list)
     workspace_kind: str = "run_dir"  # "project" | "review" | "run_dir" (M12)
+    # B9: the role's company tools (MCP short names; None = the fixed worker list) and, for a
+    # management run, the role instructions
+    mcp_tools: list[str] | None = None
+    role_brief: str = ""
+    # M17: a plan connection's private home. Claude Code: its ``CLAUDE_CONFIG_DIR`` (``home`` stays the
+    # real home); Cursor: ``home`` itself is that isolated directory.
+    config_dir: Path | None = None
+    ai_connection_id: str | None = None
 
     @property
     def local_model(self) -> bool:
@@ -157,6 +166,9 @@ class Parsed:
     cost_usd: float | None = None
     error: str | None = None
     finished: bool = False  # the CLI reported a clean end of its run
+    error_category: str | None = (
+        None  # the CLI's own error class (Claude Code: authentication_failed ...)
+    )
     seq: int = 1
     dropped: collections.Counter = field(default_factory=collections.Counter)
     emitted: int = 0
@@ -352,6 +364,9 @@ class CliAdapter(RuntimeAdapter):
         else:
             provider = self._provider_for(db, company_id, state)  # OpenCode on a local model
             home, isolated = self._real_home(), False
+            if state.get("plan_home") and self.spec.id != "claude_code":
+                # a plan connection of a CLI that keeps its login under HOME (Cursor): its own home
+                home, isolated = Path(state["plan_home"]), True
         return auth_mode, secret, provider, home, isolated
 
     def _prepare(self, request: ExecutionRequest) -> RunPrep:
@@ -361,13 +376,14 @@ class CliAdapter(RuntimeAdapter):
                 RuntimeErrorKind.UNAVAILABLE, f"{self.spec.display_name} is not installed"
             )
         settings = self._settings
+        run_scratch = settings.resolved_data_dir / "agents" / request.agent.id / "cli-run-brief"
         with self._session_factory() as db:
             agent = db.get(Agent, request.agent.id)
             company = db.get(Company, request.company.id)
             task = db.get(Task, request.task.id)
             if agent is None or company is None or task is None or agent.company_id != company.id:
                 raise RuntimeAdapterError(RuntimeErrorKind.REJECTED, "Agent or company not found")
-            state = store.load(db, self.spec.id)
+            state = self._state_for(db, company.id, request)
             auth_mode, secret, provider, home, isolated = self._prep_common(
                 db, state, company.id, agent.id, request.run_id
             )
@@ -409,6 +425,11 @@ class CliAdapter(RuntimeAdapter):
                 )
             )
             budget = request.limits.budget_micros
+            mcp_tools, role_brief = self._role_wiring(db, agent, task, request, run_scratch)
+            if role_brief:
+                prompt = prompt_builder.with_role_brief(
+                    prompt, role_brief, mcp_tools, self.tool_prefix
+                )
         run_dir = (
             settings.resolved_data_dir / "agents" / request.agent.id / "cli-run" / request.run_id
         )
@@ -441,7 +462,77 @@ class CliAdapter(RuntimeAdapter):
             mcp_python=settings.resolved_runtime_python,
             runtime_dir=settings.resolved_runtime_dir,
             secrets=secrets,
+            mcp_tools=mcp_tools,
+            role_brief=role_brief,
+            config_dir=self._config_dir(state),
+            ai_connection_id=state.get("connection_id"),
         )
+
+    def _state_for(self, db: Session, company_id: str, request: ExecutionRequest) -> dict[str, Any]:
+        """The sign-in this run uses: its AI connection's (M17), else the installation-level setting."""
+        connection_id = getattr(request, "ai_connection_id", None)
+        if not connection_id:
+            return store.load(db, self.spec.id)
+        from app.models.ai_stack import AiConnection
+        from app.services import ai_stack
+
+        row = db.get(AiConnection, connection_id)
+        if row is None or row.company_id != company_id or row.cli_id != self.spec.id:
+            raise RuntimeAdapterError(
+                RuntimeErrorKind.CONFIG, "The AI connection chosen for this run is not available"
+            )
+        return ai_stack.run_auth(db, row, data_dir=self._settings.resolved_data_dir).as_state()
+
+    def _config_dir(self, state: dict[str, Any]) -> Path | None:
+        """Claude Code's per-connection ``CLAUDE_CONFIG_DIR`` (a plan connection's home)."""
+        home = state.get("plan_home")
+        return Path(home) if home and self.spec.id == "claude_code" else None
+
+    def _role_wiring(
+        self, db: Session, agent: Agent, task: Task, request: ExecutionRequest, scratch: Path
+    ) -> tuple[list[str], str]:
+        """(MCP tools, role brief) of this run. The tools are what a ``company_agent`` run of the same
+        agent and task would get (``agent_toolkit.run_company_tools``), by MCP name, except that a
+        specialist keeps today's fixed worker list. A management run also gets the role's
+        instructions."""
+        runtime_config = dict(agent.runtime_config or {})
+        override = runtime_config.get("company_tools")
+        tools = agent_toolkit.run_company_tools(db, agent, task, runtime_config)
+        names = agent_toolkit.mcp_names(tools)
+        role = agent_roles.role_of(db, agent)
+        if role == agent_roles.SPECIALIST and "decide_peer_review" not in names:
+            # A specialist's CLI keeps today's fixed worker list (it creates no tasks and proposes no
+            # memory); only the tools its task kind adds (pull request / subscription review) come on top.
+            base = set(
+                agent_toolkit.mcp_names(agent_toolkit.company_tools_for(db, agent, override))
+            )
+            extras = [n for n in names if n not in base]
+            fixed = [n for n in CLI_MCP_TOOLS if not isinstance(override, list) or n in override]
+            names = list(dict.fromkeys([*fixed, *extras]))
+        if not routing.is_management_run(db, agent, task):
+            return names, ""
+        from app.guardrails import peer
+        from app.services import reviews
+
+        storage = LocalFileStorage(self._settings.artifacts_dir)
+        brief_task = {
+            "kind": task.kind,
+            "title": request.task.title or task.title,
+            "review_target": reviews.review_target(db, storage, task)
+            if task.kind == "review"
+            else None,
+            "peer_review": peer.review_target(db, task) if task.kind == "review" else None,
+        }
+        brief = role_brief_module.fetch(
+            self._settings.resolved_runtime_python,
+            self._settings.resolved_runtime_dir,
+            scratch,
+            role=role,
+            tools=[f"company_{n}" for n in names],
+            task=brief_task,
+            tool_prefix=self.tool_prefix,
+        )
+        return names, brief
 
     def _dependency_briefs(self, db: Session, task: Task) -> list[prompt_builder.DependencyBrief]:
         """Briefs of the (up to two) newest finished tasks this task depends on, so the CLI knows
@@ -499,7 +590,7 @@ class CliAdapter(RuntimeAdapter):
             "COMPANY_OS_TASK_ID": prep.task_id,
             "COMPANY_OS_WORKSPACE": str(prep.workspace),
             "COMPANY_OS_TASK_KIND": prep.task_kind,
-            "COMPANY_OS_MCP_TOOLS": ",".join(CLI_MCP_TOOLS),
+            "COMPANY_OS_MCP_TOOLS": ",".join(prep.mcp_tools or CLI_MCP_TOOLS),
             "PYTHONPATH": str(prep.runtime_dir),
             "PYTHONDONTWRITEBYTECODE": "1",
             "PYTHONNOUSERSITE": "1",
@@ -876,6 +967,8 @@ class CliAdapter(RuntimeAdapter):
                 max_run_seconds=TEST_TIMEOUT_SECONDS,
                 provider=provider,
                 secrets=[s for s in (secret, provider.api_key if provider else None) if s],
+                config_dir=self._config_dir(state),
+                ai_connection_id=state.get("connection_id"),
             ),
             "",
         )

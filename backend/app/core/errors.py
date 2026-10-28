@@ -53,6 +53,12 @@ class NotFound(AppError):
     default_message = "Not found"
 
 
+class Gone(AppError):
+    status_code = 410
+    code = "gone"
+    default_message = "This endpoint has been removed"
+
+
 class Conflict(AppError):
     status_code = 409
     code = "conflict"

@@ -109,6 +109,9 @@ class FinanceRun(ApiModel):
     cost_kind: CostKindLiteral
     model: str | None
     provider: str | None
+    # M17: the AI connection the run was routed to (null for pinned / unrouted runs)
+    ai_connection_id: str | None = None
+    ai_connection: str | None = None
 
 
 class ExternalExpense(ApiModel):

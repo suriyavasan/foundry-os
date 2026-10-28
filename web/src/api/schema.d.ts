@@ -1230,18 +1230,116 @@ export interface paths {
         };
         /**
          * Get Ai Setup
-         * @description Is this company's AI ready (a tested management model)? Plus the work mode and the coding
-         *     CLIs on this machine.
+         * @description Is this company's AI ready? Derived from the AI stack, plus the coding CLIs on this machine.
          */
         get: operations["get_ai_setup_api_companies__company_id__ai_setup_get"];
-        /**
-         * Put Ai Setup
-         * @description Select the management model and the work mode. 409 ``ai_not_ready`` (with
-         *     ``details.reason``) when the provider's latest test did not pass, or a chosen CLI is not ready.
-         */
-        put: operations["put_ai_setup_api_companies__company_id__ai_setup_put"];
+        put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/ai-stack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Stack
+         * @description Connections in order, readiness, the share summary and the options that can be added.
+         */
+        get: operations["get_stack_api_companies__company_id__ai_stack_get"];
+        put?: never;
+        /** Add Connection */
+        post: operations["add_connection_api_companies__company_id__ai_stack_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/ai-stack/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put Order */
+        put: operations["put_order_api_companies__company_id__ai_stack_order_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/ai-stack/{connection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Connection */
+        delete: operations["delete_connection_api_companies__company_id__ai_stack__connection_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Connection */
+        patch: operations["patch_connection_api_companies__company_id__ai_stack__connection_id__patch"];
+        trace?: never;
+    };
+    "/api/companies/{company_id}/ai-stack/{connection_id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Connection
+         * @description API: the provider's live test for the model. CLI: a tiny headless prompt, own auth.
+         */
+        post: operations["test_connection_api_companies__company_id__ai_stack__connection_id__test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/ai-stack/{connection_id}/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Login
+         * @description Plan sign-in state from the CLI's own status command (cached 30 s; `?refresh=1` forces).
+         */
+        get: operations["get_login_api_companies__company_id__ai_stack__connection_id__login_get"];
+        put?: never;
+        /**
+         * Post Login
+         * @description Start the CLI's own browser sign-in in the background (Cursor ignores `method`).
+         */
+        post: operations["post_login_api_companies__company_id__ai_stack__connection_id__login_post"];
+        /**
+         * Delete Login
+         * @description Run the CLI's own logout in this connection's home.
+         */
+        delete: operations["delete_login_api_companies__company_id__ai_stack__connection_id__login_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -6076,54 +6174,206 @@ export interface components {
             /** Daily Budget Micros */
             daily_budget_micros?: number | null;
         };
-        /** AiSetupManagement */
-        AiSetupManagement: {
-            /** Provider Id */
-            provider_id: string | null;
-            /** Provider Name */
-            provider_name: string | null;
-            /** Kind */
-            kind: string | null;
+        /** AiConnectionCreate */
+        AiConnectionCreate: {
+            /**
+             * Option
+             * @enum {string}
+             */
+            option: "claude_plan" | "anthropic_api" | "openai_api" | "openrouter" | "openai_compatible" | "ollama" | "cursor_plan" | "cursor_api" | "codex_api" | "opencode" | "antigravity_api";
+            /** Label */
+            label?: string | null;
+            /**
+             * Use For
+             * @default everything
+             * @enum {string}
+             */
+            use_for?: "everything" | "heavy" | "everyday";
+            /**
+             * Share
+             * @default 2
+             */
+            share?: number;
+            /** Model */
+            model?: string | null;
+            /** Model Provider Id */
+            model_provider_id?: string | null;
+            /** Credential Id */
+            credential_id?: string | null;
+            /** Cli Provider Id */
+            cli_provider_id?: string | null;
+        };
+        /** AiConnectionOut */
+        AiConnectionOut: {
+            /** Id */
+            id: string;
+            /** Position */
+            position: number;
+            /** Rank Label */
+            rank_label: string;
+            /** Label */
+            label: string;
+            /**
+             * Engine
+             * @enum {string}
+             */
+            engine: "api" | "cli";
+            /**
+             * Option
+             * @enum {string}
+             */
+            option: "claude_plan" | "anthropic_api" | "openai_api" | "openrouter" | "openai_compatible" | "ollama" | "cursor_plan" | "cursor_api" | "codex_api" | "opencode" | "antigravity_api";
+            /** Provider Kind */
+            provider_kind: string | null;
+            /** Model Provider Id */
+            model_provider_id: string | null;
             /** Model */
             model: string | null;
-            last_test: components["schemas"]["ProviderTest"] | null;
+            /** Cli Id */
+            cli_id: string | null;
+            /** Auth Mode */
+            auth_mode: ("plan" | "api_key" | "provider") | null;
+            /** Credential Id */
+            credential_id: string | null;
+            /** Cli Provider Id */
+            cli_provider_id: string | null;
+            /**
+             * Use For
+             * @enum {string}
+             */
+            use_for: "everything" | "heavy" | "everyday";
+            /** Share */
+            share: number;
+            /** Enabled */
+            enabled: boolean;
+            status: components["schemas"]["AiStatus"];
+            /** Runs 24H */
+            runs_24h: number;
+            /** Max Concurrency */
+            max_concurrency: number | null;
+            /** Home Dir */
+            home_dir: string | null;
+            /** Created At */
+            created_at: string;
         };
-        /** AiSetupStatus */
+        /** AiConnectionPatch */
+        AiConnectionPatch: {
+            /** Label */
+            label?: string | null;
+            /** Use For */
+            use_for?: ("everything" | "heavy" | "everyday") | null;
+            /** Share */
+            share?: number | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Model */
+            model?: string | null;
+        };
+        /** AiInstall */
+        AiInstall: {
+            /** Available */
+            available: boolean;
+            /** Command */
+            command: string | null;
+        };
+        /** AiLastTest */
+        AiLastTest: {
+            /** Ok */
+            ok: boolean;
+            /** Detail */
+            detail: string;
+            /** Tested At */
+            tested_at: string;
+            /** Model */
+            model: string | null;
+        };
+        /** AiOption */
+        AiOption: {
+            /**
+             * Option
+             * @enum {string}
+             */
+            option: "claude_plan" | "anthropic_api" | "openai_api" | "openrouter" | "openai_compatible" | "ollama" | "cursor_plan" | "cursor_api" | "codex_api" | "opencode" | "antigravity_api";
+            /** Label */
+            label: string;
+            /**
+             * Group
+             * @enum {string}
+             */
+            group: "plan" | "api" | "local";
+            /**
+             * Engine
+             * @enum {string}
+             */
+            engine: "api" | "cli";
+            /** Cli Id */
+            cli_id: string | null;
+            /** Provider Kind */
+            provider_kind: string | null;
+            /** Available */
+            available: boolean;
+            /** Reason */
+            reason: string | null;
+            /** Needs Install */
+            needs_install: boolean;
+            install: components["schemas"]["AiInstall"] | null;
+            /** Warning */
+            warning: string | null;
+        };
+        /** AiOrder */
+        AiOrder: {
+            /** Ids */
+            ids: string[];
+        };
+        /**
+         * AiSetupStatus
+         * @description M17: derived from the AI stack (``/ai-stack``); kept so the readiness gate keeps working.
+         */
         AiSetupStatus: {
             /** Ready */
             ready: boolean;
             /** Blocking Reason */
-            blocking_reason: ("no_tested_provider" | "provider_test_failed" | "no_default_model") | null;
-            management: components["schemas"]["AiSetupManagement"];
-            work_model: components["schemas"]["AiSetupManagement"] | null;
-            /**
-             * Work Mode
-             * @enum {string}
-             */
-            work_mode: "api" | "hybrid";
-            /** Work Runtime */
-            work_runtime: ("company_agent" | "cli:claude_code" | "cli:codex" | "cli:opencode" | "cli:antigravity" | "cli:cursor") | null;
+            blocking_reason: ("no_ai" | "no_tested_ai" | "no_heavy_ai" | "no_everyday_ai") | null;
+            /** Stack Count */
+            stack_count: number;
             /** Clis */
             clis: components["schemas"]["CliRuntimeStatus"][];
         };
-        /** AiSetupUpdate */
-        AiSetupUpdate: {
-            /** Management Provider Id */
-            management_provider_id: string;
-            /** Management Model */
-            management_model: string;
+        /** AiStackOut */
+        AiStackOut: {
+            /** Items */
+            items: components["schemas"]["AiConnectionOut"][];
+            /** Ready */
+            ready: boolean;
+            /** Blocking Reason */
+            blocking_reason: ("no_ai" | "no_tested_ai" | "no_heavy_ai" | "no_everyday_ai") | null;
+            summary: components["schemas"]["AiSummary"];
+            /** Options */
+            options: components["schemas"]["AiOption"][];
+        };
+        /** AiStatus */
+        AiStatus: {
             /**
-             * Work Mode
-             * @default api
+             * State
              * @enum {string}
              */
-            work_mode?: "api" | "hybrid";
-            /** Work Runtime */
-            work_runtime?: ("company_agent" | "cli:claude_code" | "cli:codex" | "cli:opencode" | "cli:antigravity" | "cli:cursor") | null;
-            /** Work Model Provider Id */
-            work_model_provider_id?: string | null;
-            /** Work Model Name */
-            work_model_name?: string | null;
+            state: "ready" | "needs_test" | "test_failed" | "needs_sign_in" | "not_installed" | "paused" | "disabled";
+            /** Message */
+            message: string | null;
+            last_test: components["schemas"]["AiLastTest"] | null;
+            /** Signed In */
+            signed_in: boolean | null;
+            /** Account */
+            account: string | null;
+            /** Paused Until */
+            paused_until: string | null;
+        };
+        /** AiSummary */
+        AiSummary: {
+            /** Heavy */
+            heavy: components["schemas"]["SummaryEntry"][];
+            /** Everyday */
+            everyday: components["schemas"]["SummaryEntry"][];
         };
         /** Alert */
         Alert: {
@@ -6971,6 +7221,45 @@ export interface components {
              */
             steps: string[];
         };
+        /** ClaudeLoginJob */
+        ClaudeLoginJob: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "idle" | "running" | "succeeded" | "failed";
+            /** Started At */
+            started_at: string | null;
+            /** Finished At */
+            finished_at: string | null;
+            /** Url */
+            url: string | null;
+            /** Message */
+            message: string | null;
+        };
+        /** ClaudeLoginRequest */
+        ClaudeLoginRequest: {
+            /**
+             * Method
+             * @default claudeai
+             * @enum {string}
+             */
+            method?: "claudeai" | "console";
+        };
+        /** ClaudeLoginStatus */
+        ClaudeLoginStatus: {
+            /** Signed In */
+            signed_in: boolean;
+            /** Auth Method */
+            auth_method: string | null;
+            /** Email */
+            email: string | null;
+            /** Checked At */
+            checked_at: string;
+            /** Config Dir Ok */
+            config_dir_ok: boolean;
+            login: components["schemas"]["ClaudeLoginJob"];
+        };
         /** CliAuth */
         CliAuth: {
             /** Mode */
@@ -7065,6 +7354,18 @@ export interface components {
             /** Tested At */
             tested_at: string;
         };
+        /**
+         * CliLogin
+         * @description Claude Code's sign-in state (from ``claude auth status``; cached up to 30 s).
+         */
+        CliLogin: {
+            /** Signed In */
+            signed_in: boolean;
+            /** Auth Method */
+            auth_method: string | null;
+            /** Email */
+            email: string | null;
+        };
         /** CliRuntimeList */
         CliRuntimeList: {
             /** Items */
@@ -7094,6 +7395,7 @@ export interface components {
             install: components["schemas"]["CliInstall"];
             /** Login Hint */
             login_hint: string;
+            login: components["schemas"]["CliLogin"] | null;
             /**
              * Warnings
              * @default []
@@ -8715,6 +9017,10 @@ export interface components {
             model: string | null;
             /** Provider */
             provider: string | null;
+            /** Ai Connection Id */
+            ai_connection_id: string | null;
+            /** Ai Connection */
+            ai_connection: string | null;
         };
         /** FinanceSummary */
         FinanceSummary: {
@@ -10662,6 +10968,11 @@ export interface components {
             work_mode: string;
             /** Work Runtime */
             work_runtime: string | null;
+            /**
+             * Ai Engine
+             * @default api
+             */
+            ai_engine: string;
             /** Work Model Provider Id */
             work_model_provider_id: string | null;
             /** Work Model Name */
@@ -13678,6 +13989,20 @@ export interface components {
             /** Reason */
             reason: string;
         };
+        /** SummaryEntry */
+        SummaryEntry: {
+            /** Connection Id */
+            connection_id: string;
+            /** Label */
+            label: string;
+            /** Percent */
+            percent: number;
+            /**
+             * Backup
+             * @default false
+             */
+            backup: boolean;
+        };
         /** SyncQueued */
         SyncQueued: {
             /**
@@ -13889,6 +14214,8 @@ export interface components {
             model_provider_id: string | null;
             /** Model Used */
             model_used: string | null;
+            /** Ai Connection Id */
+            ai_connection_id: string | null;
             /** Created At */
             created_at: string;
             /** Updated At */
@@ -17120,7 +17447,38 @@ export interface operations {
             };
         };
     };
-    put_ai_setup_api_companies__company_id__ai_setup_put: {
+    get_stack_api_companies__company_id__ai_stack_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiStackOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_connection_api_companies__company_id__ai_stack_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -17131,7 +17489,42 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["AiSetupUpdate"];
+                "application/json": components["schemas"]["AiConnectionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiConnectionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_order_api_companies__company_id__ai_stack_order_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AiOrder"];
             };
         };
         responses: {
@@ -17141,7 +17534,207 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AiSetupStatus"];
+                    "application/json": components["schemas"]["AiStackOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_connection_api_companies__company_id__ai_stack__connection_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_connection_api_companies__company_id__ai_stack__connection_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AiConnectionPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiConnectionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_connection_api_companies__company_id__ai_stack__connection_id__test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiConnectionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_login_api_companies__company_id__ai_stack__connection_id__login_get: {
+        parameters: {
+            query?: {
+                refresh?: number;
+            };
+            header?: never;
+            path: {
+                connection_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaudeLoginStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_login_api_companies__company_id__ai_stack__connection_id__login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ClaudeLoginRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaudeLoginStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_login_api_companies__company_id__ai_stack__connection_id__login_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaudeLoginStatus"];
                 };
             };
             /** @description Validation Error */

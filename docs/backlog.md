@@ -80,7 +80,7 @@ Size: S (≤ a day), M (a few days), L (milestone-sized, needs a spec).
 
 ## B6. Multiple model API keys and per-task routing
 
-- **Status:** idea · **Size:** L (needs a spec) · **Area:** AI providers settings, worker
+- **Status:** merged into B10 (M17 AI stack) · **Size:** L · **Area:** AI providers settings, worker
 - **Ask:** During setup, allow adding several API keys — Anthropic, OpenRouter, OpenAI,
   or even two keys for the same provider from different accounts. Once configured, the
   system decides which route each task takes.
@@ -129,3 +129,57 @@ Size: S (≤ a day), M (a few days), L (milestone-sized, needs a spec).
   detected from the run's final `usage` event (`billing.subscription`). Tested with mocks only,
   not yet viewed against a live backend.
 - **Constraints:** every state handled (loading, empty, error, not available).
+
+## B9. Onboarding: "Sign in to Claude" through the official Claude Code
+
+- **Status:** done (2026-10-28) as an option in the AI stack (B10); not yet verified with a real sign-in; spec `docs/specs/b9-claude-plan.md` · **Size:** L · **Area:** onboarding,
+  `backend/app/runtimes/cli/claude_code.py`, `services/cli_runtimes.py`, company-agent runtime
+- **Ask:** let a founder with only a Claude subscription run the company: Foundry sets up Claude Code
+  and the founder signs in once with their Claude account, used for (ideally) all agents.
+- **What the rules say** (code.claude.com/docs/en/legal-and-compliance and /authentication, read 2026-10-28):
+  - Allowed: an end user signs in to the **unmodified** Claude Code binary with their own subscription,
+    including where a product preinstalls or runs Claude Code. Conditions: the product's publisher agrees to
+    Anthropic's Commercial Terms; the binary is installed and run as published, no auth method removed or
+    disabled; each user authenticates with their own API key / plan / 3P provider and is billed directly
+    (no paying for, reselling or intermediating usage); sign-in completes through Anthropic's own flow.
+  - Not allowed: offering Claude.ai login in our own app, routing requests through Free/Pro/Max credentials
+    on users' behalf, or collecting / storing / intermediating Claude.ai credentials or session tokens.
+    Agent-SDK products must use API keys.
+  - "Advertised usage limits for Pro and Max plans assume ordinary, individual usage"; Anthropic may enforce
+    without notice. A 24/7 autonomous company is the riskiest kind of use for a personal plan.
+- **Plan:**
+  1. Install, don't bundle: onboarding installs Claude Code from Anthropic's official channel (npm package
+     via the existing confirmed install endpoint, or the official installer shown for the user to run), so it
+     stays "as published" and self-updates. Do not vendor the binary in our bundles, Docker image or formula
+     (proprietary licence; we would also be shipping a modified/pinned copy).
+  2. Foundry-owned config dir: run Claude Code with `CLAUDE_CONFIG_DIR=<data>/claude-code` so the company's
+     login is separate from the person's own `~/.claude` (separate Keychain entry on macOS).
+  3. Sign-in = Claude Code's own flow: spawn `claude auth login` (with that config dir); it opens Anthropic's
+     page and receives the callback on its own localhost server. On SSH/headless, `foundryos claude login`
+     execs `claude auth login` attached to the user's terminal, so the paste-code step goes straight to
+     Claude Code, never through our UI or API.
+  4. Status only via `claude auth status` (exit code + JSON `authMethod`). Never read `.credentials.json` or
+     the Keychain, never use `claude setup-token` / store `CLAUDE_CODE_OAUTH_TOKEN`, never log tokens.
+  5. Work agents on `cli:claude_code` use that login (the existing `own_login` mode, re-pointed at the
+     Foundry config dir; no `--bare`, which is API-key only).
+  6. "For everything" (management too) is a separate step: management agents would also have to run as
+     `claude -p` with the company tools over MCP (guardrails stay server-side). Our own company-agent runtime
+     calling the API with the subscription is **not** allowed. Ship it behind an explicit "Use my Claude plan
+     for management too" choice with the usage-limit warning; recommend an API key for heavy autonomy.
+  7. Usage limits: detect Claude Code's usage-limit errors, pause CLI work until the reset time and say so;
+     default the intensity slider (B5) to low on a subscription; never show subscription runs as charges (B8).
+  8. Wording: "runs Claude Code" is fine in plain text; no Claude/Anthropic names or logos in our product or
+     feature names. Owner action: accept Anthropic's Commercial Terms before shipping this.
+- **Open questions:** how far "ordinary, individual usage" stretches for an always-on company (ask Anthropic
+  sales before marketing subscription mode for management); Windows support.
+
+## B10. One AI stack (M17)
+
+- **Status:** done (2026-10-28), spec `docs/specs/m17-ai-stack.md`; plan sign-ins not yet exercised live · **Size:** L
+- **Ask:** the AI settings were confusing (management model / work model / coding CLI / engine). Replace them
+  with one list of any number of AIs of any type — Claude plan (Claude Code), Anthropic / OpenAI / OpenRouter /
+  OpenAI-compatible / Ollama, Cursor (plan or key), Codex, OpenCode, Antigravity — that the owner orders
+  (primary, secondary…), sets "use for" (heavy lifting / everyday) and importance (most … backup only), and
+  edits any time, in onboarding and Settings. Legal ways only: Claude via the official Claude Code sign-in or the
+  Anthropic API; one plan sign-in per CLI per company.
+- Subsumes B6 (multiple keys + routing) and B9's engine switch.

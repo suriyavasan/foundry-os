@@ -156,12 +156,15 @@ ROLE_LINES = {
 }
 
 
+def _purchase_allowed(role: str, tools: Optional[Iterable[str]]) -> bool:
+    names = ("company_request_purchase", "company_review_subscription")
+    return tools is None and role != "founder" or bool(tools and any(t in tools for t in names))
+
+
 def _can_purchase(spec: RunSpec) -> bool:
     """The buying paragraph appears only for an employee who can call the tools (the control plane's
     ``company_tools`` subset, absent = all): no tool names a small model cannot use."""
-    tools = spec.company_tools
-    names = ("company_request_purchase", "company_review_subscription")
-    return tools is None and role_of(spec) != "founder" or bool(tools and any(t in tools for t in names))
+    return _purchase_allowed(role_of(spec), spec.company_tools)
 
 
 def _can_radar(spec: RunSpec) -> bool:
@@ -352,9 +355,14 @@ def _is_wake(spec: RunSpec) -> bool:
 
 def build_user_message(spec: RunSpec) -> str:
     """First user turn: a short, imperative kickoff."""
-    role, kind = role_of(spec), str(spec.task.get("kind") or "work")
-    title = _clip(spec.task["title"], 300)
-    if isinstance(spec.task.get("peer_review"), dict):
+    return kickoff_message(role_of(spec), spec.task)
+
+
+def kickoff_message(role: str, task: dict[str, Any]) -> str:
+    """The kickoff for ``role`` on ``task`` (shared with the coding-CLI prompt, ``cli_brief``)."""
+    kind = str(task.get("kind") or "work")
+    title = _clip(task["title"], 300)
+    if isinstance(task.get("peer_review"), dict):
         return (
             f"Begin your task now: \"{title}\". Read the outbound message in your task. Then call "
             "company_decide_peer_review with the approval id and decision approve (it may go out exactly as "
@@ -362,7 +370,7 @@ def build_user_message(spec: RunSpec) -> str:
             "note. Then stop."
         )
     if kind == "review":
-        target = spec.task.get("review_target") or {}
+        target = task.get("review_target") or {}
         if target.get("mode") == "failure":
             return (
                 f"Begin your task now: \"{title}\". Decide how to handle the failure (retry, split the work, or give "
@@ -373,7 +381,7 @@ def build_user_message(spec: RunSpec) -> str:
             "company_review_task with the reviewed task's id and decision accept or request_revision (with a specific "
             "note). Then stop."
         )
-    if role in ("founder", "lead") and _is_wake(spec):
+    if role in ("founder", "lead") and kind in WAKE_KINDS:
         return (
             f"You were woken: \"{title}\". Call company_get_state now, then do what your playbook says for everything "
             "that needs you. Finish with company_complete_task."
@@ -416,3 +424,44 @@ def build_completion_nudge(spec: RunSpec) -> str:
         "company_submit_artifact. Then call company_complete_task with a result_summary (and the "
         "artifact ids). Do not reply with text only."
     )
+
+
+def cli_brief(payload: dict[str, Any]) -> str:
+    """Role instructions for a coding-CLI run (``cli:claude_code`` ...): the SAME playbook, buying and
+    radar paragraphs, review/peer-review sections and kickoff a ``company_agent`` run of this role gets.
+    ``payload``: ``role``, ``company_tools`` (full names, or null = all), ``task`` (kind, title,
+    review_target, peer_review). The control plane renames the tools to the CLI's MCP names."""
+    role = str(payload.get("role") or "specialist").lower()
+    if role not in PLAYBOOKS:
+        role = "specialist"
+    tools = payload.get("company_tools")
+    tools = [str(t) for t in tools] if isinstance(tools, list) else None
+    task = payload.get("task") if isinstance(payload.get("task"), dict) else {}
+    task = {"title": "", **task}
+    lines = [ROLE_LINES[role], "", PLAYBOOKS[role]]
+    if _purchase_allowed(role, tools):
+        lines += ["", PURCHASING_RULES]
+    if tools and any(t in tools for t in RADAR_TOOLS):
+        lines += ["", RADAR_RULES]
+    if isinstance(task.get("review_target"), dict):
+        lines += _review_target_lines(task["review_target"])
+    if isinstance(task.get("peer_review"), dict):
+        lines += _peer_review_lines(task["peer_review"])
+    lines += ["", kickoff_message(role, task)]
+    return "\n".join(lines).strip()
+
+
+def main() -> int:
+    import json
+    import sys
+
+    try:
+        payload = json.loads(sys.stdin.read() or "{}")
+    except ValueError:
+        return 3
+    sys.stdout.write(json.dumps({"brief": cli_brief(payload if isinstance(payload, dict) else {})}))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

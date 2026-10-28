@@ -1,18 +1,29 @@
-import { AiSetupForm } from '@/features/ai/AiSetupForm'
+import { isNotDeployed, useAiStack } from '@/api'
+import { Button } from '@/components/ui'
+import { AiStack } from '@/features/ai/AiStack'
+import { canContinue } from '@/lib/onboarding'
 import { StepHeading } from '../StepFrame'
 
 /**
- * Step 4: connect the AI, in one step with one save. The model API is required (the save stays disabled until it passed its
- * test); the coding CLIs are optional. `finishLabel` is "Save and continue" in the setup flow and "Save and open my company"
- * when this is the last screen (the gate).
+ * Step 4: connect the AI. Add one or more; Continue unlocks when the server says the stack is ready (something tested that
+ * covers heavy work and something that covers everyday work). `finishLabel` is "Continue" in the setup flow and
+ * "Open my company" when this is the last screen (the gate).
  */
 export function AiStep({ companyId, canEdit, finishLabel, onDone }: { companyId: string; canEdit: boolean; finishLabel: string; onDone: () => Promise<void> | void }) {
+  const stack = useAiStack(companyId)
+  const available = !(stack.isError && isNotDeployed(stack.error))
+  const ready = stack.data?.ready === true
   return (
     <div>
       <StepHeading eyebrow="Connect your AI" title="Connect your AI">
-        Two kinds of AI power your company. The model API is required: it runs the company. Coding CLIs are optional: they do hands-on work. Set both here and save once.
+        Add the AI your company will use. You can add more later and decide which does the heavy lifting.
       </StepHeading>
-      <AiSetupForm companyId={companyId} canEdit={canEdit} saveLabel={finishLabel} onSaved={onDone} />
+      <AiStack companyId={companyId} canEdit={canEdit} />
+      <div className="mt-5 flex justify-end">
+        <Button variant="primary" disabled={!canContinue('ai', { aiReady: ready, aiAvailable: available })} onClick={() => void onDone()}>
+          {finishLabel}
+        </Button>
+      </div>
     </div>
   )
 }

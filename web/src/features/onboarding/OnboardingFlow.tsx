@@ -108,7 +108,7 @@ export function OnboardingFlow({
     case 'ai':
       return (
         <StepFrame flow={flow} step="ai" wide fx="spotlight">
-          {companyId && <AiStep companyId={companyId} canEdit={canEdit} finishLabel={mode === 'setup' ? 'Save and continue' : 'Save and open my company'} onDone={afterAi} />}
+          {companyId && <AiStep companyId={companyId} canEdit={canEdit} finishLabel={mode === 'setup' ? 'Continue' : 'Open my company'} onDone={afterAi} />}
         </StepFrame>
       )
     case 'repo':

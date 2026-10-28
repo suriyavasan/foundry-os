@@ -41,7 +41,6 @@ from app.cli.context import CliState, JsonOpt, command, state
 from app.cli.onboarding import (
     ALL_PRESETS,
     BLOCKING_REASON_TEXT,
-    CLI_AUTH_FLAGS,
     GITHUB_CI_FLAGS,
     GITHUB_MERGE_FLAGS,
     PRESET_BY_FLAG,
@@ -54,6 +53,30 @@ from app.cli.onboarding import (
 from app.runtimes.cli.catalog import CLIS, assert_safe_argv
 from app.schemas.repository import default_policy
 
+CLAUDE_PLAN_FLAG = onboarding.CLAUDE_PLAN_FLAG
+FLAG_OPTIONS = {CLAUDE_PLAN_FLAG: "claude_plan", onboarding.CURSOR_PLAN_FLAG: "cursor_plan"}
+# the order of the "which AI" menu (the server's catalog order is by group)
+MENU_ORDER = (
+    "claude_plan",
+    "openrouter",
+    "anthropic_api",
+    "openai_api",
+    "openai_compatible",
+    "ollama",
+    "cursor_plan",
+    "cursor_api",
+    "codex_api",
+    "opencode",
+    "antigravity_api",
+)
+# provider kind -> the AI stack option that runs on a model provider
+PRESET_OPTION = {
+    "anthropic": "anthropic_api",
+    "openai": "openai_api",
+    "openrouter": "openrouter",
+    "openai_compatible": "openai_compatible",
+    "ollama": "ollama",
+}
 PROVIDER_TEST_TIMEOUT = 180.0  # a live test of a slow provider (it may load a local model)
 CLI_TEST_TIMEOUT = 120.0  # the server limits the CLI test to 60 s; this leaves room on top
 INSTALL_POLL_SECONDS = 1.0
@@ -64,11 +87,14 @@ CLI_TEST_SPEND_CAP = "$0.05"
 sleep: Callable[[float], None] = time.sleep
 
 
-def run_interactive(argv: list[str]) -> int:
+def run_interactive(argv: list[str], env: dict[str, str] | None = None) -> int:
     """Run a CLI's own login in THIS terminal with inherited stdio (device codes and URLs must reach
-    the person). Returns the exit code; a missing binary is reported, not raised."""
+    the person). Returns the exit code; a missing binary is reported, not raised. ``env`` replaces the
+    child's environment (Claude Code's login needs Foundry's ``CLAUDE_CONFIG_DIR``)."""
     assert_safe_argv(argv)
     try:
+        if env is not None:
+            return subprocess.run(argv, check=False, env=env).returncode
         return subprocess.run(argv, check=False).returncode
     except OSError as exc:
         typer.echo(f"Could not start {argv[0]}: {exc}", err=True)
@@ -104,8 +130,6 @@ class Wizard:
         self.company_name: str | None = None
         self.idea: str = (opts.idea or "").strip()
         self.username: str | None = None
-        self.management: dict[str, Any] | None = None
-        self.fresh_ai = False
         self._public_choice: str | None = None
         self.public_url: str | None = None
         self.token_file: str | None = None
@@ -225,14 +249,12 @@ class Wizard:
                 self.step_company()
             elif step == "ai":
                 self.step_ai()
-            elif step == "work":
-                self.step_work()
             elif step == "repo":
                 self.repo_step_guarded()
             elif step == "public-url":
                 self.optional("public-url", self.step_public_url)
         self.close_session()
-        if self.opts.only in (None, "company", "ai", "work", "repo"):
+        if self.opts.only in (None, "company", "ai", "repo"):
             self.seed_idea()
         self.finish()
 
@@ -261,7 +283,7 @@ class Wizard:
                 companies = self.api.paged("/companies")
                 if companies:
                     self.company_id = self.st.company_id()
-                    ready = self.ai_status().get("ready") is True
+                    ready = self._stack().get("ready") is True
             except CliError as exc:
                 if exc.exit_code != EXIT_AUTH:
                     raise
@@ -282,10 +304,10 @@ class Wizard:
             and not o.company_name
         ):
             missing.append("--company-name")
-        if "ai" in plan and will_have_company and ready is not True:
+        if "ai" in plan and will_have_company and (ready is not True or o.provider):
             if not o.provider:
                 missing.append("--provider")
-            else:
+            elif o.provider not in FLAG_OPTIONS:
                 preset = PRESET_BY_FLAG[o.provider]
                 if preset.id != "ollama" and not o.model:
                     missing.append("--model")
@@ -293,14 +315,6 @@ class Wizard:
                     missing.append("--base-url")
                 if preset.needs_key and "api_key" not in self.secrets:
                     missing.append("api_key (an 'api_key=' line in --secrets-stdin)")
-        hybrid = (o.work_mode or ("hybrid" if o.cli else "api")) == "hybrid"
-        if "work" in plan and hybrid:
-            if not o.cli:
-                missing.append("--cli")
-            elif not o.cli_auth:
-                missing.append("--cli-auth")
-            elif o.cli_auth == "api-key" and "cli_api_key" not in self.secrets:
-                missing.append("cli_api_key (a 'cli_api_key=' line in --secrets-stdin)")
         if (
             "repo" in plan
             and o.github in ("new", "existing")
@@ -664,62 +678,225 @@ class Wizard:
         self.say(f"Created {self.company_name} ({tz}) with its AI Co-founder.")
         self.record("company", "done", id=self.company_id, name=self.company_name, timezone=tz)
 
-    # ------------------------------------------------------------------ step: the model API
+    # ------------------------------------------------------------------ step: the AI stack
+
+    def _stack(self) -> dict:
+        return self.api.get(self.cpath("/ai-stack"))
+
+    @staticmethod
+    def _stack_labels(stack: dict) -> str:
+        items = stack.get("items") or []
+        return ", ".join(f"{i['rank_label']}: {i['label']}" for i in items) or "none"
 
     def step_ai(self) -> None:
-        self.header("Model API")
+        self.header("AI")
         self.ensure_company()
-        status = self.ai_status()
+        stack = self._stack()
         o = self.opts
         forced = o.only == "ai" or o.provider is not None
-        mgmt = status.get("management") or {}
-        if status.get("ready") is True:
-            where = f"{mgmt.get('provider_name')} ({mgmt.get('model')})"
-            change = forced and (
-                o.provider is not None
-                or (
-                    self.interactive
-                    and self.confirm(
-                        f"The model API is already connected to {where}. Change it?", default=False
-                    )
-                )
-            )
-            if not change:
-                self.say(f"Already done: {where}, ready.")
-                self.management = self._management_of(status)
-                self.record("ai", "already_done", **self._ai_info(status))
+        if stack.get("ready") is True:
+            if not forced:
+                self.say(f"Already done: {self._stack_labels(stack)}, ready.")
+                self.record("ai", "already_done", **self._ai_info(stack))
+                return
+            if o.provider is None and not (
+                self.interactive
+                and self.confirm("Your AI is ready. Add another AI?", default=False)
+            ):
+                self.say(f"Already done: {self._stack_labels(stack)}, ready.")
+                self.record("ai", "already_done", **self._ai_info(stack))
                 return
         else:
             self.say(
-                onboarding.BLOCKING_REASON_TEXT.get(
-                    status.get("blocking_reason") or "", BLOCKING_REASON_TEXT["no_tested_provider"]
+                BLOCKING_REASON_TEXT.get(
+                    stack.get("blocking_reason") or "", BLOCKING_REASON_TEXT["no_ai"]
                 )
             )
-        provider, model = self._connect_ai()
-        status = self._commit_management(provider["id"], model, status)
-        self.fresh_ai = True
-        self.management = self._management_of(status)
-        self.say(f"The model API is ready: {provider['name']} ({model}).")
-        self.record("ai", "done", **self._ai_info(status))
+        while True:
+            self.add_connection(stack, first=not (stack.get("items") or []))
+            stack = self._stack()
+            if not self.interactive or o.provider is not None:
+                break
+            if not self.confirm("Add another AI?", default=False):
+                break
+        if stack.get("ready") is not True:
+            reason = stack.get("blocking_reason") or "no_ai"
+            raise CliError(BLOCKING_REASON_TEXT.get(reason, "The AI setup is not ready yet."))
+        self.say(f"Your AI is ready: {self._stack_labels(stack)}.")
+        self.record("ai", "done", **self._ai_info(stack))
 
     @staticmethod
-    def _management_of(status: dict) -> dict[str, Any]:
-        m = status.get("management") or {}
+    def _ai_info(stack: dict) -> dict[str, Any]:
+        items = stack.get("items") or []
+        first = items[0] if items else {}
         return {
-            "provider_id": m.get("provider_id"),
-            "name": m.get("provider_name"),
-            "kind": m.get("kind"),
-            "model": m.get("model"),
+            "ready": stack.get("ready") is True,
+            "connections": [
+                {"id": i["id"], "label": i["label"], "option": i["option"], "model": i.get("model")}
+                for i in items
+            ],
+            "provider": first.get("label"),
+            "kind": first.get("option"),
+            "model": first.get("model"),
         }
 
-    def _ai_info(self, status: dict) -> dict[str, Any]:
-        m = self._management_of(status)
-        return {
-            "ready": status.get("ready") is True,
-            "provider": m["name"],
-            "kind": m["kind"],
-            "model": m["model"],
-        }
+    def _pick_option(self, stack: dict) -> str:
+        """The option to add: --provider, or a menu of what the server offers."""
+        flag = self.opts.provider
+        if flag and flag in FLAG_OPTIONS:
+            return FLAG_OPTIONS[flag]
+        if flag:
+            return PRESET_OPTION[PRESET_BY_FLAG[flag].kind]
+        if not self.interactive:
+            raise self.need("--provider")
+        offered = [
+            o
+            for o in stack.get("options") or []
+            if o["available"] or o["option"] == "ollama"  # the Ollama step detects it itself
+        ]
+        offered.sort(
+            key=lambda o: MENU_ORDER.index(o["option"]) if o["option"] in MENU_ORDER else 99
+        )
+        n = self.menu("Which AI do you want to add?", [o["label"] for o in offered])
+        return offered[n - 1]["option"]
+
+    def add_connection(self, stack: dict, *, first: bool) -> dict:
+        """Connect one AI (an option of the catalog), test it, and add it to the stack."""
+        option = self._pick_option(stack)
+        use_for, share = "everything", 4 if first else 2
+        if option in PRESET_OPTION.values():
+            kind = next(k for k, v in PRESET_OPTION.items() if v == option)
+            preset = next(p for p in ALL_PRESETS if p.kind == kind)
+            provider, model = self._connect_ai(preset)
+            conn = self.api.post(
+                self.cpath("/ai-stack"),
+                {
+                    "option": PRESET_OPTION[provider["kind"]],  # "another provider" may differ
+                    "model_provider_id": provider["id"],
+                    "model": model,
+                    "use_for": use_for,
+                    "share": share,
+                },
+            )
+            if conn["status"]["state"] != "ready":
+                conn = self.api.post(
+                    self.cpath(f"/ai-stack/{conn['id']}/test"), timeout=PROVIDER_TEST_TIMEOUT
+                )
+            self.say(f"Added {conn['label']} ({conn['model']}).")
+            return conn
+        return self._connect_cli(option, use_for, share)
+
+    def _connect_cli(self, option: str, use_for: str, share: int) -> dict:
+        info = next((o for o in self._stack().get("options") or [] if o["option"] == option), {})
+        cli_id = info.get("cli_id") or option.removesuffix("_plan").removesuffix("_api")
+        spec = CLIS[cli_id]
+        plan = option.endswith("_plan")
+        if info.get("warning"):
+            self.say(info["warning"])
+        cli = self._cli_status(cli_id)
+        if not cli.get("installed"):
+            cli = self._install_cli(cli, spec)
+        else:
+            self.say(
+                f"{spec.display_name} is installed ({cli.get('version') or 'version unknown'})."
+            )
+        body: dict[str, Any] = {"option": option, "use_for": use_for, "share": share}
+        if not plan:
+            body.update(self._cli_key_fields(option, spec))
+        try:
+            conn = self.api.post(self.cpath("/ai-stack"), body)
+        except CliError as exc:
+            if exc.code != "plan_already_connected":
+                raise
+            conn = next(  # the plan is already there (a rerun): sign it in / test it again
+                i for i in self._stack()["items"] if i["option"] == option
+            )
+            self.say(f"{conn['label']} is already in the stack; checking it.")
+        while True:
+            if plan:
+                self._sign_in_plan(conn)
+            self.say(
+                f'Testing {conn["label"]}: it gets one tiny prompt ("Reply with OK") and may spend '
+                f"at most {CLI_TEST_SPEND_CAP} on the account or key it signs in with."
+            )
+            if self.interactive and not self.confirm("Run the test?", default=True):
+                raise CliError(
+                    f"{conn['label']} cannot do company work until it passes its test. "
+                    "Run `foundryos ai test` later."
+                )
+            conn = self.api.post(
+                self.cpath(f"/ai-stack/{conn['id']}/test"), timeout=CLI_TEST_TIMEOUT
+            )
+            last = conn["status"].get("last_test") or {}
+            if last.get("ok") is True:
+                self.say(f"{conn['label']} works: {last.get('detail') or 'test passed'}")
+                return conn
+            detail = last.get("detail") or conn["status"].get("message") or "the test did not pass"
+            if not self.interactive:
+                raise CliError(f"{conn['label']} failed its test: {detail}")
+            self.warn(f"{conn['label']} failed its test: {detail}")
+            if not self.confirm("Try again?", default=True):
+                raise CliError(
+                    f"Stopped: {conn['label']} did not pass its test. "
+                    "Fix it, then run `foundryos ai test`."
+                )
+
+    def _cli_key_fields(self, option: str, spec) -> dict[str, Any]:
+        """The credential (and model) of a CLI that signs in with an API key; the key goes to the server
+        once, encrypted, and is never printed."""
+        model: str | None = None
+        if option == "opencode":
+            if not self.interactive:
+                raise usage("OpenCode needs a provider/model name; add it interactively.")
+            model = self.ask("OpenCode model (provider/model, e.g. anthropic/claude-sonnet-4-5)")
+        key = self.secret(
+            "cli_api_key",
+            f"{spec.display_name} API key" + (f" ({spec.key_env})" if spec.key_env else ""),
+        )
+        assert key
+        err = onboarding.api_key_error(key)
+        if err:
+            raise CliError(err)
+        out: dict[str, Any] = {"credential_id": self._upsert_credential(f"{spec.id}-cli-key", key)}
+        if model:
+            out["model"] = model
+        self.say(f"  {spec.display_name} will use the stored API key (encrypted, write-only).")
+        return out
+
+    def _sign_in_plan(self, conn: dict) -> None:
+        """Make sure this plan connection is signed in: the CLI's own sign-in in THIS terminal (it prints
+        the link and takes a pasted code over SSH)."""
+        path = self.cpath(f"/ai-stack/{conn['id']}/login")
+        while True:
+            login = self.api.get(path, refresh=1)
+            if login.get("signed_in") is True:
+                who = login.get("email") or login.get("auth_method") or "your account"
+                self.say(f"{conn['label']} is signed in ({who}).")
+                return
+            if not self.interactive:
+                raise CliError(
+                    f"{conn['label']} is not signed in. Run `foundryos ai login {conn['label']}` in a "
+                    "terminal on the machine that runs Foundry, then rerun this command."
+                )
+            if self.remote:
+                self.say(
+                    "The CLI runs on the server machine. There, as the user that runs Foundry, run: "
+                    f"foundryos ai login {conn['label']}"
+                )
+                self.confirm("Press Enter once you are signed in", default=True)
+                continue
+            from app.cli.commands import ai as ai_cmd
+
+            code = ai_cmd.sign_in(conn, console=False)
+            if code != 0:
+                self.warn(
+                    f"The sign-in exited with status {code}; the next check shows whether you are in."
+                )
+            login = self.api.get(path, refresh=1)
+            if login.get("signed_in") is not True and not self.confirm(
+                "Not signed in yet. Try the sign-in again?", default=True
+            ):
+                raise CliError(f"Stopped: {conn['label']} is not signed in.")
 
     def _pick_preset(self, *, first: bool) -> ProviderPreset:
         if first and self.opts.provider:
@@ -732,9 +909,9 @@ class Wizard:
         )
         return ALL_PRESETS[n - 1]
 
-    def _connect_ai(self) -> tuple[dict, str]:
+    def _connect_ai(self, preset: ProviderPreset) -> tuple[dict, str]:
         """Connect a provider and get it through its live test; loop on failure (interactive)."""
-        att = _Attempt(self._pick_preset(first=True))
+        att = _Attempt(preset)
         first = True
         while True:
             problem: str
@@ -1025,152 +1202,8 @@ class Wizard:
             test = provider.get("last_test")
         return provider, test
 
-    def _commit_management(self, provider_id: str, model: str, status: dict) -> dict:
-        """Select the tested provider as the management model (keeping a working hybrid choice)."""
-        mode = status.get("work_mode") or "api"
-        runtime = status.get("work_runtime") or "company_agent"
-        if mode != "hybrid":
-            mode, runtime = "api", "company_agent"
-        body = {
-            "management_provider_id": provider_id,
-            "management_model": model,
-            "work_mode": mode,
-            "work_runtime": runtime,
-        }
-        try:
-            result = self.api.put(self.cpath("/ai-setup"), body)
-        except CliError as exc:
-            if mode != "hybrid":
-                raise self._ai_not_ready(exc) from None
-            body.update(work_mode="api", work_runtime="company_agent")
-            result = self.api.put(self.cpath("/ai-setup"), body)
-            self.warn(
-                "The coding CLI choice is not ready any more, so the work mode went back to API only."
-            )
-        if result.get("ready") is not True:
-            reason = result.get("blocking_reason") or "no_tested_provider"
-            raise CliError(BLOCKING_REASON_TEXT.get(reason, "The AI setup is not ready yet."))
-        return result
-
-    @staticmethod
-    def _ai_not_ready(exc: CliError) -> CliError:
-        reason = exc.details.get("reason") if isinstance(exc.details, dict) else None
-        extra = f" {BLOCKING_REASON_TEXT[reason]}" if reason in BLOCKING_REASON_TEXT else ""
-        return CliError(
-            exc.message + extra, exit_code=exc.exit_code, code=exc.code, details=exc.details
-        )
-
-    # ------------------------------------------------------------------ step: work mode
-
-    def step_work(self) -> None:
-        self.header("Work mode")
-        self.ensure_company()
-        status = self.ai_status()
-        if status.get("ready") is not True:
-            raise CliError("The model API is not ready yet. Run `foundryos setup --only ai` first.")
-        o = self.opts
-        mode = o.work_mode or ("hybrid" if o.cli else None)
-        forced = o.only == "work" or mode is not None
-        current = status.get("work_mode") or "api"
-        if mode is None and not (self.fresh_ai or forced):
-            label = "API only" if current == "api" else f"API + {status.get('work_runtime')}"
-            self.say(f"Already done: {label}.")
-            self.record("work", "already_done", mode=current, runtime=status.get("work_runtime"))
-            return
-        if mode is None:
-            if not self.interactive:
-                mode = "api"
-            else:
-                n = self.menu(
-                    "How should your employees do their hands-on work?",
-                    [
-                        "API only: everything runs through the model API (simplest)",
-                        "API + coding CLIs: employees' work tasks run in Claude Code, Codex, "
-                        "OpenCode, Antigravity or Cursor on this machine",
-                    ],
-                )
-                mode = "api" if n == 1 else "hybrid"
-        m = self._management_of(status)
-        runtime: str | None = None
-        if mode == "hybrid":
-            runtime = self._setup_cli(m)
-            if runtime is None:
-                mode = "api"
-        if mode == "api":
-            if current != "api":
-                self.api.put(
-                    self.cpath("/ai-setup"),
-                    {
-                        "management_provider_id": m["provider_id"],
-                        "management_model": m["model"],
-                        "work_mode": "api",
-                        "work_runtime": "company_agent",
-                    },
-                )
-            self.say("Work mode: API only.")
-            self.record("work", "done", mode="api", runtime="company_agent")
-            return
-        try:
-            self.api.put(
-                self.cpath("/ai-setup"),
-                {
-                    "management_provider_id": m["provider_id"],
-                    "management_model": m["model"],
-                    "work_mode": "hybrid",
-                    "work_runtime": runtime,
-                },
-            )
-        except CliError as exc:
-            raise self._ai_not_ready(exc) from None
-        self.say(f"Work mode: API for management + {runtime} for the work.")
-        self.record("work", "done", mode="hybrid", runtime=runtime)
-
     def _cli_status(self, cli_id: str) -> dict:
         return self.api.get(f"/cli-runtimes/{cli_id}")
-
-    def _setup_cli(self, mgmt: dict) -> str | None:
-        """Install (if needed), sign in and test a coding CLI. Returns its runtime id, or None to stay on
-        API only (interactive fallback)."""
-        o = self.opts
-        cli_id = o.cli
-        if cli_id is None:
-            if not self.interactive:
-                raise self.need("--cli")
-            rows = []
-            for cid in onboarding.CLI_IDS:
-                try:
-                    s = self._cli_status(cid)
-                    note = (
-                        f"installed {s.get('version') or ''}".strip()
-                        if s.get("installed")
-                        else "not installed"
-                    )
-                except CliError:
-                    note = "status unknown"
-                rows.append(f"{CLIS[cid].display_name} ({note})")
-            cli_id = onboarding.CLI_IDS[self.menu("Which coding CLI?", rows) - 1]
-        spec = CLIS[cli_id]
-        cli = self._cli_status(cli_id)
-        if not cli.get("installed"):
-            cli = self._install_cli(cli, spec)
-        else:
-            self.say(
-                f"{spec.display_name} is installed ({cli.get('version') or 'version unknown'})."
-            )
-        while True:
-            self._cli_auth(cli, spec, mgmt)
-            result = self._test_cli(spec)
-            last = ((result.get("auth") or {}).get("last_test")) or {}
-            if last.get("ok") is True:
-                self.say(f"{spec.display_name} works: {last.get('detail') or 'test passed'}")
-                return spec.runtime_id
-            detail = last.get("detail") or "the test did not pass"
-            if not self.interactive:
-                raise CliError(f"{spec.display_name} failed its test: {detail}")
-            self.warn(f"{spec.display_name} failed its test: {detail}")
-            if not self.confirm("Set it up again (sign in / key) and retest?", default=True):
-                self.say("Staying on API only. Run `foundryos setup --only work` to try again.")
-                return None
 
     def _install_cli(self, cli: dict, spec) -> dict:
         install = cli.get("install") or {}
@@ -1186,7 +1219,7 @@ class Wizard:
                     f"{spec.display_name} is not installed. Install it with the command above and rerun."
                 )
             if not self.confirm("Press Enter once it is installed (n to stop)", default=True):
-                raise CliError("Stopped. Rerun `foundryos setup --only work` after installing it.")
+                raise CliError("Stopped. Rerun `foundryos setup --only ai` after installing it.")
             cli = self._cli_status(spec.id)
             if not cli.get("installed"):
                 raise CliError(f"{spec.display_name} is still not found on this machine.")
@@ -1228,7 +1261,7 @@ class Wizard:
             waited += INSTALL_POLL_SECONDS
             if waited > INSTALL_WAIT_SECONDS:
                 raise CliError(
-                    f"Installing {spec.display_name} is taking too long. Check `foundryos setup --only work` later."
+                    f"Installing {spec.display_name} is taking too long. Check `foundryos setup --only ai` later."
                 )
             sleep(INSTALL_POLL_SECONDS)
         cli = self._cli_status(spec.id)
@@ -1238,114 +1271,6 @@ class Wizard:
             )
         self.say(f"{spec.display_name} is installed ({cli.get('version') or 'version unknown'}).")
         return cli
-
-    def _cli_auth(self, cli: dict, spec, mgmt: dict) -> None:
-        o = self.opts
-        modes = cli.get("auth_modes") or list(spec.auth_modes)
-        choice = CLI_AUTH_FLAGS.get(o.cli_auth) if o.cli_auth else None
-        if choice is None:
-            if not self.interactive:
-                raise self.need("--cli-auth")
-            options, keys = [], []
-            if "own_login" in modes:
-                options.append("My own login (the account already signed in to the CLI)")
-                keys.append("own_login")
-            if "api_key" in modes:
-                options.append("An API key (recommended: strongest isolation)")
-                keys.append("api_key")
-            if spec.id == "opencode":
-                options.append("The model provider I just connected")
-                keys.append("provider")
-            choice = keys[
-                self.menu(
-                    "How should it sign in?",
-                    options,
-                    default=keys.index("api_key") + 1 if "api_key" in keys else 1,
-                )
-                - 1
-            ]
-        if choice == "own_login":
-            if "own_login" not in modes:
-                raise usage(f"{spec.display_name} has no own-login mode; use --cli-auth api-key.")
-            self._own_login(spec)
-            self.api.put(f"/cli-runtimes/{spec.id}/auth", {"mode": "own_login"})
-        elif choice == "api_key":
-            if spec.id == "opencode":
-                if not self.interactive:
-                    raise usage(
-                        "OpenCode needs a provider/model name with an API key; use --cli-auth provider instead."
-                    )
-                model = self.ask(
-                    "OpenCode model (provider/model, e.g. anthropic/claude-sonnet-4-5)"
-                )
-            else:
-                model = None
-            key = self.secret(
-                "cli_api_key",
-                f"{spec.display_name} API key" + (f" ({spec.key_env})" if spec.key_env else ""),
-            )
-            assert key
-            err = onboarding.api_key_error(key)
-            if err:
-                raise CliError(err)
-            cred_id = self._upsert_credential(f"{spec.id}-cli-key", key)
-            body: dict[str, Any] = {"mode": "api_key", "credential_id": cred_id}
-            if model:
-                body["model"] = model
-            self.api.put(f"/cli-runtimes/{spec.id}/auth", body)
-            self.say(f"  {spec.display_name} will use the stored API key (encrypted, write-only).")
-        else:  # provider: OpenCode on the company's model provider
-            if spec.id != "opencode":
-                raise usage("--cli-auth provider only works with OpenCode.")
-            self.api.put(
-                f"/cli-runtimes/{spec.id}/auth",
-                {
-                    "mode": "api_key",
-                    "model_provider_id": mgmt["provider_id"],
-                    "model": mgmt["model"],
-                },
-            )
-
-    def _own_login(self, spec) -> None:
-        """Offer to run the CLI's own login here, in this terminal. The argv is UNVERIFIED against the
-        real CLIs (see ``headless_login_argv`` in the catalog); the test afterwards is the proof."""
-        argv = list(spec.headless_login_argv or ())
-        if self.remote:
-            self.say(
-                f"The CLI runs on the server machine. There, as the user that runs Foundry: {spec.login_hint}"
-            )
-            return
-        if not argv or not self.interactive:
-            self.say(
-                f"Assuming {spec.display_name} is already signed in on this machine ({spec.login_hint}). The test below checks it."
-            )
-            return
-        if not self.confirm(
-            f"Sign in to {spec.display_name} now, in this terminal? (Answer no if you already did.)",
-            default=True,
-        ):
-            return
-        cli = self._cli_status(spec.id)
-        argv[0] = cli.get("binary_path") or argv[0]
-        if spec.id == "claude_code":
-            self.say("Claude Code will start. Type /login, finish the sign-in, then type /exit.")
-        self.say(f"Running: {' '.join(argv)}")
-        code = run_interactive(argv)
-        if code != 0:
-            self.warn(
-                f"{spec.display_name} exited with status {code}; the test below shows whether you are signed in."
-            )
-
-    def _test_cli(self, spec) -> dict:
-        self.say(
-            f'Testing {spec.display_name}: it gets one tiny prompt ("Reply with OK") and may spend '
-            f"at most {CLI_TEST_SPEND_CAP} on the account or key it signs in with."
-        )
-        if self.interactive and not self.confirm("Run the test?", default=True):
-            raise CliError(
-                f"{spec.display_name} cannot do company work until it passes its test. Rerun `foundryos setup --only work`."
-            )
-        return self.api.post(f"/cli-runtimes/{spec.id}/test", timeout=CLI_TEST_TIMEOUT)
 
     # ------------------------------------------------------------------ the first note
 
@@ -1912,7 +1837,6 @@ class Wizard:
         except Exception:
             pass
         ai = self.summary.get("ai") or {}
-        work = self.summary.get("work") or {}
         self.say()
         self.say(
             "Foundry AI OS is set up." if self.opts.only is None else f"Done: {self.opts.only}."
@@ -1926,22 +1850,16 @@ class Wizard:
             self.say(f"  Sign in as  {self.username} (with the password you chose)")
         if self.company_name:
             self.say(f"  Company     {self.company_name}")
-        if ai.get("provider"):
-            self.say(f"  Model API   {ai['provider']} ({ai.get('model')})")
+        for conn in ai.get("connections") or []:
+            self.say(
+                f"  AI          {conn['label']}"
+                + (f" ({conn['model']})" if conn.get("model") else "")
+            )
         repo_info = self.summary.get("repo") or {}
         if repo_info.get("full_name"):
             self.say(
                 f"  Repository  {repo_info['full_name']} ({repo_info.get('merge_mode') or '?'}, "
                 f"{repo_info.get('repo_status')})"
-            )
-        if work.get("mode"):
-            self.say(
-                f"  Work mode   {work['mode']}"
-                + (
-                    f" ({work.get('runtime')})"
-                    if work.get("runtime") not in (None, "company_agent")
-                    else ""
-                )
             )
         self.say("Next:")
         self.say("  foundryos status             the company at a glance")
@@ -2045,7 +1963,9 @@ def register(app: typer.Typer) -> None:
         provider: Annotated[
             str | None,
             typer.Option(
-                "--provider", help="openrouter, anthropic, openai, openai-compatible or ollama."
+                "--provider",
+                help="claude-plan or cursor-plan (sign in afterwards with `foundryos ai login`), openrouter, anthropic, openai, "
+                "openai-compatible or ollama.",
             ),
         ] = None,
         model: Annotated[
@@ -2061,20 +1981,6 @@ def register(app: typer.Typer) -> None:
                 help="The model server is on a private network (192.168.x.x, 10.x.x.x, Tailscale).",
             ),
         ] = False,
-        work_mode: Annotated[
-            str | None, typer.Option("--work-mode", help="api, or hybrid (API + a coding CLI).")
-        ] = None,
-        cli: Annotated[
-            str | None,
-            typer.Option("--cli", help="claude_code, codex, opencode, antigravity or cursor."),
-        ] = None,
-        cli_auth: Annotated[
-            str | None,
-            typer.Option(
-                "--cli-auth",
-                help="own-login, api-key or provider (OpenCode on your model provider).",
-            ),
-        ] = None,
         install_cli: Annotated[
             bool, typer.Option("--install-cli", help="Run the CLI's npm install if it is missing.")
         ] = False,
@@ -2189,9 +2095,6 @@ def register(app: typer.Typer) -> None:
             model=model,
             base_url=base_url,
             allow_private_network=allow_private_network,
-            work_mode=work_mode,
-            cli=cli,
-            cli_auth=cli_auth,
             install_cli=install_cli,
             service=service,
             linger=linger,

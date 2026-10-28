@@ -65,6 +65,8 @@ class TaskRun(TimestampMixin, Base):
     routing_reason: Mapped[str | None] = mapped_column(String(300))
     model_provider_id: Mapped[str | None] = mapped_column(String(36))
     model_used: Mapped[str | None] = mapped_column(String(160))
+    # M17: which AI connection (``ai_connections.id``; no FK: deleting a connection keeps history).
+    ai_connection_id: Mapped[str | None] = mapped_column(String(36))
     # M12: where the run's files lived and what became of them:
     # {kind, base, commit, merged, conflict}.
     workspace_ref: Mapped[dict | None] = mapped_column(JSON)

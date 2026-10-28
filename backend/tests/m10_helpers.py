@@ -19,17 +19,32 @@ def make_ready(app, client, cid: str, *, name: str = "Local Ollama") -> dict:
     p = r.json()
     t = client.post(api(cid, f"/model-providers/{p['id']}/test"))
     assert t.status_code == 200 and t.json()["last_test"]["ok"] is True, t.text
-    s = client.put(
-        api(cid, "/ai-setup"),
-        json={
-            "management_provider_id": p["id"],
-            "management_model": p["default_model"],
-            "work_mode": "api",
-        },
+    s = client.post(
+        api(cid, "/ai-stack"),
+        json={"option": "ollama", "model_provider_id": p["id"], "model": p["default_model"]},
     )
-    assert s.status_code == 200, s.text
-    assert s.json()["ready"] is True
+    assert s.status_code == 201, s.text
+    assert client.get(api(cid, "/ai-setup")).json()["ready"] is True
     return p
+
+
+def add_connection(app, client, cid: str, option: str, *, passed: bool = True, **body) -> dict:
+    """Add an AI connection to the stack (``POST /ai-stack``) and, unless ``passed`` is false, mark its
+    test as passed (what a successful live test records), so routing may use it."""
+    from app.models.ai_stack import AiConnection
+
+    r = client.post(api(cid, "/ai-stack"), json={"option": option, **body})
+    assert r.status_code == 201, r.text
+    conn = r.json()
+    if passed:
+        with app.state.session_factory() as db:
+            db.get(AiConnection, conn["id"]).last_test = {
+                "ok": True,
+                "detail": "ok",
+                "tested_at": "2026-10-28T00:00:00Z",
+            }
+            db.commit()
+    return conn
 
 
 def write_script(directory: Path, name: str, source: str) -> Path:
@@ -59,6 +74,64 @@ if sys.argv[1:2] == ["--version"]:
     print(%(version)r); sys.exit(0)
 script = json.load(open(os.path.join(here, name + ".script.json")))
 import re, stat
+if sys.argv[1:2] == ["auth"]:
+    # ``claude auth status|login|logout`` (B9). State lives in a file; every call is appended to a log with
+    # its argv and full environment so tests can assert on both. Never touches ``.record.json``.
+    auth = script.get("auth", {})
+    state_path = os.path.join(here, name + ".authstate.json")
+    sub = sys.argv[2] if len(sys.argv) > 2 else ""
+    if os.path.isfile(state_path):
+        state = json.load(open(state_path))
+    else:
+        state = {"signed_in": auth.get("signed_in", True)}
+    with open(os.path.join(here, name + ".auth.log"), "a") as log:
+        log.write(json.dumps({"argv": sys.argv[1:], "env": dict(os.environ), "cwd": os.getcwd()}) + "\n")
+    if sub == "status":
+        if auth.get("status_raw") is not None:
+            print(auth["status_raw"]); sys.exit(auth.get("status_exit", 0))
+        if state["signed_in"]:
+            print(json.dumps({"loggedIn": True, "authMethod": auth.get("method", "claude.ai"),
+                              "apiProvider": "firstParty", "email": auth.get("email", "founder@example.com"),
+                              "configDirectory": os.environ.get("CLAUDE_CONFIG_DIR")}))
+            sys.exit(0)
+        print(json.dumps({"loggedIn": False, "authMethod": "none", "apiProvider": "firstParty",
+                          "configDirectory": os.environ.get("CLAUDE_CONFIG_DIR")}))
+        sys.exit(1)
+    if sub == "login":
+        for line in auth.get("login_lines", ["Opening browser to sign in...", "If it does not open, visit: https://claude.ai/oauth/authorize?code_challenge=abc&state=xyz"]):
+            print(line, flush=True)
+        time.sleep(auth.get("login_sleep", 0))
+        code = auth.get("login_exit", 0)
+        if code == 0:
+            json.dump({"signed_in": True}, open(state_path, "w"))
+        sys.exit(code)
+    if sub == "logout":
+        json.dump({"signed_in": False}, open(state_path, "w"))
+        sys.exit(auth.get("logout_exit", 0))
+    sys.exit(2)
+if name == "agent" and sys.argv[1:2] in (["login"], ["status"], ["logout"]):
+    # ``agent login|status|logout`` (Cursor). The sign-in state lives in the HOME it is given, like the
+    # real CLI's would; every call is logged with its argv and full environment.
+    auth = script.get("auth", {})
+    state_path = os.path.join(os.environ.get("HOME", here), ".fake-agent-auth.json")
+    sub = sys.argv[1]
+    signed = os.path.isfile(state_path) and json.load(open(state_path)).get("signed_in")
+    with open(os.path.join(here, name + ".auth.log"), "a") as log:
+        log.write(json.dumps({"argv": sys.argv[1:], "env": dict(os.environ), "cwd": os.getcwd()}) + "\n")
+    if sub == "status":
+        if signed:
+            print("Logged in as " + auth.get("email", "founder@example.com")); sys.exit(0)
+        print("Not logged in"); sys.exit(1)
+    if sub == "login":
+        print("Open this link to sign in: https://cursor.com/loginDeepControl?challenge=abc&uuid=xyz", flush=True)
+        print("token: " + auth.get("token", "crsr_FAKE_TOKEN_0123456789abcdef"), flush=True)
+        time.sleep(auth.get("login_sleep", 0))
+        code = auth.get("login_exit", 0)
+        if code == 0:
+            json.dump({"signed_in": True}, open(state_path, "w"))
+        sys.exit(code)
+    json.dump({"signed_in": False}, open(state_path, "w"))
+    sys.exit(auth.get("logout_exit", 0))
 record = {
     "argv": sys.argv[1:],
     "cwd": os.getcwd(),
@@ -107,6 +180,14 @@ def install_fake_cli(directory: Path, binary: str, lines: list, **options) -> Pa
     script = write_script(directory, binary, FAKE_CLI % {"version": VERSIONS[binary]})
     (directory / f"{binary}.script.json").write_text(json.dumps({"lines": lines, **options}))
     return script
+
+
+def auth_log(directory: Path, binary: str = "claude") -> list[dict]:
+    """Every ``<binary> auth ...`` call of a fake CLI, in order (argv, env, cwd)."""
+    path = directory / f"{binary}.auth.log"
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
 def record_of(directory: Path, binary: str) -> dict:

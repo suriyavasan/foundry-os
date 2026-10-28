@@ -110,11 +110,10 @@ export function progressText(state: Pick<FlowState, 'mode' | 'step'>): string {
 }
 
 /**
- * Whether the save of the AI step is enabled. The step has one save for both parts: the model API must be ready (the server
- * said so, after a real test) and the coding-CLI choice must be valid (see `workModeProblem` in lib/aiSetup). A backend
- * without the AI setup never blocks. The other steps submit their own forms.
+ * Whether Continue of the AI step is enabled: the server must say the AI stack is ready (M17). A backend without it never
+ * blocks. The other steps submit their own forms.
  */
-export function canContinue(step: StepId, ctx: { aiReady: boolean; aiAvailable: boolean; workProblem: string | null }): boolean {
-  if (step === 'ai') return !ctx.aiAvailable || (ctx.aiReady && ctx.workProblem === null)
+export function canContinue(step: StepId, ctx: { aiReady: boolean; aiAvailable: boolean }): boolean {
+  if (step === 'ai') return !ctx.aiAvailable || ctx.aiReady
   return true
 }

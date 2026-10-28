@@ -24,11 +24,9 @@ from app.schemas.repository import parse_repo_ref, valid_branch_name, valid_repo
 
 # ------------------------------------------------------------------ steps and flags
 
-STEPS = ("service", "account", "2fa", "company", "ai", "work", "repo", "public-url")
-WORK_MODES = ("api", "hybrid")
-CLI_IDS = ("claude_code", "codex", "opencode", "antigravity", "cursor")
-# --cli-auth value -> what the wizard does ("provider" = OpenCode on the company's model provider).
-CLI_AUTH_FLAGS = {"own-login": "own_login", "api-key": "api_key", "provider": "provider"}
+STEPS = ("service", "account", "2fa", "company", "ai", "repo", "public-url")
+CLAUDE_PLAN_FLAG = "claude-plan"  # --provider claude-plan: Claude through your plan (Claude Code)
+CURSOR_PLAN_FLAG = "cursor-plan"  # --provider cursor-plan: Cursor through your plan (Cursor CLI)
 PUBLIC_URL_CHOICES = ("quick", "named", "tailscale", "off")
 IDEA_MAX = 280
 
@@ -59,9 +57,10 @@ CHECK_LABEL = {
 }
 
 BLOCKING_REASON_TEXT = {
-    "no_tested_provider": "Connect an AI provider and run its test. Nothing can run without a working one.",
-    "provider_test_failed": "The last test of your AI provider did not pass. Fix the connection and test it again.",
-    "no_default_model": "Choose the model your AI Co-founder should use to manage the company.",
+    "no_ai": "Add an AI: nothing can run without one.",
+    "no_tested_ai": "Test your AI connection: none has passed its test yet.",
+    "no_heavy_ai": "No working AI covers the heavy lifting (planning, reviews, hiring). Set one to Everything or Heavy lifting.",
+    "no_everyday_ai": "No working AI covers everyday work. Set one to Everything or Everyday work.",
 }
 
 
@@ -83,9 +82,6 @@ class WizardOptions:
     model: str | None = None
     base_url: str | None = None
     allow_private_network: bool = False
-    work_mode: str | None = None
-    cli: str | None = None
-    cli_auth: str | None = None
     install_cli: bool = False
     service: bool | None = None
     linger: bool | None = None
@@ -120,9 +116,6 @@ class WizardOptions:
         }
         return [flag for flag, value in given.items() if value]
 
-    def hybrid_flags_without_hybrid(self) -> bool:
-        return self.work_mode == "api" and bool(self.cli or self.cli_auth or self.install_cli)
-
 
 def usage(message: str) -> CliError:
     return CliError(message, code="usage")
@@ -136,19 +129,14 @@ def validate_choice(flag: str, value: str | None, allowed: tuple[str, ...]) -> N
 def validate_options(opts: WizardOptions) -> None:
     """Fail early (exit 2) on a flag value that can never work."""
     validate_choice("--only", opts.only, STEPS)
-    validate_choice("--work-mode", opts.work_mode, WORK_MODES)
-    validate_choice("--cli", opts.cli, CLI_IDS)
-    validate_choice("--cli-auth", opts.cli_auth, tuple(CLI_AUTH_FLAGS))
     validate_choice("--public-url", opts.public_url, PUBLIC_URL_CHOICES)
-    validate_choice("--provider", opts.provider, tuple(PRESET_BY_FLAG))
+    validate_choice(
+        "--provider", opts.provider, (CLAUDE_PLAN_FLAG, CURSOR_PLAN_FLAG, *PRESET_BY_FLAG)
+    )
+    if opts.provider in (CLAUDE_PLAN_FLAG, CURSOR_PLAN_FLAG) and (opts.model or opts.base_url):
+        raise usage(f"--model / --base-url do not apply to --provider {opts.provider}.")
     if opts.public_url == "named" and not opts.hostname:
         raise usage("--public-url named needs --hostname (the domain you own on Cloudflare).")
-    if opts.cli_auth == "provider" and opts.cli not in (None, "opencode"):
-        raise usage("--cli-auth provider only works with --cli opencode.")
-    if opts.cli_auth == "own-login" and opts.cli == "antigravity":
-        raise usage("Antigravity CLI has no own-login mode; use --cli-auth api-key.")
-    if opts.cli_auth == "own-login" and opts.cli == "cursor":
-        raise usage("Cursor CLI has no own-login mode; use --cli-auth api-key.")
     if opts.idea is not None:
         idea_error(opts.idea)
     if opts.timezone is not None:
@@ -157,8 +145,6 @@ def validate_options(opts: WizardOptions) -> None:
         err = base_url_error(opts.base_url)
         if err:
             raise usage(f"--base-url: {err}")
-    if opts.hybrid_flags_without_hybrid():
-        raise usage("--cli / --cli-auth / --install-cli need --work-mode hybrid.")
     validate_github_options(opts)
 
 

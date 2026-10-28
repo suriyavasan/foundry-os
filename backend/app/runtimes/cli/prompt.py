@@ -159,3 +159,29 @@ def build(p: PromptInputs) -> str:
         "- You cannot change your own permissions, budget or company policy; do not try.",
     ]
     return "\n".join(lines).strip()
+
+
+def with_role_brief(prompt: str, brief: str, tools: list[str], tool_prefix: str) -> str:
+    """A management run: the role's instructions (the same text a ``company_agent`` run of that role
+    gets, tools renamed to this CLI's MCP names) replace the generic work-task steps. The tools listed
+    are the ones this run is offered; the agent API enforces roles and limits again."""
+    head = prompt.split("\n\nHOW TO WORK", 1)[0]
+    offered = ", ".join(f"{tool_prefix}{t}" for t in tools)
+    return "\n".join(
+        [
+            head,
+            "",
+            "ROLE INSTRUCTIONS (follow them; they name the company tools you were given)",
+            brief.strip(),
+            "",
+            "HOW TO WORK",
+            f"- Your company tools (the only way to act on the company): {offered}.",
+            "- Use the file tools only inside your workspace. You have no shell and no web access.",
+            "- Decide and act yourself; never ask a human for input. Make reasonable assumptions and "
+            "state them.",
+            "- Anything that spends money, deploys or contacts outside people is not yours to do "
+            "unless a tool above is made for it.",
+            f"- {UNTRUSTED_RULE}",
+            "- You cannot change your own permissions, budget or company policy; do not try.",
+        ]
+    ).strip()

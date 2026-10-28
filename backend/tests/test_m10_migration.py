@@ -145,7 +145,7 @@ def test_0009_upgrades_an_existing_install_and_downgrades_cleanly(tmp_path):
     command.upgrade(cfg, "head")
     with sessionmaker(engine)() as db:
         state = ai_setup.evaluate(db, ids["company"])
-        assert state.ready is False and state.blocking_reason == "provider_test_failed"
+        assert state.ready is False and state.blocking_reason == "no_tested_ai"
 
     # idempotent re-run of the data steps, then a clean round trip
     command.downgrade(cfg, "0008")

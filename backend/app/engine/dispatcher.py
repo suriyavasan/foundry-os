@@ -13,6 +13,10 @@ M12 rules, all enforced here (code, not prompts):
   reserved slots (``management_reserved_slots``, clamped to ``max_concurrent_runs - 1``), so a
   planning, review or lead run is never starved by long work runs;
 * one run per agent, except CLI work tasks of a project: up to ``max_parallel_runs_per_agent``;
+* **routing** (M17): every run of a company-agent / unassigned employee goes through the
+  company's AI stack (``routing.decide``): a connection is chosen per run and recorded on it
+  (``ai_connection_id``); a task for which no connection is usable waits with a reason
+  (``waiting_for_runtime``). Pinned runs keep the runtime-level health check;
 * a non-free CLI run reserves ``cli_run_reservation_micros`` (the CLI's own spend cap derives from
   its reservation), not the small API default;
 * an agent / task / project budget block wakes the project lead, else the agent's manager, else
@@ -21,17 +25,14 @@ M12 rules, all enforced here (code, not prompts):
 
 from __future__ import annotations
 
-import inspect
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime
 
 from sqlalchemy import case, or_, select
 
-from app.core.errors import ApprovalPending, BudgetExceeded, GuardrailDenied
-from app.core.principal import CompanyContext, Principal, PrincipalType, Role
+from app.core.errors import BudgetExceeded
 from app.engine.context import EngineContext
-from app.guardrails import engine as guard_engine
 from app.models.agent import Agent
 from app.models.company import Company
 from app.models.enums import (
@@ -70,8 +71,6 @@ CANDIDATE_WINDOW = 50
 MANAGEMENT_ROLES = routing.MANAGEMENT_ROLES
 # Budget limits an agent's lead can act on; company-wide limits block everyone alike (no wake).
 COMPANY_WIDE_LIMITS = frozenset({"company_daily", "company_monthly"})
-# routing.choose gained a ``task`` keyword (M12 WP3): pass it when it is there.
-_CHOOSE_TAKES_TASK = "task" in inspect.signature(routing.choose).parameters
 
 
 @dataclass
@@ -80,19 +79,10 @@ class DispatchReport:
     budget_blocked_task_ids: list[str] = field(default_factory=list)
     policy_blocked_task_ids: list[str] = field(default_factory=list)
     waiting_for_runtime: int = 0
+    # M17: task id -> why no AI connection / runtime can take it now
+    waiting_reasons: dict[str, str] = field(default_factory=dict)
     # M14: task id -> why it waits (repository_not_ready, codebase_onboarding)
     held: dict[str, str] = field(default_factory=dict)
-
-
-def _agent_ctx(agent: Agent) -> CompanyContext:
-    principal = Principal(PrincipalType.AGENT, agent.id, agent.name, agent.company_id)
-    return CompanyContext(agent.company_id, principal, Role.AGENT)
-
-
-def _choose_route(db, agent: Agent, limits, runtime_id: str, task: Task) -> routing.Route:
-    if _CHOOSE_TAKES_TASK:
-        return routing.choose(db, agent, limits, runtime_id, task=task)
-    return routing.choose(db, agent, limits, runtime_id)
 
 
 def is_management_run(db, task: Task, agent: Agent) -> bool:
@@ -151,31 +141,6 @@ def _wake_for_budget_block(
     )
 
 
-def _paid_model_gate(db, agent: Agent, task: Task, route: routing.Route, limits, now: datetime):
-    """The paid-model fallback is a ``spend``-tier action when policy does not allow it outright:
-    returns None when it may proceed, else the (code, message, details) that parks the task."""
-    payload = {
-        "task_id": task.id,
-        "agent_id": agent.id,
-        "provider_id": route.provider_id,
-        "model": route.model,
-        # what the run may cost, as far as it is known before it starts
-        "amount_micros": task.budget_micros or limits.default_run_reservation_micros,
-    }
-    try:
-        guard_engine.check(db, _agent_ctx(agent), "model.paid_fallback", payload, now=now)
-    except ApprovalPending as exc:
-        return (
-            "paid_model_approval",
-            "No free model is available and policy requires approval before a run uses a paid "
-            "model",
-            {"approval_id": (exc.fields or {}).get("approval_id")},
-        )
-    except GuardrailDenied as exc:
-        return ("paid_model_approval", exc.message, {"denied": True})
-    return None
-
-
 def dispatch_tick(ctx: EngineContext, now: datetime | None = None) -> DispatchReport:
     now = now or ctx.clock()
     report = DispatchReport()
@@ -230,7 +195,7 @@ def _dispatch_one(
         limits = policy.load_policy(db, company_id)
         active = list(
             db.execute(
-                select(TaskRun.agent_id, Task.kind)
+                select(TaskRun.agent_id, Task.kind, TaskRun.ai_connection_id)
                 .join(Task, Task.id == TaskRun.task_id)
                 .where(TaskRun.company_id == company_id, TaskRun.status.in_(ACTIVE_RUN_STATUSES))
             ).all()
@@ -238,11 +203,14 @@ def _dispatch_one(
         if len(active) >= limits.max_concurrent_runs:
             db.rollback()
             return False
-        agent_runs = Counter(agent_id for agent_id, _ in active)
+        agent_runs = Counter(agent_id for agent_id, _, _ in active)
+        connection_runs = Counter(conn for _, _, conn in active if conn)
+        cli_env = cli_runtimes.bound_environment()
+        recent: dict[str, int] | None = None  # runs per connection in 24 h: loaded on first use
         # Work runs may not take the slots reserved for management runs.
         roles: dict[str, bool] = {}
         work_in_flight = 0
-        for agent_id, kind in active:
+        for agent_id, kind, _ in active:
             if kind == TaskKind.WORK:
                 if agent_id not in roles:
                     holder = db.get(Agent, agent_id)
@@ -278,17 +246,38 @@ def _dispatch_one(
             if assignee is None or assignee.status != AgentStatus.ACTIVE:
                 skipped.add(task.id)
                 continue
+            if recent is None:
+                recent = routing.recent_runs(db, company_id, now)
+            decision = routing.decide(
+                db,
+                assignee,
+                task,
+                limits,
+                now=now,
+                cli_env=cli_env,
+                runtime_ok=_runtime_registered(ctx),
+                in_flight=connection_runs,
+                recent=recent,
+            )
+            if decision.waits:
+                skipped.add(task.id)
+                report.waiting_for_runtime += 1
+                report.waiting_reasons[task.id] = decision.wait_reason or ""
+                continue
+            runtime_id = decision.runtime
             in_flight = agent_runs.get(assignee.id, 0)
-            if in_flight and in_flight >= _agent_run_cap(
-                limits, routing.choose_runtime(db, assignee, task, limits)[0], task
-            ):
+            if in_flight and in_flight >= _agent_run_cap(limits, runtime_id, task):
                 skipped.add(task.id)  # one run per agent (CLI project work: several)
                 continue
             if not is_management_run(db, task, assignee) and work_in_flight >= work_slots:
                 skipped.add(task.id)  # the remaining slots are reserved for management
                 continue
             allowed = limits.allowed_model_providers
-            if allowed and (assignee.model_provider or "") not in allowed:
+            if (
+                allowed
+                and not decision.stacked  # a stack connection's provider was checked by routing
+                and (assignee.model_provider or "") not in allowed
+            ):
                 tasks.transition(
                     db,
                     task,
@@ -306,10 +295,10 @@ def _dispatch_one(
                 db.commit()
                 report.policy_blocked_task_ids.append(task.id)
                 return True
-            runtime_id, runtime_reason = routing.choose_runtime(db, assignee, task, limits)
-            if not ctx.health.usable(runtime_id):
-                skipped.add(task.id)
+            if not decision.stacked and not ctx.health.usable(runtime_id):
+                skipped.add(task.id)  # a pinned / unrouted runtime that cannot execute yet
                 report.waiting_for_runtime += 1
+                report.waiting_reasons[task.id] = f"The {runtime_id} runtime is not available"
                 continue
             candidate, agent = task, assignee
             break
@@ -317,26 +306,10 @@ def _dispatch_one(
             db.rollback()
             return False
 
-        route = _choose_route(db, agent, limits, runtime_id, candidate)
-        if runtime_id.startswith(routing.CLI_PREFIX) and cli_runtimes.runs_free(db, runtime_id):
-            route = routing.Route(reason=route.reason, free=True)  # a local model: nothing to hold
-        if route.needs_paid_approval:
-            gate = _paid_model_gate(db, agent, candidate, route, limits, now)
-            if gate is not None:
-                code, message, details = gate
-                tasks.transition(
-                    db,
-                    candidate,
-                    TaskStatus.BLOCKED,
-                    principal=None,
-                    now=now,
-                    reason="waiting for approval to use a paid model",
-                    error={"code": code, "message": message, "run_id": None, **details},
-                )
-                db.commit()
-                report.policy_blocked_task_ids.append(candidate.id)
-                return True
-            # approved and consumed: the guard committed; the lock is taken again by reserve()
+        route = decision.route
+        pinned_cli = not decision.stacked and runtime_id.startswith(routing.CLI_PREFIX)
+        if pinned_cli and cli_runtimes.runs_free(db, runtime_id):  # local model: nothing to hold
+            route = routing.Route(reason=route.reason, free=True)
 
         # Budget: reserve the task's remaining budget, else the policy default.
         try:
@@ -361,6 +334,8 @@ def _dispatch_one(
                     amount = limits.cli_run_reservation_micros
                 if route.free:
                     amount = 0  # a free model has no provider charge: nothing to hold
+            if decision.subscription:
+                amount = 0  # a plan connection is a subscription: nothing to hold
             reservation = ledger.reserve(db, company_id, agent, candidate, amount, now=now)
         except BudgetExceeded as exc:
             details = exc.details or {}
@@ -392,7 +367,8 @@ def _dispatch_one(
             now=now,
             route=route,
             runtime=runtime_id,
-            runtime_reason=runtime_reason,
+            runtime_reason=decision.runtime_reason,
+            ai_connection_id=route.ai_connection_id,
         )
         jobs.enqueue(
             db,
@@ -405,6 +381,17 @@ def _dispatch_one(
         db.commit()
         report.queued_run_ids.append(run.id)
         return True
+
+
+def _runtime_registered(ctx: EngineContext):
+    """Stack-routed runs are checked per connection (``ai_stack.usable``); the runtime only has to
+    be registered and able to execute."""
+
+    def ok(runtime_id: str) -> bool:
+        adapter = ctx.registry.get(runtime_id)
+        return adapter is not None and adapter.supports_execution
+
+    return ok
 
 
 __all__ = ["DispatchReport", "dispatch_tick"]

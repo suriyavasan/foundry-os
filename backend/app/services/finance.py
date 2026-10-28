@@ -22,6 +22,7 @@ from app.core.errors import BadRequest, Forbidden, NotFound
 from app.core.principal import CompanyContext, require_human_admin
 from app.core.time import utcnow
 from app.models.agent import Agent
+from app.models.ai_stack import AiConnection
 from app.models.company import Company
 from app.models.enums import AgentStatus
 from app.models.guardrails import ExternalExpense
@@ -434,6 +435,18 @@ def runs_page(
         if provider_ids
         else {}
     )
+    connection_ids = {r.ai_connection_id for r, *_ in result if r.ai_connection_id}
+    connections = (
+        dict(
+            db.execute(
+                select(AiConnection.id, AiConnection.label).where(
+                    AiConnection.company_id == ctx.company_id, AiConnection.id.in_(connection_ids)
+                )
+            ).all()
+        )
+        if connection_ids
+        else {}
+    )
     items = []
     for run, title, model, provider in result:
         provider_id = run.model_provider_id or provider
@@ -450,6 +463,8 @@ def runs_page(
                 "cost_kind": run.cost_kind,
                 "model": run.model_used or model,
                 "provider": names.get(provider_id, provider_id) if provider_id else None,
+                "ai_connection_id": run.ai_connection_id,
+                "ai_connection": connections.get(run.ai_connection_id),
             }
         )
     return items, next_cursor

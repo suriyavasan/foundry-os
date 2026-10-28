@@ -56,11 +56,11 @@ CLIS: dict[str, CliSpec] = {
         binaries=("claude",),
         known_dirs=(".claude/local", ".local/bin", ".npm-global/bin"),
         npm_package="@anthropic-ai/claude-code",
-        login_hint="Run `claude` in a terminal and sign in with /login",
+        login_hint="Run `foundryos ai login` in a terminal (or use Sign in with Claude in Settings > AI)",
         key_env="ANTHROPIC_API_KEY",
-        # Unverified: Claude Code has no non-interactive login command; `claude` starts its UI and the
-        # person types /login (setup tells them to) and then /exit.
-        headless_login_argv=("claude",),
+        # `claude auth login` (checked against `claude --help` 2.1.308). It must run with Foundry's own
+        # CLAUDE_CONFIG_DIR: use `foundryos ai login`, never this argv on its own.
+        headless_login_argv=("claude", "auth", "login"),
     ),
     "codex": CliSpec(
         id="codex",

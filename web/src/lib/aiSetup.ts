@@ -1,26 +1,23 @@
+import { AI_BLOCKING_TEXT, stackBlockingText } from './aiStack'
 import type {
   AiBlockingReason,
   AiSetupStatus,
-  AiSetupManagement,
-  AiSetupUpdate,
   CliAuthMode,
   CliInstallLog,
   CliLastTest,
   CliRuntimeStatus,
-  ModelProvider,
+  ClaudeLoginStatus,
   ProviderCheckName,
   ProviderKind,
   ProviderTest,
   ProviderTestCheck,
-  WorkMode,
-  WorkRuntime,
 } from '@/api/types'
 import type { Tone } from '@/components/ui/Badge'
 import { ApiError, errorMessage } from '@/api/client'
 import { emptyProviderForm, type ProviderFormValues } from './providers'
 
 /**
- * M10 AI setup (docs/specs/m10 §1-§3): pure helpers. The gate rule, the check-to-loader mapping, the work-mode rules and the
+ * M10 AI setup (docs/specs/m10 §1-§3): pure helpers. The gate rule, the check-to-loader mapping, and the
  * CLI tile vocabulary live here so they are tested without a DOM. Every backend response is read defensively: the M10
  * backend is built in parallel and unknown fields are ignored, never invented.
  */
@@ -35,15 +32,8 @@ const bool = (v: unknown): boolean | null => (typeof v === 'boolean' ? v : null)
 /** The context window an AI setup needs (spec §1). Shown in copy; the server decides. */
 export const MIN_CONTEXT_TOKENS = 32_768
 
-export const BLOCKING_REASON_TEXT: Record<AiBlockingReason, string> = {
-  no_tested_provider: 'Connect an AI provider and run its test. Nothing can run without a working one.',
-  provider_test_failed: 'The last test of your AI provider did not pass. Fix the connection and test it again.',
-  no_default_model: 'Choose the model your AI Co-founder should use to manage the company.',
-}
-
 export function blockingReasonText(reason: AiBlockingReason | string | null | undefined): string {
-  if (!reason) return BLOCKING_REASON_TEXT.no_tested_provider
-  return (BLOCKING_REASON_TEXT as Record<string, string>)[reason] ?? 'Your AI setup is not ready yet.'
+  return stackBlockingText(reason ?? 'no_ai')
 }
 
 export type AiGateState = 'loading' | 'open' | 'blocked'
@@ -58,30 +48,47 @@ export function aiGateState(q: { isPending: boolean; data?: AiSetupStatus | null
   return q.data && q.data.ready === false ? 'blocked' : 'open'
 }
 
+const BLOCKING: AiBlockingReason[] = ['no_ai', 'no_tested_ai', 'no_heavy_ai', 'no_everyday_ai']
+
 /** Normalise `GET /ai-setup`. Returns null when the body is not an AI-setup object (treated as "not available"). */
 export function normalizeAiSetup(raw: unknown): AiSetupStatus | null {
   const o = obj(raw)
   if (!o || typeof o.ready !== 'boolean') return null
-  const m = obj(o.management) ?? {}
-  const mode = o.work_mode === 'hybrid' ? 'hybrid' : 'api'
-  const model = (raw: Record<string, unknown>): AiSetupManagement => ({
-    provider_id: str(raw.provider_id),
-    provider_name: str(raw.provider_name),
-    kind: str(raw.kind),
-    model: str(raw.model),
-    last_test: raw.last_test ? normalizeProviderTest(raw.last_test) : null,
-  })
-  const w = obj(o.work_model)
+  const reason = BLOCKING.find((r) => r === o.blocking_reason) ?? null
   return {
     ready: o.ready,
-    blocking_reason: (str(o.blocking_reason) as AiBlockingReason | null) ?? null,
-    management: model(m),
-    work_model: w && str(w.provider_id) && str(w.model) ? model(w) : null,
-    work_mode: mode,
-    work_runtime: (str(o.work_runtime) as WorkRuntime | null) ?? null,
+    blocking_reason: reason,
+    stack_count: num(o.stack_count) ?? 0,
     clis: Array.isArray(o.clis) ? o.clis.map(normalizeCli).filter((c): c is CliRuntimeStatus => c !== null) : [],
   }
 }
+
+/* ------------------------------- Claude plan sign-in ------------------------------ */
+
+/** Defensive read of `GET/POST /ai-stack/{id}/login`. */
+export function normalizeClaudeLogin(raw: unknown): ClaudeLoginStatus | null {
+  const o = obj(raw)
+  if (!o) return null
+  const l = obj(o.login) ?? {}
+  const state = l.state === 'running' || l.state === 'succeeded' || l.state === 'failed' ? l.state : 'idle'
+  return {
+    signed_in: o.signed_in === true,
+    auth_method: str(o.auth_method),
+    email: str(o.email),
+    checked_at: str(o.checked_at),
+    config_dir_ok: o.config_dir_ok !== false,
+    login: {
+      state,
+      started_at: str(l.started_at),
+      finished_at: str(l.finished_at),
+      url: str(l.url),
+      message: str(l.message),
+    },
+  }
+}
+
+export const CLAUDE_PLAN_WARNING =
+  'Personal plans assume ordinary individual use. A company that runs around the clock may hit your plan’s limits or be restricted by Anthropic. For heavy autonomy, an API key is the safe choice.'
 
 /* ------------------------------- provider test checks ----------------------------- */
 
@@ -108,7 +115,11 @@ export function normalizeProviderTest(raw: unknown): ProviderTest {
       const co = obj(c)
       const name = co && str(co.name)
       if (!co || !name) continue
-      checks.push({ name, ok: co.ok === true, detail: str(co.detail) ?? str(co.message) })
+      checks.push({
+        name,
+        ok: co.ok === true,
+        detail: str(co.detail) ?? str(co.message),
+      })
     }
   }
   // `status`/`checked_at` are the pre-M10 names of the same facts; tolerated so an older test result still reads.
@@ -143,7 +154,11 @@ export function loaderSteps(test: ProviderTest | null, running: boolean): Loader
   const names: string[] = [...CHECK_ORDER]
   for (const c of test?.checks ?? []) if (!names.includes(c.name)) names.push(c.name)
   const steps: LoaderStep[] = names.map((name, i) => {
-    const base = { name, label: checkLabel(name), detail: null as string | null }
+    const base = {
+      name,
+      label: checkLabel(name),
+      detail: null as string | null,
+    }
     if (running) return { ...base, state: i === 0 ? 'running' : 'pending' }
     if (!test) return { ...base, state: 'pending' }
     const hit = test.checks.find((c) => c.name === name)
@@ -285,7 +300,10 @@ export function normalizeModelList(raw: unknown): ModelOption[] {
     const id = typeof m === 'string' ? m : mo ? (str(mo.id) ?? str(mo.name) ?? str(mo.model)) : null
     if (!id || seen.has(id)) continue
     seen.add(id)
-    out.push({ id, context_length: mo ? (num(mo.context_length) ?? num(mo.context_window)) : null })
+    out.push({
+      id,
+      context_length: mo ? (num(mo.context_length) ?? num(mo.context_window)) : null,
+    })
   }
   return out
 }
@@ -304,108 +322,25 @@ export function filterModels(models: ModelOption[], query: string, limit = 50): 
   return [...starts, ...contains].slice(0, limit)
 }
 
-/* ------------------------------------ work modes ----------------------------------- */
-
-export const WORK_MODE_LABEL: Record<WorkMode, string> = { api: 'API only', hybrid: 'API + coding CLIs' }
-
-export const COMPANY_AGENT_WORK_RUNTIME: WorkRuntime = 'company_agent'
-
-export function runtimeIdOf(cli: Pick<CliRuntimeStatus, 'id'>): WorkRuntime {
-  return (cli.id.startsWith('cli:') ? cli.id : `cli:${cli.id}`) as WorkRuntime
-}
-
-/** A CLI can do company work only once it is installed and its own test passed. */
-export function cliReady(cli: CliRuntimeStatus): boolean {
-  return cli.installed && cli.auth.last_test?.ok === true
-}
-
-export function readyClis(clis: CliRuntimeStatus[]): CliRuntimeStatus[] {
-  return clis.filter(cliReady)
-}
-
-/** Hybrid needs a work runtime that tested OK. API only always passes. */
-export function workModeProblem(mode: WorkMode, runtime: WorkRuntime | null, clis: CliRuntimeStatus[]): string | null {
-  if (mode === 'api') return null
-  if (readyClis(clis).length === 0) return 'Install a coding CLI and run its test first. Only a CLI that tested OK can do the work.'
-  if (!runtime || runtime === 'company_agent') return 'Choose which CLI should do the work.'
-  const cli = clis.find((c) => runtimeIdOf(c) === runtime)
-  if (!cli || !cliReady(cli)) return 'The chosen CLI has not tested OK. Run its test or pick another one.'
-  return null
-}
-
-/** The `PUT /ai-setup` body for a choice of mode and runtime, or null when no management model is known yet. */
-export function aiSetupUpdate(
-  ai: Pick<AiSetupStatus, 'management'>,
-  mode: WorkMode,
-  runtime: WorkRuntime | null,
-  /** A management selection that is not saved yet (a provider that just passed its test); it wins over the saved one. */
-  management?: { providerId: string; model: string } | null,
-  /** M12 work model: undefined leaves it unchanged on the server, null clears it, a selection sets it. */
-  workModel?: WorkModelSelection | null,
-): AiSetupUpdate | null {
-  const provider_id = management?.providerId ?? ai.management.provider_id
-  const model = management?.model ?? ai.management.model
-  if (!provider_id || !model) return null
-  return {
-    management_provider_id: provider_id,
-    management_model: model,
-    work_mode: mode,
-    work_runtime: mode === 'api' ? COMPANY_AGENT_WORK_RUNTIME : runtime,
-    ...(workModel === undefined ? {} : { work_model_provider_id: workModel?.providerId ?? null, work_model_name: workModel?.model ?? null }),
-  }
-}
-
-/* ------------------------------ M12 work model (heavy lifting) ------------------------------ */
-
-export interface WorkModelSelection {
-  providerId: string
-  model: string
-}
-
-export interface WorkModelOption extends WorkModelSelection {
-  key: string
-  label: string
-}
-
-export const workModelKey = (sel: WorkModelSelection | null | undefined): string => (sel ? `${sel.providerId}::${sel.model}` : '')
-
-/** The saved work model of an AI-setup status as a selection, or null when none is set. */
-export function savedWorkModel(ai: Pick<AiSetupStatus, 'work_model'> | null | undefined): WorkModelSelection | null {
-  const w = ai?.work_model
-  return w?.provider_id && w.model ? { providerId: w.provider_id, model: w.model } : null
-}
-
-/**
- * The models the owner can pick as the work model: an enabled provider whose latest test passed, paired with the model that
- * test ran against (the server only accepts exactly that pair, so nothing here can be refused for being untested). The saved
- * work model is always listed, so it stays visible even if its provider was re-tested for another model or switched off.
- */
-export function workModelOptions(providers: ModelProvider[] | undefined, saved: WorkModelSelection | null, savedName?: string | null): WorkModelOption[] {
-  const out: WorkModelOption[] = []
-  for (const p of providers ?? []) {
-    const model = p.last_test?.model
-    if (!p.enabled || p.last_test?.ok !== true || !model) continue
-    out.push({ providerId: p.id, model, key: workModelKey({ providerId: p.id, model }), label: `${p.name} · ${model}` })
-  }
-  if (saved && !out.some((o) => o.key === workModelKey(saved))) {
-    out.unshift({ ...saved, key: workModelKey(saved), label: `${savedName ?? 'Provider'} · ${saved.model} (current)` })
-  }
-  return out
-}
-
-/** What a failed `PUT /ai-setup` said, including the readiness reason the server attaches to a 409 `ai_not_ready`. */
+/** What a failed provider save or test said (an `ai_not_ready` carries the readiness reason). */
 export function putFailure(err: unknown): string {
   if (err instanceof ApiError && err.code === 'ai_not_ready') {
-    const d = err.details as { reason?: string; blocking_reason?: string } | null
+    const d = err.details as {
+      reason?: string
+      blocking_reason?: string
+    } | null
     const reason = d?.reason ?? d?.blocking_reason
-    return `${err.message}${reason && reason in BLOCKING_REASON_TEXT ? ` ${blockingReasonText(reason)}` : ''}`
+    return `${err.message}${reason && reason in AI_BLOCKING_TEXT ? ` ${blockingReasonText(reason)}` : ''}`
   }
   return errorMessage(err)
 }
 
 /* -------------------------------------- CLI tiles ---------------------------------- */
 
-export const CLI_AUTH_LABEL: Record<CliAuthMode, string> = { api_key: 'API key (recommended)', own_login: 'My own login' }
+export const CLI_AUTH_LABEL: Record<CliAuthMode, string> = {
+  api_key: 'API key (recommended)',
+  own_login: 'My own login',
+}
 export const CLI_AUTH_BLURB: Record<CliAuthMode, string> = {
   api_key: 'Strongest isolation: each employee gets its own private home folder and the key is handed only to that run.',
   own_login: 'Uses the login already on this computer.',
@@ -413,9 +348,17 @@ export const CLI_AUTH_BLURB: Record<CliAuthMode, string> = {
 export const OWN_LOGIN_WARNING =
   'Weaker isolation: the tool needs your real home folder to find your login, so it runs with access to what that folder holds. Check the tool’s own terms before using a personal or subscription login for automated work. Foundry AI OS never reads or copies the tool’s login files.'
 
-export function sandboxSummary(s: CliRuntimeStatus['sandbox']): { label: string; tone: Tone; help: string } {
+export function sandboxSummary(s: CliRuntimeStatus['sandbox']): {
+  label: string
+  tone: Tone
+  help: string
+} {
   if (!s.available || s.kind === 'none') {
-    return { label: 'No sandbox', tone: 'warning', help: s.detail ?? 'No sandbox is available, so shell access is turned off for this tool.' }
+    return {
+      label: 'No sandbox',
+      tone: 'warning',
+      help: s.detail ?? 'No sandbox is available, so shell access is turned off for this tool.',
+    }
   }
   return {
     label: s.kind === 'docker' ? 'Docker sandbox' : 'OS sandbox',
@@ -440,7 +383,7 @@ export function cliStatusLine(cli: CliRuntimeStatus): CliStatusLine {
 /** The one-word state of a CLI for a summary line: "ready", "not installed", "test failed" or "installed, not tested". */
 export function cliBrief(cli: CliRuntimeStatus): string {
   if (!cli.installed) return 'not installed'
-  if (cliReady(cli)) return 'ready'
+  if (cli.auth.last_test?.ok === true) return 'ready'
   return cliStatusLine(cli).tone === 'danger' ? 'test failed' : 'installed, not tested'
 }
 
@@ -470,8 +413,19 @@ export function normalizeCli(raw: unknown): CliRuntimeStatus | null {
       model: str(a.model),
     },
     sandbox: { available: s.available === true, kind, detail: str(s.detail) },
-    install: { available: inst.available === true, command: str(inst.command), requires: Array.isArray(inst.requires) ? inst.requires.filter((r): r is string => typeof r === 'string') : [] },
+    install: {
+      available: inst.available === true,
+      command: str(inst.command),
+      requires: Array.isArray(inst.requires) ? inst.requires.filter((r): r is string => typeof r === 'string') : [],
+    },
     login_hint: str(o.login_hint),
+    login: obj(o.login)
+      ? {
+          signed_in: obj(o.login)!.signed_in === true,
+          auth_method: str(obj(o.login)!.auth_method),
+          email: str(obj(o.login)!.email),
+        }
+      : null,
     warnings: Array.isArray(o.warnings) ? o.warnings.filter((w): w is string => typeof w === 'string' && w !== '') : [],
   }
 }
@@ -483,7 +437,11 @@ export function normalizeCliTest(raw: unknown): CliLastTest | null {
   const nested = obj(obj(o.auth)?.last_test)
   const t = typeof o.ok === 'boolean' ? o : nested
   if (!t || typeof t.ok !== 'boolean') return null
-  return { ok: t.ok, detail: str(t.detail) ?? str(t.message), tested_at: str(t.tested_at) }
+  return {
+    ok: t.ok,
+    detail: str(t.detail) ?? str(t.message),
+    tested_at: str(t.tested_at),
+  }
 }
 
 /** Defensive read of `GET /cli-runtimes/{id}/install-log`: `{state|status, lines|log|text, exit_code, done}`. */
@@ -498,7 +456,11 @@ export function normalizeInstallLog(raw: unknown): CliInstallLog {
   else if (rawState === 'error') state = 'failed'
   else if (o.done === true || o.finished === true) state = exit && exit !== 0 ? 'failed' : 'succeeded'
   const lines = Array.isArray(o.lines) ? o.lines.map(String) : typeof o.log === 'string' ? o.log.split('\n') : typeof o.text === 'string' ? o.text.split('\n') : []
-  return { state, lines: lines.filter((l, i, a) => l !== '' || i < a.length - 1), exit_code: exit }
+  return {
+    state,
+    lines: lines.filter((l, i, a) => l !== '' || i < a.length - 1),
+    exit_code: exit,
+  }
 }
 
 /** The command the person is asked to confirm: exactly what the server will run, never reworded. */

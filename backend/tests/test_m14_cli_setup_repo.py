@@ -38,9 +38,10 @@ def test_github_token_is_an_allowed_secret_and_never_an_option():
     }
 
 
-def test_the_repo_step_comes_after_ai_and_work_and_before_the_public_url():
+def test_the_repo_step_comes_after_ai_and_before_the_public_url():
     steps = list(onboarding.STEPS)
-    assert steps.index("ai") < steps.index("work") < steps.index("repo") < steps.index("public-url")
+    assert "work" not in steps
+    assert steps.index("ai") < steps.index("repo") < steps.index("public-url")
 
 
 def test_repo_reference_rules():

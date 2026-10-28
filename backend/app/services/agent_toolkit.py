@@ -187,6 +187,36 @@ def company_tools_for(db: Session, agent: Agent, override: Any = None) -> list[s
     return tools
 
 
+def run_company_tools(
+    db: Session, agent: Agent, task: Any, runtime_config: dict | None = None
+) -> list[str]:
+    """The company tools of ONE run: the role's list (``company_tools_for``) plus the task-kind
+    special cases (a peer review decides one thing; the reviewer of a Foundry pull request records
+    its verdict; the subscription renewal review). The single source for ``company_agent`` runs and
+    for the MCP tools of coding-CLI runs, so a runtime never offers more than the role would get."""
+    from app.guardrails import peer
+    from app.services import repo_reviews
+
+    tools = company_tools_for(db, agent, (runtime_config or {}).get("company_tools"))
+    if task is None:
+        return tools
+    if task.kind == "review" and peer.review_target(db, task) is not None:
+        # A peer review run decides one thing; nothing else is on offer.
+        return ["company_decide_peer_review", "company_complete_task"]
+    if repo_reviews.pull_id_of(task) is not None:
+        # M14: the server allows only the assignee of that review task.
+        return [*dict.fromkeys([*tools, "company_review_pull_request"])]
+    if task.idempotency_key and task.idempotency_key.startswith("subrev:"):
+        # M15: ``subscriptions.review`` accepts the assignee of that task.
+        return [*dict.fromkeys([*tools, SUBSCRIPTION_REVIEW_TOOL])]
+    return tools
+
+
+def mcp_names(tools: list[str]) -> list[str]:
+    """Company tool names as the MCP server exposes them (without the ``company_`` prefix)."""
+    return [t.removeprefix("company_") for t in tools]
+
+
 def toolsets_for(db: Session, agent: Agent, *, sandbox: str, runtime_config: dict) -> list[str]:
     template = (
         role_templates.find_template(db, agent.company_id, agent.role_template)

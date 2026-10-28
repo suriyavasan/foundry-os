@@ -67,6 +67,8 @@ class Policy(PurchasePolicy):
     # M10 (read-only here; set through PUT /ai-setup): api or hybrid, and the CLI for work tasks.
     work_mode: str = "api"
     work_runtime: str | None = None
+    # B9 (read-only here; set through PUT /ai-setup): api or claude_plan.
+    ai_engine: str = "api"
     # M12 (only humans can change them).
     work_model_provider_id: str | None = None
     work_model_name: str | None = None

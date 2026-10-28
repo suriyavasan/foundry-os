@@ -86,12 +86,11 @@ describe('onboarding step machine: gate-only mode for existing users', () => {
 
 describe('canContinue', () => {
   it('the AI step needs a ready model API and a valid CLI choice, unless the backend has no AI setup at all', () => {
-    expect(canContinue('ai', { aiReady: false, aiAvailable: true, workProblem: null })).toBe(false)
-    expect(canContinue('ai', { aiReady: true, aiAvailable: true, workProblem: null })).toBe(true)
-    expect(canContinue('ai', { aiReady: true, aiAvailable: true, workProblem: 'Pick a CLI' })).toBe(false)
-    expect(canContinue('ai', { aiReady: false, aiAvailable: false, workProblem: null })).toBe(true)
+    expect(canContinue('ai', { aiReady: false, aiAvailable: true })).toBe(false)
+    expect(canContinue('ai', { aiReady: true, aiAvailable: true })).toBe(true)
+    expect(canContinue('ai', { aiReady: false, aiAvailable: false })).toBe(true)
   })
   it('the other steps submit their own forms', () => {
-    expect(canContinue('team', { aiReady: false, aiAvailable: true, workProblem: 'x' })).toBe(true)
+    expect(canContinue('team', { aiReady: false, aiAvailable: true })).toBe(true)
   })
 })

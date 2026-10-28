@@ -289,7 +289,7 @@ describe('setup wizard', () => {
 
   /** The AI step, then the repository step answered with "No GitHub for now" (this backend has no repositories). */
   async function throughAi() {
-    await userEvent.click(screen.getByRole('button', { name: 'Save and continue' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
     await screen.findByRole('heading', { name: 'Where should your code live?' })
     await userEvent.click(screen.getByRole('button', { name: /No GitHub for now/ }))
     await screen.findByRole('heading', { name: 'Meet your team' })
@@ -325,7 +325,7 @@ describe('setup wizard', () => {
     expect(api.calls.some((c) => c.path === '/companies/c9/notes')).toBe(false)
     expect(api.calls.some((c) => c.method === 'PATCH')).toBe(false)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Save and continue' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
     expect(await screen.findByRole('heading', { name: 'Where should your code live?' })).toBeInTheDocument()
     expect(api.calls.some((c) => c.path === '/companies/c9/notes')).toBe(false)
     // This backend has no repositories: the GitHub choices are disabled and say so, "No GitHub" is not.
@@ -356,8 +356,8 @@ describe('setup wizard', () => {
   it('says plainly that this backend has no AI setup yet, and lets the person go on', async () => {
     setup()
     await toAiStep()
-    expect(await screen.findByText(/AI setup is not available on this server yet/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Save and continue' })).toBeEnabled()
+    expect(await screen.findByText(/AI settings are not available on this server yet/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled()
   })
 
   it('offers sign-in when someone else finished setup first', async () => {

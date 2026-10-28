@@ -18,9 +18,9 @@ from tests.autonomy_helpers import scripted_world
 from tests.helpers import api, get_task, new_agent, new_task, set_policy, settle
 from tests.m10_helpers import (
     CLAUDE_OK,
+    add_connection,
     install_fake_cli,
     make_ready,
-    record_of,
     register_cli_adapters,
 )
 
@@ -51,35 +51,28 @@ def app(make_settings, scripted, skills_env_override):
     return application
 
 
-def go_hybrid(app, client, cid, tmp_path, binary="opencode", runtime="cli:opencode", ready=None):
-    p = ready or make_ready(app, client, cid)
+def go_hybrid(app, client, cid, tmp_path, binary="opencode", plan=False, ready=None):
+    """A stack with the API model for management (heavy) and a coding CLI for work (everyday): OpenCode
+    with an API key, or the Claude plan (``plan=True``, a subscription: nothing to reserve)."""
+    ready or make_ready(app, client, cid)
+    api_conn = client.get(api(cid, "/ai-stack")).json()["items"][0]
+    r = client.patch(api(cid, f"/ai-stack/{api_conn['id']}"), json={"use_for": "heavy"})
+    assert r.status_code == 200, r.text
     d = tmp_path / "bin"
     d.mkdir(exist_ok=True)
     app.state.cli_env.extra_dirs.append(d)
     install_fake_cli(d, binary, CLAUDE_OK if binary == "claude" else [])
-    if binary == "claude":
-        cred = client.post(
-            api(cid, "/credentials"), json={"name": "k", "value": "sk-test-0123456789abcdef"}
-        )
-        assert cred.status_code == 201, cred.text
-        auth = {"mode": "api_key", "credential_id": cred.json()["id"]}
-        r = client.put("/api/cli-runtimes/claude_code/auth", json=auth)
-    else:
-        r = client.put(
-            "/api/cli-runtimes/opencode/auth",
-            json={"mode": "own_login", "model": "anthropic/claude-x"},
-        )
-    assert r.status_code == 200, r.text
-    r = client.put(
-        api(cid, "/ai-setup"),
-        json={
-            "management_provider_id": p["id"],
-            "management_model": p["default_model"],
-            "work_mode": "hybrid",
-            "work_runtime": runtime,
-        },
+    if plan:
+        add_connection(app, client, cid, "claude_plan", use_for="everyday")
+        return d
+    cred = client.post(
+        api(cid, "/credentials"), json={"name": "k", "value": "sk-test-0123456789abcdef"}
     )
-    assert r.status_code == 200, r.text
+    assert cred.status_code == 201, cred.text
+    add_connection(
+        app, client, cid, "opencode", credential_id=cred.json()["id"], model="anthropic/claude-x",
+        use_for="everyday",
+    )  # fmt: skip
     return d
 
 
@@ -242,12 +235,9 @@ def test_work_outside_a_project_or_on_the_api_runtime_stays_one_run_per_agent(
 # ------------------------------------------------------------------ CLI reservation
 
 
-def test_a_cli_run_reserves_the_cli_amount_and_claude_gets_a_one_dollar_cap(
-    app, client, company, scheduler, worker, tmp_path
-):
-    register_cli_adapters(app)
+def test_a_cli_run_reserves_the_cli_amount(app, client, company, scheduler, worker, tmp_path):
     cid = company["id"]
-    bin_dir = go_hybrid(app, client, cid, tmp_path, binary="claude", runtime="cli:claude_code")
+    go_hybrid(app, client, cid, tmp_path)
     agent = worker_agent(client, cid)
     task = new_task(client, cid, title="Write the brief", assignee_agent_id=agent["id"])
     assert queued(scheduler.tick()) == 1
@@ -255,16 +245,34 @@ def test_a_cli_run_reserves_the_cli_amount_and_claude_gets_a_one_dollar_cap(
         [reservation] = db.scalars(select(BudgetReservation)).all()
         assert reservation.amount_micros == 1_000_000  # policy.cli_run_reservation_micros
     worker.drain()
-    assert "--max-budget-usd=1.0000" in record_of(bin_dir, "claude")["argv"]
     assert get_task(client, cid, task["id"])["attempt_count"] >= 1
+
+
+def test_a_plan_connection_is_a_subscription_and_reserves_nothing(
+    app, client, company, scheduler, worker, tmp_path
+):
+    register_cli_adapters(app)
+    cid = company["id"]
+    go_hybrid(app, client, cid, tmp_path, binary="claude", plan=True)
+    set_policy(client, cid, max_concurrent_runs=4, management_reserved_slots=0)
+    agent = worker_agent(client, cid)
+    new_task(client, cid, title="Write the brief", assignee_agent_id=agent["id"])
+    new_task(
+        client, cid, title="Own budget", assignee_agent_id=worker_agent(client, cid, name="B")["id"],
+        budget_micros=300_000,
+    )  # fmt: skip
+    assert queued(scheduler.tick()) == 2
+    with app.state.session_factory() as db:
+        assert [r.amount_micros for r in db.scalars(select(BudgetReservation))] == [0, 0]
+        runs = _runs(app)
+        assert {r.runtime for r in runs} == {"cli:claude_code"}
 
 
 def test_the_cli_reservation_follows_the_policy_and_an_explicit_task_budget_wins(
     app, client, company, scheduler, worker, tmp_path
 ):
-    register_cli_adapters(app)
     cid = company["id"]
-    bin_dir = go_hybrid(app, client, cid, tmp_path, binary="claude", runtime="cli:claude_code")
+    go_hybrid(app, client, cid, tmp_path)
     set_policy(client, cid, cli_run_reservation_micros=2_500_000, max_concurrent_runs=4)
     a, b = worker_agent(client, cid, name="A"), worker_agent(client, cid, name="B")
     new_task(client, cid, title="default cap", assignee_agent_id=a["id"])
@@ -274,7 +282,6 @@ def test_the_cli_reservation_follows_the_policy_and_an_explicit_task_budget_wins
         amounts = sorted(r.amount_micros for r in db.scalars(select(BudgetReservation)))
     assert amounts == [300_000, 2_500_000]
     worker.drain()
-    assert record_of(bin_dir, "claude")["argv"]  # the fake binary was run for real
 
 
 def test_an_api_run_keeps_the_small_default_reservation(client, company, scheduler, app):

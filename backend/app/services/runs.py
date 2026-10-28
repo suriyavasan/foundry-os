@@ -108,6 +108,7 @@ def create_queued_run(
     route: Any = None,
     runtime: str | None = None,
     runtime_reason: str | None = None,
+    ai_connection_id: str | None = None,
 ) -> TaskRun:
     """Queue a run for ``task`` (no commit). Bumps ``attempt_count`` and starts the task.
     ``route`` is the model routing decision (``services.routing.Route``), stored on the run;
@@ -132,6 +133,7 @@ def create_queued_run(
         or None,
         model_provider_id=route.provider_id if route is not None else None,
         model_used=route.model if route is not None else None,
+        ai_connection_id=ai_connection_id,
     )
     db.add(run)
     db.flush()

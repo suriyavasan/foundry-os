@@ -280,28 +280,3 @@ def test_opencode_test_uses_a_company_provider_without_any_account(client, app, 
 
 
 # ------------------------------------------------------------------ hybrid is validated against the CLI
-
-
-def test_hybrid_needs_an_installed_configured_cli(app, client, company, bin_dir):
-    cid = company["id"]
-    p = make_ready(app, client, cid)
-    body = {
-        "management_provider_id": p["id"],
-        "management_model": "qwen2.5:7b",
-        "work_mode": "hybrid",
-        "work_runtime": "cli:codex",
-    }
-    r = client.put(api(cid, "/ai-setup"), json=body)
-    assert r.status_code == 409 and r.json()["error"]["details"]["reason"] == "cli_not_installed"
-    install_fake_cli(bin_dir, "codex", [])
-    r = client.put(api(cid, "/ai-setup"), json=body)
-    assert r.status_code == 409 and r.json()["error"]["details"]["reason"] == "cli_not_configured"
-    client.put("/api/cli-runtimes/codex/auth", json={"mode": "own_login"})
-    r = client.put(api(cid, "/ai-setup"), json=body)
-    assert r.status_code == 200 and r.json()["work_mode"] == "hybrid"
-    assert r.json()["work_runtime"] == "cli:codex"
-    # back to API only clears the runtime
-    r = client.put(
-        api(cid, "/ai-setup"), json={**body, "work_mode": "api", "work_runtime": "cli:codex"}
-    )
-    assert r.json()["work_mode"] == "api" and r.json()["work_runtime"] is None

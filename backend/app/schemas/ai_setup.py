@@ -7,13 +7,8 @@ from typing import Literal
 from pydantic import Field
 
 from app.schemas.common import ApiModel, RequestModel, Timestamp
-from app.schemas.providers import ProviderTest
 
-BlockingReasonLiteral = Literal["no_tested_provider", "provider_test_failed", "no_default_model"]
-WorkModeLiteral = Literal["api", "hybrid"]
-WorkRuntimeLiteral = Literal[
-    "company_agent", "cli:claude_code", "cli:codex", "cli:opencode", "cli:antigravity", "cli:cursor"
-]
+BlockingReasonLiteral = Literal["no_ai", "no_tested_ai", "no_heavy_ai", "no_everyday_ai"]
 CliIdLiteral = Literal["claude_code", "codex", "opencode", "antigravity", "cursor"]
 CliAuthModeLiteral = Literal["own_login", "api_key"]
 
@@ -49,6 +44,14 @@ class CliInstall(ApiModel):
     manual: str | None = None
 
 
+class CliLogin(ApiModel):
+    """Claude Code's sign-in state (from ``claude auth status``; cached up to 30 s)."""
+
+    signed_in: bool
+    auth_method: str | None = None
+    email: str | None = None
+
+
 class CliRuntimeStatus(ApiModel):
     id: CliIdLiteral
     display_name: str
@@ -60,6 +63,7 @@ class CliRuntimeStatus(ApiModel):
     sandbox: CliSandbox
     install: CliInstall
     login_hint: str
+    login: CliLogin | None = None  # Claude Code only
     warnings: list[str] = []
 
 
@@ -84,6 +88,28 @@ class CliInstallLog(ApiModel):
     lines: list[str] = []
 
 
+class ClaudeLoginJob(ApiModel):
+    state: Literal["idle", "running", "succeeded", "failed"]
+    started_at: Timestamp | None = None
+    finished_at: Timestamp | None = None
+    # The sign-in link Claude Code printed (an authorization URL, not a credential).
+    url: str | None = None
+    message: str | None = None
+
+
+class ClaudeLoginStatus(ApiModel):
+    signed_in: bool
+    auth_method: str | None = None
+    email: str | None = None
+    checked_at: Timestamp
+    config_dir_ok: bool
+    login: ClaudeLoginJob
+
+
+class ClaudeLoginRequest(RequestModel):
+    method: Literal["claudeai", "console"] = "claudeai"
+
+
 class CliAuthUpdate(RequestModel):
     mode: CliAuthModeLiteral
     credential_id: str | None = Field(default=None, max_length=36)
@@ -91,31 +117,10 @@ class CliAuthUpdate(RequestModel):
     model: str | None = Field(default=None, max_length=160)
 
 
-class AiSetupManagement(ApiModel):
-    provider_id: str | None = None
-    provider_name: str | None = None
-    kind: str | None = None
-    model: str | None = None
-    last_test: ProviderTest | None = None
-
-
 class AiSetupStatus(ApiModel):
+    """M17: derived from the AI stack (``/ai-stack``); kept so the readiness gate keeps working."""
+
     ready: bool
     blocking_reason: BlockingReasonLiteral | None = None
-    management: AiSetupManagement
-    # M12: the optional separate model for work runs (null: work runs use the routing mode).
-    work_model: AiSetupManagement | None = None
-    work_mode: WorkModeLiteral
-    work_runtime: WorkRuntimeLiteral | None = None
+    stack_count: int
     clis: list[CliRuntimeStatus]
-
-
-class AiSetupUpdate(RequestModel):
-    management_provider_id: str = Field(min_length=1, max_length=36)
-    management_model: str = Field(min_length=1, max_length=160)
-    work_mode: WorkModeLiteral = "api"
-    work_runtime: WorkRuntimeLiteral | None = None
-    # M12: optional work model. Omitted: unchanged. Both null: cleared. Otherwise both are set and
-    # must pass the same provider test as the management model.
-    work_model_provider_id: str | None = Field(default=None, min_length=1, max_length=36)
-    work_model_name: str | None = Field(default=None, min_length=1, max_length=160)

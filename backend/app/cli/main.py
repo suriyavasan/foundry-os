@@ -6,7 +6,18 @@ from typing import Annotated
 
 import typer
 
-from app.cli.commands import auth, company, lifecycle, onboard, org, repo, setup, system, work
+from app.cli.commands import (
+    ai,
+    auth,
+    company,
+    lifecycle,
+    onboard,
+    org,
+    repo,
+    setup,
+    system,
+    work,
+)
 from app.cli.context import CliState, guarded
 
 app = typer.Typer(
@@ -60,7 +71,7 @@ def root(
         guarded(lambda ctx: lifecycle.launch())(ctx)
 
 
-for module in (auth, company, org, work, repo, setup, onboard, system, lifecycle):
+for module in (auth, company, org, work, repo, setup, onboard, ai, system, lifecycle):
     module.register(app)
 
 

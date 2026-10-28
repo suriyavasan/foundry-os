@@ -144,6 +144,16 @@ class CompanyPolicy(Base):
         String(16), default="api", server_default="api", nullable=False
     )
     work_runtime: Mapped[str | None] = mapped_column(String(32))
+    # M17: the legacy settings above were turned into AI connections once (never again, even after
+    # every connection is deleted).
+    ai_stack_bootstrapped: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )
+    # B9 (human-only, set only through PUT /ai-setup): ``api`` or ``claude_plan`` (every agent runs
+    # Claude Code signed in with the founder's own Claude account).
+    ai_engine: Mapped[str] = mapped_column(
+        String(16), default="api", server_default="api", nullable=False
+    )
     # M12 (all human-only). Optional separate model for work runs (NULL = same routing as before);
     # the management model (``default_model_*``) is never displaced by free_first.
     work_model_provider_id: Mapped[str | None] = mapped_column(String(36))

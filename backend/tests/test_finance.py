@@ -1,4 +1,4 @@
-"""Finance & governance of money (docs/specs/m6 section 6): mid-run budget checkpoints, free-first
+"""Finance & governance of money (docs/specs/m6 section 6): mid-run budget checkpoints, stack
 model routing, threshold alerts, external expenses and the reporting API in the company timezone."""
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from app.runtimes.scripted import ScriptedRuntime
 from app.services import budget_alerts, ledger
 from tests.guardrail_helpers import make_team, run_as
 from tests.helpers import api, get_task, new_agent, new_task, set_policy, settle
+from tests.m10_helpers import add_connection
 
 
 class FakeCompanyAgent(ScriptedRuntime):
@@ -146,119 +147,65 @@ def cloud_agent(client, cid, cloud, name="Cora"):
     )
 
 
-def test_free_first_routes_to_a_free_model_and_reserves_nothing(
+def test_a_stack_run_uses_the_connections_model_and_a_free_one_reserves_nothing(
     app, client, company, providers, scheduler, worker
 ):
     cid = company["id"]
     cloud, local = providers
-    assert client.get(api(cid, "/policy")).json()["model_routing"] == "free_first"
-    task, runs = routed(client, cid, cloud_agent(client, cid, cloud))
+    add_connection(app, client, cid, "ollama", model_provider_id=local["id"], model="qwen2.5:7b")
+    task, runs = routed(client, cid, cloud_agent(client, cid, cloud))  # the agent's own is paid
     scheduler.tick()
     [run] = runs()
     assert run["model_provider_id"] == local["id"] and run["model_used"] == "qwen2.5:7b"
-    assert "free_first" in run["routing_reason"] and "Local" in run["routing_reason"]
+    assert run["routing_reason"].startswith("AI stack: ") and "heavy" not in run["routing_reason"]
     with app.state.session_factory() as db:
         assert db.scalars(select(BudgetReservation.amount_micros)).one() == 0
+        assert db.get(TaskRun, run["id"]).ai_connection_id is not None
     worker.run_once()
     assert get_task(client, cid, task["id"])["status"] == "done"
 
 
-def test_pinned_and_quality_first_keep_or_pick_the_paid_model(
+def test_a_paid_connection_reserves_and_needs_no_paid_fallback_approval(
     app, client, company, providers, scheduler
 ):
     cid = company["id"]
     cloud, local = providers
-    set_policy(client, cid, model_routing="pinned", management_reserved_slots=0)
-    _, runs = routed(client, cid, cloud_agent(client, cid, cloud), "pinned")
-    scheduler.tick()
+    add_connection(app, client, cid, "openai_api", model_provider_id=cloud["id"], model="big-model")
+    set_policy(
+        client, cid, allow_paid_fallback=False, model_routing="free_first"
+    )  # legacy: ignored
+    _, runs = routed(client, cid, new_agent(client, cid, name="Lola", runtime="company_agent"))
+    report = scheduler.tick().dispatch
+    assert len(report.queued_run_ids) == 1 and report.policy_blocked_task_ids == []
     [run] = runs()
-    assert run["model_provider_id"] == cloud["id"] and run["routing_reason"].startswith("pinned")
+    assert run["model_provider_id"] == cloud["id"] and run["model_used"] == "big-model"
+    assert "free_first" not in run["routing_reason"]
+    with app.state.session_factory() as db:
+        assert db.scalars(select(BudgetReservation.amount_micros)).one() > 0
 
-    set_policy(client, cid, model_routing="quality_first")
-    local_agent = new_agent(
+
+def test_a_pinned_model_keeps_the_agents_own_paid_model_outside_the_stack(
+    app, client, company, providers, scheduler
+):
+    cid = company["id"]
+    cloud, local = providers
+    add_connection(app, client, cid, "ollama", model_provider_id=local["id"], model="qwen2.5:7b")
+    agent = new_agent(
         client,
         cid,
-        name="Lola",
+        name="Pia",
         runtime="company_agent",
-        model_provider=local["id"],
-        model_name="qwen2.5:7b",
+        model_provider=cloud["id"],
+        model_name="big-model",
+        runtime_config={"pin_model": True},
     )
-    task, runs2 = routed(client, cid, local_agent, "quality")
-    scheduler.tick()
-    [run2] = runs2()
-    assert run2["model_provider_id"] == cloud["id"] and "quality_first" in run2["routing_reason"]
-    assert run2["model_used"] == "big-model"
-
-
-def test_free_first_without_a_free_model_uses_paid_when_policy_allows(
-    app, client, company, providers, scheduler
-):
-    cid = company["id"]
-    cloud, local = providers
-    client.patch(api(cid, f"/model-providers/{local['id']}"), json={"enabled": False})
-    _, runs = routed(client, cid, cloud_agent(client, cid, cloud))
+    _, runs = routed(client, cid, agent, "pinned")
     scheduler.tick()
     [run] = runs()
-    assert run["model_provider_id"] == cloud["id"]
-    assert "paid fallback is allowed" in run["routing_reason"]
-
-
-def test_a_paid_fallback_that_policy_forbids_needs_approval_and_is_single_use(
-    app, client, company, providers, scheduler, worker
-):
-    cid = company["id"]
-    cloud, local = providers
-    client.patch(api(cid, f"/model-providers/{local['id']}"), json={"enabled": False})
-    set_policy(client, cid, allow_paid_fallback=False)
-    task, runs = routed(client, cid, cloud_agent(client, cid, cloud))
-    report = scheduler.tick().dispatch
-    assert report.queued_run_ids == [] and report.policy_blocked_task_ids == [task["id"]]
-    blocked = get_task(client, cid, task["id"])
-    assert blocked["status"] == "blocked" and blocked["error"]["code"] == "paid_model_approval"
-    approval_id = blocked["error"]["approval_id"]
-    ap = client.get(api(cid, f"/approvals/{approval_id}")).json()
-    # a spend-tier action: above the (zero) auto-spend limit a human decides
-    assert ap["tier"] == "spend" and ap["action"] == "model.paid_fallback"
-    assert ap["approver"] == "human" and ap["status"] == "pending"
-    assert ap["requested_by_agent_id"] is None  # nobody is woken to chase a platform decision
-    # nothing happens while it is pending, and no second approval is opened
-    assert scheduler.tick().dispatch.queued_run_ids == []
-    # approving releases the task; the next dispatch spends the approval and routes to the paid model
-    assert client.post(api(cid, f"/approvals/{approval_id}/approve")).status_code == 200
-    assert get_task(client, cid, task["id"])["status"] in ("backlog", "ready")
-    assert len(scheduler.tick().dispatch.queued_run_ids) == 1
-    [run] = runs()
-    assert run["model_provider_id"] == cloud["id"] and "needs approval" in run["routing_reason"]
-    worker.run_once()
+    assert run["model_provider_id"] == cloud["id"] and run["model_used"] == "big-model"
+    assert run["routing_reason"].startswith("pinned by the owner")
     with app.state.session_factory() as db:
-        approvals = list(
-            db.scalars(select(AuditEvent).where(AuditEvent.action == "approval.consumed"))
-        )
-    assert len(approvals) == 1
-    # a second task needs its own approval
-    task2, _ = routed(client, cid, cloud_agent(client, cid, cloud, "Cleo"), "second")
-    assert scheduler.tick().dispatch.policy_blocked_task_ids == [task2["id"]]
-
-
-def test_the_cofounder_decides_small_paid_fallbacks_when_the_auto_spend_limit_allows(
-    app, client, company, providers, scheduler
-):
-    cid = company["id"]
-    cloud, local = providers
-    team = make_team(client, cid)
-    client.patch(api(cid, f"/model-providers/{local['id']}"), json={"enabled": False})
-    set_policy(client, cid, allow_paid_fallback=False, auto_spend_limit_micros=1_000_000)
-    task, _ = routed(client, cid, cloud_agent(client, cid, cloud))
-    scheduler.tick()
-    err = get_task(client, cid, task["id"])["error"]
-    ap = client.get(api(cid, f"/approvals/{err['approval_id']}")).json()
-    assert ap["approver"] == "founder"
-    founder = run_as(app, client, cid, team.founder)
-    assert (
-        founder.post(f"/approvals/{ap['id']}/decide", json={"decision": "approve"}).status_code
-        == 200
-    )
-    assert len(scheduler.tick().dispatch.queued_run_ids) == 1
+        assert db.get(TaskRun, run["id"]).ai_connection_id is None
 
 
 def test_other_runtimes_are_not_routed(app, client, company, scheduler):
