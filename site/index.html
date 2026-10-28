@@ -9,6 +9,13 @@
 <meta property="og:title" content="Foundry AI OS">
 <meta property="og:description" content="Every idea needs a company. Run one with AI employees, on your own machine. Free and open source (MIT).">
 <meta property="og:type" content="website">
+<meta property="og:url" content="https://suriyavasan.github.io/foundry-os/">
+<meta property="og:image" content="https://suriyavasan.github.io/foundry-os/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Foundry: every idea needs a company. brew install suriyavasan/tap/foundry-os">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="canonical" href="https://suriyavasan.github.io/foundry-os/">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -55,7 +62,7 @@
       <div class="get-tabs" role="tablist" aria-label="Install method">
         <button type="button" role="tab" aria-selected="true" data-cmd="brew install suriyavasan/tap/foundry-os">Homebrew</button>
         <button type="button" role="tab" aria-selected="false" data-cmd="curl -fsSL https://raw.githubusercontent.com/suriyavasan/foundry-os/main/install.sh | sh">Installer</button>
-        <button type="button" role="tab" aria-selected="false" data-cmd="docker run -d --name foundry-os -p 8700:8700 -v foundry-os:/data ghcr.io/suriyavasan/foundry-os:latest">Docker</button>
+        <button type="button" role="tab" aria-selected="false" data-then="The container starts by itself. Open &lt;code&gt;localhost:8700&lt;/code&gt;." data-cmd="docker run -d --name foundry-os -p 8700:8700 -v foundry-os:/data ghcr.io/suriyavasan/foundry-os:latest">Docker</button>
       </div>
       <div class="get-bar">
         <span class="get-ps" aria-hidden="true">$</span>
@@ -66,7 +73,7 @@
           <button type="button" class="g-label" id="hero-copy" aria-label="Copy the install command">Copy</button>
         </div>
       </div>
-      <p class="get-then">Then run <code>foundryos up</code> and open <code>localhost:8700</code>.</p>
+      <p class="get-then" id="hero-then">Then run <code>foundryos up</code> and open <code>localhost:8700</code>.</p>
     </div>
 
     <div class="notch-stage">
@@ -302,14 +309,18 @@
     <div class="about">
       <a class="brand" href="#top"><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="7" fill="#fff"/><circle cx="12" cy="7.5" r="2.6" fill="#ff6a00"/><circle cx="7" cy="16.5" r="2.6" fill="#3950e6"/><circle cx="17" cy="16.5" r="2.6" fill="#ffc23d"/></svg> Foundry</a>
       <p>A free, open-source company run by AI agents, on your own machine. Its agent runtime is a pruned fork of <a href="https://github.com/NousResearch/hermes-agent">Hermes Agent</a> by Nous Research (MIT).</p>
+      <div class="social">
+        <a href="https://github.com/suriyavasan/foundry-os"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.9 1.52 2.34 1.08 2.91.83.09-.65.35-1.08.63-1.33-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.56 9.56 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.75c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></svg> Star on GitHub</a>
+        <a href="https://github.com/suriyavasan/foundry-os/issues">Report a bug</a>
+      </div>
     </div>
     <div class="cols">
-      <div><h4>Product</h4><ul><li><a href="#product">Overview</a></li><li><a href="#safety">Safety</a></li><li><a href="#pricing">Pricing</a></li><li><a href="#install">Install</a></li></ul></div>
-      <div><h4>Guides</h4><ul><li><a href="https://github.com/suriyavasan/foundry-os/blob/main/docs/guide/getting-started.md">Getting started</a></li><li><a href="https://github.com/suriyavasan/foundry-os/blob/main/docs/guide/connect-your-ai.md">Connect your AI</a></li><li><a href="https://github.com/suriyavasan/foundry-os/blob/main/docs/guide/faq.md">FAQ</a></li></ul></div>
+      <div><h4>Product</h4><ul><li><a href="#product">Overview</a></li><li><a href="#safety">Safety</a></li><li><a href="#pricing">Pricing</a></li><li><a href="#install">Install</a></li><li><a href="https://github.com/suriyavasan/foundry-os/releases">Releases</a></li></ul></div>
+      <div><h4>Guides</h4><ul><li><a href="https://github.com/suriyavasan/foundry-os/blob/main/docs/guide/getting-started.md">Getting started</a></li><li><a href="https://github.com/suriyavasan/foundry-os/blob/main/docs/guide/connect-your-ai.md">Connect your AI</a></li><li><a href="https://github.com/suriyavasan/foundry-os/blob/main/docs/guide/faq.md">FAQ</a></li><li><a href="https://github.com/suriyavasan/foundry-os/blob/main/docs/guide/troubleshooting.md">Troubleshooting</a></li></ul></div>
       <div><h4>Project</h4><ul><li><a href="https://github.com/suriyavasan/foundry-os">GitHub</a></li><li><a href="https://github.com/suriyavasan/foundry-os/blob/main/docs/roadmap.md">Roadmap</a></li><li><a href="https://github.com/suriyavasan/foundry-os/blob/main/docs/security.md">Security</a></li><li><a href="https://github.com/suriyavasan/foundry-os/blob/main/LICENSE">MIT License</a></li></ul></div>
     </div>
   </div>
-  <div class="wrap legal">Foundry AI OS · MIT License · Formerly "Company OS"</div>
+  <div class="wrap legal"><span>Foundry AI OS · MIT License · Formerly "Company OS"</span><span>A hobby project, built in the open.</span></div>
 </footer>
 </body>
 </html>

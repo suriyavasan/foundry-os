@@ -64,10 +64,13 @@
   var cmd = document.getElementById('hero-cmd');
   var heroCopy = document.getElementById('hero-copy');
   var tabs = document.querySelectorAll('.get-tabs [role=tab]');
+  var then = document.getElementById('hero-then');
+  var thenDefault = then ? then.innerHTML : '';
   Array.prototype.forEach.call(tabs, function (tab) {
     tab.addEventListener('click', function () {
       Array.prototype.forEach.call(tabs, function (t) { t.setAttribute('aria-selected', String(t === tab)); });
       cmd.textContent = tab.getAttribute('data-cmd');
+      if (then) then.innerHTML = tab.getAttribute('data-then') || thenDefault;
       cmd.scrollLeft = 0;
     });
   });
