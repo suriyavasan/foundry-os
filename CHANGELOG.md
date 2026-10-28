@@ -8,6 +8,8 @@ automatically with the next patch version (see `docs/install.md`, "Cut a release
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-28
+
 ### Added
 
 - One **AI stack** replaces the separate model API / work model / coding CLI settings, in onboarding and in
@@ -22,6 +24,19 @@ automatically with the next patch version (see `docs/install.md`, "Cut a release
   in a terminal). Foundry never sees or stores passwords, codes or tokens and allows one plan sign-in per CLI per
   company; any number of API keys is fine. When a plan hits its usage limit, that AI pauses until the reset and
   its work moves to the rest of the stack. `foundryos ai list|add|remove|test|login|logout`.
+
+### Changed
+
+- `PUT /ai-setup` is gone (410); use `/ai-stack`. `GET /ai-setup` now reports readiness from the stack. Model
+  routing modes (free first / quality first / paid-fallback approval) no longer apply: the AI stack's order, use
+  and importance decide. `foundryos setup` has no separate "work" step any more.
+
+## [0.1.5] - 2026-10-28
+
+Covers 0.1.1 to 0.1.5 (released automatically without their own sections).
+
+### Added
+
 - Cursor CLI (`agent`) as a fifth coding-CLI work runtime (`cli:cursor`). It runs only with a Cursor API key in an
   isolated per-agent home, with shell commands and web fetches denied by generated permission rules. It is coded
   from Cursor's documentation and tested with a fake binary; it has not been run against the real CLI. Cursor's
@@ -58,9 +73,6 @@ automatically with the next patch version (see `docs/install.md`, "Cut a release
 
 ### Changed
 
-- `PUT /ai-setup` is gone (410); use `/ai-stack`. `GET /ai-setup` now reports readiness from the stack. Model
-  routing modes (free first / quality first / paid-fallback approval) no longer apply: the AI stack's order, use
-  and importance decide. `foundryos setup` has no separate "work" step any more.
 - Finance leads with the estimate: most providers never report a charge, so "Estimated" comes first and "Charged"
   second (with a note when it is $0) in the totals, the wasted-runs strip, budget rows and the spend blocks.
 - The organization chart reads left to right by default (compact cards, levels side by side). One button switches
