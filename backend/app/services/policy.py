@@ -80,6 +80,17 @@ UPDATABLE = (
     "purchase_card_ttl_hours",
     "purchase_checkout_member_id",
     "subscription_renewal_alert_days",
+    # M16 radar (human-only)
+    "radar_enabled",
+    "radar_max_fetches_per_day",
+    "radar_max_items_per_day",
+    "radar_max_ideas_per_day",
+    "radar_max_open_ideas",
+    "radar_auto_accept",
+    "radar_max_goals_per_week",
+    "radar_agent_sources",
+    "self_critique_enabled",
+    "radar_contact_email",
 )
 PURCHASE_FIELDS = frozenset(f for f in UPDATABLE if f.startswith(("purchase", "subscription_")))
 # What an AI may approve is capped in code, whatever the form sends (docs/specs/m15, section 5).
@@ -88,6 +99,7 @@ _PURCHASE_CEILINGS = {
     "purchase_agent_auto_monthly_micros": MAX_PURCHASE_AGENT_AUTO_MONTHLY_MICROS,
     "purchase_cofounder_limit_micros": MAX_PURCHASE_COFOUNDER_LIMIT_MICROS,
 }
+RADAR_FIELDS = frozenset(f for f in UPDATABLE if f.startswith("radar_")) | {"self_critique_enabled"}
 _BUDGET_FIELDS = {"daily_budget_micros", "monthly_budget_micros", "default_run_reservation_micros"}
 # Changing these re-evaluates tasks the dispatcher parked behind the paid-model approval.
 _ROUTING_FIELDS = {"model_routing", "allow_paid_fallback", "auto_spend_limit_micros"}
@@ -252,6 +264,18 @@ def update_policy(db: Session, ctx: CompanyContext, data: PolicyUpdate) -> Compa
                 summary=f"Updated the purchasing policy: {', '.join(bought)}",
                 data={"changed": bought, "values": {f: getattr(policy, f) for f in bought}},
             )
+        radar = sorted(RADAR_FIELDS & set(changed))
+        if radar:  # M16: its own line in the trail: who changed what the company reads and decides
+            audit.record(
+                db,
+                company_id=ctx.company_id,
+                principal=ctx.principal,
+                action="radar_policy.updated",
+                target_type="policy",
+                target_id=policy.id,
+                summary=f"Updated the market radar policy: {', '.join(radar)}",
+                data={"changed": radar, "values": {f: getattr(policy, f) for f in radar}},
+            )
         from app.services import tasks  # local import: tasks depends on policy
 
         if _BUDGET_FIELDS & set(changed):
@@ -262,6 +286,10 @@ def update_policy(db: Session, ctx: CompanyContext, data: PolicyUpdate) -> Compa
             builtin_schedules.sync_heartbeat_interval(
                 db, ctx.company_id, policy.heartbeat_interval_seconds, ctx.principal
             )
+        if "radar_enabled" in changed and policy.radar_enabled:  # M16 radar: provision the routines
+            from app.services import builtin_schedules
+
+            builtin_schedules.ensure_radar_schedules(db, ctx.company_id, ctx.principal)
         if _ROUTING_FIELDS & set(changed):
             tasks.release_budget_blocked(
                 db, ctx.company_id, ctx.principal, codes=("paid_model_approval",)

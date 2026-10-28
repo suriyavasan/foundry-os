@@ -44,6 +44,7 @@ def test_create_company_side_effects(client, app, company):
         "agent.created",
         "company.created",
         "department.created",
+        "radar.keywords.derived",  # M16: the keywords the company profile implies
         "schedule.builtins_created",
     ]
     created = next(e for e in events if e["action"] == "company.created")

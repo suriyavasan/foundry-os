@@ -9,6 +9,8 @@ from app.engine import recovery
 from app.engine.context import EngineContext
 from app.engine.dispatcher import DispatchReport, dispatch_tick
 from app.guardrails import ratelimit
+from app.radar import ENQUEUE_INTERVAL_SECONDS as RADAR_ENQUEUE_INTERVAL_SECONDS  # M16 radar
+from app.radar import jobs as radar_jobs  # M16 radar
 from app.services import (
     autonomy_watchdog,
     card_reconcile,
@@ -76,6 +78,7 @@ class TickReport:
     watchdog: dict[str, int] = field(default_factory=dict)  # interventions per detector (M12)
     repo_syncs: int = 0  # repository syncs enqueued this tick (M14)
     cards: dict[str, int] = field(default_factory=dict)  # M15: card passes that ran this tick
+    radar_jobs: int = 0  # M16 radar: radar_fetch jobs enqueued this tick
 
 
 class Scheduler:
@@ -92,6 +95,7 @@ class Scheduler:
         self._last_card_balance: datetime | None = None
         self._last_purchase_expiry: datetime | None = None
         self._last_subscriptions: datetime | None = None
+        self._last_radar_enqueue: datetime | None = None  # M16 radar
 
     def start(self, now: datetime | None = None) -> recovery.RecoveryReport:
         """Startup recovery (also fires any schedule that came due while we were down)."""
@@ -134,6 +138,14 @@ class Scheduler:
                 except Exception:  # a sync problem must not stop dispatching
                     logger.exception("repository sync enqueue failed")
             self._card_passes(now, report)
+            if self._last_radar_enqueue is None or now - self._last_radar_enqueue >= timedelta(
+                seconds=RADAR_ENQUEUE_INTERVAL_SECONDS
+            ):  # M16 radar: due sources become a job for the worker; no network in the tick
+                self._last_radar_enqueue = now
+                try:
+                    report.radar_jobs = radar_jobs.enqueue_due(self.ctx.session_factory, now)
+                except Exception:  # a radar problem must not stop dispatching
+                    logger.exception("radar fetch enqueue failed")
             report.woke_task_ids = wakes.materialize_due(self.ctx.session_factory, now)
             report.dispatch = dispatch_tick(self.ctx, now)
         if self._last_recovery is None or now - self._last_recovery >= timedelta(

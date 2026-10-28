@@ -1,0 +1,4 @@
+[
+ {"id": 7, "number": 7, "title": "Crash on startup", "html_url": "https://github.com/acme/app/issues/7", "body": "It crashes.", "user": {"login": "reporter"}, "created_at": "2026-10-27T03:00:00Z", "comments": 2},
+ {"id": 8, "number": 8, "title": "A pull request", "html_url": "https://github.com/acme/app/pull/8", "pull_request": {"url": "x"}, "user": {"login": "dev"}}
+]

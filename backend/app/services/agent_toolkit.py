@@ -120,6 +120,18 @@ HR_TOOLS = (
 )
 
 
+def radar_tools_for(db: Session, agent: Agent) -> list[str]:
+    """M16 market radar tools by role (``app.radar.access``; the server checks the same table
+    again). With the radar switched off only the page reader remains: it does not depend on it."""
+    from app.radar import access as radar_access
+    from app.services import policy
+
+    tools = radar_access.tools_for(db, agent)
+    if not policy.load_policy(db, agent.company_id).radar_enabled:
+        return [t for t in tools if t == radar_access.TOOL_OF[radar_access.PAGE]]
+    return tools
+
+
 def can_use_provider_actions(db: Session, agent: Agent) -> bool:
     """The agent gets ``company_provider_action`` only when some live credential is scoped for
     actions its role family may use (nothing to call otherwise: fewer tools suit small models)."""
@@ -163,6 +175,7 @@ def company_tools_for(db: Session, agent: Agent, override: Any = None) -> list[s
         tools = [*WORKER_TOOLS, *MANAGER_EXTRA]
     else:
         tools = list(WORKER_TOOLS)
+    tools.extend(radar_tools_for(db, agent))  # M16 radar
     if can_use_provider_actions(db, agent):
         tools.append("company_provider_action")
     tools = list(dict.fromkeys(tools))

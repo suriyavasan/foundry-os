@@ -13,12 +13,14 @@ from starlette.concurrency import run_in_threadpool
 
 from app.api.deps import DbSession, RunCtx, Skills, get_storage
 from app.api.guard import agent_guard, guard_env
+from app.api.routes import agent_api_radar  # M16 radar
 from app.api.routes.skills import agent_skill_out, install_result
 from app.api.uploads import read_artifact_input
 from app.guardrails import engine as guard_engine
 from app.guardrails import log as guard_log
 from app.guardrails import peer, providers, registry
 from app.models.company import Company
+from app.radar import search_cap as radar_search_cap  # M16 radar
 from app.schemas.agent import Agent as AgentOut
 from app.schemas.agent_api import (
     AgentContext,
@@ -468,9 +470,12 @@ def check_tool(body: ToolCheck, request: Request, rc: RunCtx, db: DbSession):
     """The runtime asks before it runs a tool that reaches outside (web search...). Raises 403 /
     429 / 202 like any guarded action; unknown tools are denied (fail closed)."""
     action = registry.tool_action(body.tool)
+    radar_capped = radar_search_cap.enforce(db, rc, body.tool)  # M16 radar: 4 searches a day
     verdict = guard_engine.check(
         db, rc.ctx, action, {"tool": body.tool}, run=rc.run, env=guard_env(request)
     )
+    if radar_capped:
+        radar_search_cap.record(db, rc)
     return ToolCheckResult(allowed=True, tool=body.tool, tier=verdict.tier)
 
 
@@ -570,3 +575,8 @@ def review_subscription(
     """Keep or cancel a subscription you own before it renews (a cancel is a task for a person)."""
     sub = subscriptions.review(db, rc.ctx, subscription_id, body)
     return wallet.serialize_subscriptions(db, [sub])[0]
+
+
+# ------------------------------------------------------ Milestone 16: market radar
+
+router.include_router(agent_api_radar.router)  # M16 radar

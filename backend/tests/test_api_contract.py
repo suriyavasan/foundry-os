@@ -146,8 +146,8 @@ def test_activity_pagination_newest_first_no_dupes(client, company):
     url = f"/api/companies/{cid}/activity"
     full = client.get(url, params={"limit": 200}).json()
     assert (
-        full["next_cursor"] is None and len(full["items"]) == 10
-    )  # + HR agent, People dept, built-in schedules
+        full["next_cursor"] is None and len(full["items"]) == 11
+    )  # + HR agent, People dept, built-in schedules, derived radar keywords (M16)
     stamps = [e["created_at"] for e in full["items"]]
     assert [e["action"] for e in full["items"]][-1] == "company.created"
     assert [e["summary"] for e in full["items"]][0] == "Created department D5"
@@ -166,7 +166,7 @@ def test_activity_pagination_newest_first_no_dupes(client, company):
             break
     assert pages == 4
     assert seen == [e["id"] for e in full["items"]]
-    assert len(set(seen)) == 10
+    assert len(set(seen)) == 11
     assert stamps == sorted(stamps, reverse=True)
 
 
@@ -204,9 +204,13 @@ def test_overview_aggregates_are_real_and_empty_for_a_new_company(client, compan
     }
     assert ov["artifacts"] == {"available": True, "total": 0, "latest": []}
     # M5: the built-in schedules (Co-founder heartbeat + routines, HR skills review) exist from the start
-    assert ov["routines"]["total"] == 6 and ov["routines"]["enabled"] == 6
-    upcoming = {r["name"] for r in ov["routines"]["upcoming"]}  # the soonest five of the six
+    # M16 adds three radar routines (market-radar, ideas-triage, weekly-self-critique)
+    assert ov["routines"]["total"] == 9 and ov["routines"]["enabled"] == 9
+    upcoming = {r["name"] for r in ov["routines"]["upcoming"]}  # the soonest five of the nine
     assert len(upcoming) == 5 and upcoming <= {
+        "market-radar",
+        "ideas-triage",
+        "weekly-self-critique",
         "heartbeat",
         "daily-standup",
         "weekly-strategy-review",

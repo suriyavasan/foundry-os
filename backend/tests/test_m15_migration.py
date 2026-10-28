@@ -150,7 +150,8 @@ def test_0014_follows_0013_and_is_the_only_head():
 
     script = ScriptDirectory.from_config(alembic_config("sqlite://"))
     assert script.get_revision("0014").down_revision == "0013"
-    assert script.get_heads() == ["0014"]
+    assert len(script.get_heads()) == 1  # a single line of history; M16 chains 0015 after 0014
+    assert script.get_revision("0015").down_revision == "0014"
 
 
 def test_the_migrated_m15_schema_matches_the_models(tmp_path):

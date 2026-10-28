@@ -52,6 +52,9 @@ COMPANY_TOOL_NAMES = (
     "company_review_pull_request",
     # M15: ask the company to buy something (no card data ever); answer a subscription renewal review.
     "company_request_purchase", "company_review_subscription",
+    # M16: market radar (outside text comes back wrapped as untrusted; the server enforces roles and caps).
+    "company_radar_digest", "company_radar_read", "company_radar_brief", "company_radar_propose",
+    "company_radar_decide", "company_radar_keywords", "company_radar_ui_search", "company_radar_add_source",
 )
 
 MIN_CONTEXT_LENGTH = 8192

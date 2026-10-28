@@ -10,11 +10,14 @@ import {
   M12_NUMBER_FIELDS,
   M15_MONEY_FIELDS,
   M15_NUMBER_FIELDS,
+  M16_BOOL_FIELDS,
+  M16_NUMBER_FIELDS,
   MODEL_ROUTING_OPTIONS,
   ROLE_FAMILIES,
   diffPolicy,
   hasM12Fields,
   hasM15Fields,
+  hasM16Fields,
   hasM6Fields,
   policyToForm,
   validatePolicyForm,
@@ -67,10 +70,15 @@ function PolicyForm({ companyId, policy }: { companyId: string; policy: CompanyP
     setValues((v) => ({ ...v, m15: { ...v.m15, ...p } }))
     setErrors({})
   }
+  const setM16 = (p: Partial<PolicyFormValues['m16']>) => {
+    setValues((v) => ({ ...v, m16: { ...v.m16, ...p } }))
+    setErrors({})
+  }
   const members = useMemberDirectory(companyId)
   const m6 = values.m6
   const m12 = values.m12
   const m15 = values.m15
+  const m16 = values.m16
   const toggleFamily = (family: (typeof ROLE_FAMILIES)[number]['value']) => {
     const cur = m12.cli_role_families ?? []
     setM12({ cli_role_families: cur.includes(family) ? cur.filter((f) => f !== family) : [...cur, family] })
@@ -372,6 +380,38 @@ function PolicyForm({ companyId, policy }: { companyId: string; policy: CompanyP
                     <span className="block text-[12px] text-fg-3">The first purchase from any website goes to you.</span>
                   </span>
                 </label>
+              )}
+            </div>
+          </section>
+        )}
+
+        {hasM16Fields(m16) && (
+          <section className="space-y-3" aria-label="Market radar">
+            <SectionLabel>Market radar</SectionLabel>
+            <p className="text-[12px] text-fg-3">
+              How the company reads the outside world and criticises itself. Everything it reads is treated as untrusted text. Only you can change these limits, agents never can.
+            </p>
+            <div className="grid gap-1.5 sm:grid-cols-2">
+              {M16_BOOL_FIELDS.filter((f) => m16[f.key] !== undefined).map((f) => (
+                <label key={f.key} className="flex cursor-pointer items-start gap-2 rounded-md border border-line bg-raised px-2.5 py-2 text-[13px] hover:bg-hover">
+                  <input type="checkbox" className="mt-0.5 size-3.5 accent-(--accent)" checked={m16[f.key] ?? false} onChange={(e) => setM16({ [f.key]: e.target.checked })} />
+                  <span>
+                    <span className="block text-fg">{f.label}</span>
+                    <span className="block text-[12px] text-fg-3">{f.hint}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {M16_NUMBER_FIELDS.filter((f) => m16[f.key] !== undefined).map((f) => (
+                <Field key={f.key} label={f.label} error={errors[f.key]} hint={f.hint}>
+                  {({ id, invalid, describedBy }) => <Input id={id} inputMode="numeric" value={m16[f.key]} invalid={invalid} aria-describedby={describedBy} onChange={(e) => setM16({ [f.key]: e.target.value })} />}
+                </Field>
+              ))}
+              {m16.radar_contact_email !== undefined && (
+                <Field label="Contact e-mail for site owners" error={errors.radar_contact_email} hint="Sent in the fetcher's User-Agent so a site owner can reach you. Blank = none.">
+                  {({ id, invalid, describedBy }) => <Input id={id} type="email" autoComplete="off" value={m16.radar_contact_email} invalid={invalid} aria-describedby={describedBy} onChange={(e) => setM16({ radar_contact_email: e.target.value })} />}
+                </Field>
               )}
             </div>
           </section>

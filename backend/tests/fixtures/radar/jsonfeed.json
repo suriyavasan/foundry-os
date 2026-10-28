@@ -1,0 +1,8 @@
+{
+  "version": "https://jsonfeed.org/version/1.1",
+  "title": "JSON Feed",
+  "items": [
+    {"id": "1", "url": "https://jf.example.test/one", "title": "First JSON item", "content_html": "<p>Hello <b>there</b></p>", "date_published": "2026-10-27T07:00:00Z", "authors": [{"name": "Jo"}], "image": "https://jf.example.test/i.png"},
+    {"id": "2", "url": "https://jf.example.test/two", "content_text": "No title here", "summary": "Sum"}
+  ]
+}

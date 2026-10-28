@@ -30,6 +30,8 @@ TOOLS = [
     "company_post_reflection", "company_reply_reflection", "company_revise_reflection",
     "company_plan_project", "company_review_pull_request",
     "company_request_purchase", "company_review_subscription",
+    "company_radar_digest", "company_radar_read", "company_radar_brief", "company_radar_propose",
+    "company_radar_decide", "company_radar_keywords", "company_radar_ui_search", "company_radar_add_source",
 ]
 
 
@@ -54,7 +56,7 @@ def test_all_tools_registered_in_company_toolset():
 
     for name in TOOLS:
         assert registry.get_toolset_for_tool(name) == "company"
-    assert len(TOOLS) == 39
+    assert len(TOOLS) == 47
     assert sorted(TOOLS) == sorted(COMPANY_TOOL_NAMES)  # spec validation and registry cannot drift
 
 

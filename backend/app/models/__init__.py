@@ -34,6 +34,14 @@ from app.models.purchasing import (
     PurchaseRequest,
     Subscription,
 )
+from app.models.radar import (
+    RadarBrief,
+    RadarHostState,
+    RadarIdea,
+    RadarItem,
+    RadarKeyword,
+    RadarSource,
+)
 from app.models.reachability import (
     CompanyDomain,
     ConnectedAccount,
@@ -102,6 +110,12 @@ __all__ = [
     "Project",
     "ProjectRepository",
     "PurchaseRequest",
+    "RadarBrief",
+    "RadarHostState",
+    "RadarIdea",
+    "RadarItem",
+    "RadarKeyword",
+    "RadarSource",
     "RateLimitHit",
     "RepoItem",
     "RepoPullRequest",

@@ -361,6 +361,10 @@ def test_builtin_schedules_exist_from_the_start(app, client, w):
         "daily-budget-review",
         "daily-reflection",
         "skills-review",
+        # M16 radar routines (the ui-inspiration one waits for a Product Designer)
+        "market-radar",
+        "ideas-triage",
+        "weekly-self-critique",
     }
     hb = by_name["heartbeat"]
     assert (

@@ -1,0 +1,1 @@
+[{"short_id": "abc123", "title": "A Lobsters story", "url": "https://lob.example.test/s", "comments_url": "https://lobste.rs/s/abc123", "description": "<p>desc</p>", "submitter_user": {"username": "alice"}, "created_at": "2026-10-27T05:00:00.000-05:00", "score": 31, "comment_count": 4, "tags": ["ai"]}]

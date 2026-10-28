@@ -99,6 +99,17 @@ export const KNOWN_EVENT_TYPES = [
   'command.updated',
   // M14 GitHub-backed projects (sync state, pull requests, intake)
   'repository.updated',
+  // M16 market radar: briefs, items and idea decisions have their own events; fetches, sources and keywords
+  // arrive as `activity` events whose action starts with `radar.` (handled below).
+  'radar.brief.created',
+  'radar.item.updated',
+  'radar.idea.created',
+  'radar.idea.accepted',
+  'radar.idea.rejected',
+  'radar.idea.reopened',
+  'radar.idea.merged',
+  'radar.idea.done',
+  'radar.idea.expired',
 ] as const
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null)
@@ -173,7 +184,8 @@ export function effectsForEvent(cid: string, ev: CompanyEvent): CacheEffect[] {
     case 'approval.decided':
       return [inv(qk.approvalsAll(cid)), inv(qk.tasksAll(cid))]
     case 'activity':
-      return [inv(qk.activityAll(cid))]
+      // M16: a source, keyword or fetch change is only announced as an audit event named `radar.*`.
+      return typeof p.action === 'string' && p.action.startsWith('radar.') ? [inv(qk.activityAll(cid)), inv(qk.radarAll(cid))] : [inv(qk.activityAll(cid))]
     case 'budget.changed':
     case 'policy.updated':
       // The AI setup (management model, work mode) lives in the policy: the gate re-reads it.
@@ -259,6 +271,20 @@ export function effectsForEvent(cid: string, ev: CompanyEvent): CacheEffect[] {
       return [inv(qk.commandFeed(cid)), inv(qk.notesAll(cid))]
     case 'repository.updated':
       return [inv(qk.reposAll(cid)), inv(qk.activityAll(cid))]
+    // M16 market radar: briefs, items and idea decisions refresh the radar views; a brief also adds an artifact, and an
+    // idea that became work also touches tasks, projects and goals.
+    case 'radar.item.updated':
+      return [inv(qk.radarAll(cid))]
+    case 'radar.brief.created':
+      return [inv(qk.radarAll(cid)), inv(qk.artifactsAll(cid)), inv(qk.activityAll(cid))]
+    case 'radar.idea.created':
+    case 'radar.idea.accepted':
+    case 'radar.idea.rejected':
+    case 'radar.idea.reopened':
+    case 'radar.idea.merged':
+    case 'radar.idea.done':
+    case 'radar.idea.expired':
+      return [inv(qk.radarAll(cid)), inv(qk.tasksAll(cid)), inv(qk.goals(cid)), inv(qk.projects(cid)), inv(qk.activityAll(cid))]
     default:
       return []
   }

@@ -504,6 +504,14 @@ def test_hr_gets_the_hiring_tools_and_workers_get_a_lean_set(env):
         "company_request_help",
         "company_propose_memory",
         "company_request_purchase",
+        # M16: a research-family employee gets the radar tools (app/radar/access.py)
+        "company_radar_digest",
+        "company_radar_read",
+        "company_radar_brief",
+        "company_radar_propose",
+        "company_radar_keywords",
+        "company_radar_add_source",
+        "company_radar_ui_search",
     ]
     assert seen["toolsets"] == ["company", "file", "web", "search", "skills", "todo"]
     assert "skills_manage" not in seen["toolsets"]

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>arXiv Query</title>
+  <entry>
+    <id>http://arxiv.org/abs/2610.01234v1</id>
+    <title>Multi-agent planning at scale</title>
+    <summary>We study planning among LLM agents.</summary>
+    <published>2026-10-26T17:59:00Z</published>
+    <author><name>A. Researcher</name></author>
+    <link href="http://arxiv.org/abs/2610.01234v1" rel="alternate" type="text/html"/>
+  </entry>
+</feed>

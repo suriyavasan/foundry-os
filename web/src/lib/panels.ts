@@ -29,6 +29,8 @@ export const SIMPLE_PANELS = [
   'command-center',
   'repos',
   'wallet',
+  // M16 radar
+  'radar',
 ] as const
 export type SimplePanel = (typeof SIMPLE_PANELS)[number]
 
@@ -125,6 +127,7 @@ export const PANEL_TITLE: Record<SimplePanel, string> = {
   'command-center': 'Command Center',
   repos: 'Repositories',
   wallet: 'Agent cards',
+  radar: 'Radar',
 }
 
 const LEGACY_AREAS: Record<string, SimplePanel | null> = {

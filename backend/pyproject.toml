@@ -25,6 +25,8 @@ dependencies = [
     "rich>=13.7",
     "segno>=1.6",
     "webauthn>=3.0.1",
+    # M16 radar: feed XML is parsed with defusedxml (no entities, no external DTDs).
+    "defusedxml>=0.7.1",
 ]
 
 [dependency-groups]

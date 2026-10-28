@@ -1,4 +1,5 @@
 import type { ApprovalKind, AutonomyMode, CompanyPolicy, ModelRouting, RoleFamily, UpdatePolicyRequest } from '@/api/types'
+import type { RadarPolicyFields } from '@/api/radar'
 import type { PurchasePolicyFields } from '@/api/wallet'
 import { microsToUsdString, parseBudgetInput } from '@/lib/money'
 
@@ -400,6 +401,92 @@ export function diffM15(m: M15FormValues, saved?: CompanyPolicy): Partial<Purcha
   return out
 }
 
+
+/* ------------------------------ Milestone 16 fields (market radar) ------------------------------ */
+
+export type M16BoolKey = 'radar_enabled' | 'self_critique_enabled' | 'radar_auto_accept' | 'radar_agent_sources'
+export const M16_BOOL_FIELDS: Array<{ key: M16BoolKey; label: string; hint: string }> = [
+  { key: 'radar_enabled', label: 'Read the outside world every day', hint: 'Master switch. Off: no sources are fetched and the radar routines stay quiet.' },
+  { key: 'self_critique_enabled', label: 'Let the company criticise its own work every week', hint: 'A weekly review of what the company built, which turns into ideas.' },
+  { key: 'radar_auto_accept', label: 'The AI Co-founder may accept ideas into work', hint: 'Off: every idea waits for you to accept or reject it on the Radar.' },
+  { key: 'radar_agent_sources', label: 'Agents may add sources', hint: 'On: an agent can add a public RSS or Atom feed (at most 20). Off: it can only suggest one, disabled until you enable it.' },
+]
+
+export type M16NumberKey = 'radar_max_fetches_per_day' | 'radar_max_items_per_day' | 'radar_max_ideas_per_day' | 'radar_max_open_ideas' | 'radar_max_goals_per_week'
+export const M16_NUMBER_FIELDS: Array<{ key: M16NumberKey; label: string; hint: string; min: number; max: number }> = [
+  { key: 'radar_max_fetches_per_day', label: 'Fetches per day', hint: 'Web requests the control plane makes for this company each day, robots.txt and redirects included. 0 stops fetching.', min: 0, max: 100_000 },
+  { key: 'radar_max_items_per_day', label: 'Stored items per day', hint: 'More than this and only the highest-scoring items are kept. 0 stores nothing.', min: 0, max: 100_000 },
+  { key: 'radar_max_ideas_per_day', label: 'New ideas per day', hint: 'Ideas agents may add each day. 0 stops them.', min: 0, max: 100 },
+  { key: 'radar_max_open_ideas', label: 'Open ideas at most', hint: 'Agents cannot add ideas while this many wait for a decision.', min: 0, max: 1000 },
+  { key: 'radar_max_goals_per_week', label: 'Goals from ideas per week', hint: 'How many new goals the AI Co-founder may start from ideas each week. 0 means none.', min: 0, max: 20 },
+]
+
+/** Radar values as typed, only for the fields the backend reported (same rule as M6, M12 and M15). */
+export interface M16FormValues extends Partial<Record<M16BoolKey, boolean>>, Partial<Record<M16NumberKey, string>> {
+  /** The address that goes into the fetcher's User-Agent. Blank = none. */
+  radar_contact_email?: string
+}
+
+export const hasM16Fields = (m16: M16FormValues): boolean => Object.keys(m16).length > 0
+
+function m16ToForm(src: CompanyPolicy): M16FormValues {
+  const p = src as CompanyPolicy & RadarPolicyFields
+  const m: M16FormValues = {}
+  for (const f of M16_BOOL_FIELDS) {
+    const v = p[f.key]
+    if (v !== undefined) m[f.key] = v
+  }
+  for (const f of M16_NUMBER_FIELDS) {
+    const v = p[f.key]
+    if (v !== undefined) m[f.key] = String(v)
+  }
+  if (p.radar_contact_email !== undefined) m.radar_contact_email = p.radar_contact_email ?? ''
+  return m
+}
+
+// One plain address (it goes into an HTTP header): the server refuses anything else, so say so before the save.
+const EMAIL_RE = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/
+
+export function validateM16(m: M16FormValues): PolicyFormErrors {
+  const e: PolicyFormErrors = {}
+  for (const f of M16_NUMBER_FIELDS) {
+    const raw = m[f.key]
+    if (raw === undefined) continue
+    const t = raw.trim()
+    if (!/^\d+$/.test(t) || !Number.isSafeInteger(Number(t))) e[f.key] = 'Enter a whole number'
+    else if (Number(t) < f.min) e[f.key] = `At least ${f.min}`
+    else if (Number(t) > f.max) e[f.key] = `At most ${f.max.toLocaleString('en-US')}`
+  }
+  if (m.radar_contact_email !== undefined) {
+    const t = m.radar_contact_email.trim()
+    if (t.length > 200) e.radar_contact_email = 'At most 200 characters'
+    else if (t !== '' && !EMAIL_RE.test(t)) e.radar_contact_email = 'Enter one plain e-mail address, like you@example.com'
+  }
+  return e
+}
+
+/** The PATCH body for what changed. A blank contact address clears it (null). */
+export function diffM16(m: M16FormValues, saved?: CompanyPolicy): Partial<RadarPolicyFields> {
+  const p = saved as (CompanyPolicy & RadarPolicyFields) | undefined
+  const out: Partial<RadarPolicyFields> = {}
+  const changed = <T,>(next: T, prev: T | undefined) => !p || prev === undefined || next !== prev
+  for (const f of M16_BOOL_FIELDS) {
+    const v = m[f.key]
+    if (v !== undefined && changed(v, p?.[f.key])) out[f.key] = v
+  }
+  for (const f of M16_NUMBER_FIELDS) {
+    const raw = m[f.key]
+    if (raw === undefined) continue
+    const n = Number(raw)
+    if (raw.trim() !== '' && Number.isFinite(n) && changed(n, p?.[f.key])) out[f.key] = n
+  }
+  if (m.radar_contact_email !== undefined) {
+    const v = m.radar_contact_email.trim() === '' ? null : m.radar_contact_email.trim()
+    if (!p || p.radar_contact_email === undefined ? true : v !== p.radar_contact_email) out.radar_contact_email = v
+  }
+  return out
+}
+
 export interface PolicyFormValues {
   autonomy_mode: AutonomyMode
   human_approval_required_for: ApprovalKind[]
@@ -411,6 +498,7 @@ export interface PolicyFormValues {
   m6: M6FormValues
   m12: M12FormValues
   m15: M15FormValues
+  m16: M16FormValues
 }
 
 export type PolicyFormErrors = Partial<Record<string, string>>
@@ -429,6 +517,7 @@ export function policyToForm(p: CompanyPolicy): PolicyFormValues {
     m6: m6ToForm(p),
     m12: m12ToForm(p),
     m15: m15ToForm(p),
+    m16: m16ToForm(p),
   }
 }
 
@@ -448,7 +537,7 @@ export function validatePolicyForm(v: PolicyFormValues, saved?: CompanyPolicy): 
     else if (Number(raw) < f.min) e[f.key] = `At least ${f.min}`
     else if (!Number.isSafeInteger(Number(raw))) e[f.key] = 'Too large'
   }
-  return { ...e, ...validateM6(v.m6), ...validateM12(v.m12, v.limits, saved), ...validateM15(v.m15) }
+  return { ...e, ...validateM6(v.m6), ...validateM12(v.m12, v.limits, saved), ...validateM15(v.m15), ...validateM16(v.m16) }
 }
 
 const sameSet = (a: string[], b: string[]) => a.length === b.length && [...a].sort().join('|') === [...b].sort().join('|')
@@ -471,5 +560,5 @@ export function diffPolicy(v: PolicyFormValues, p: CompanyPolicy): UpdatePolicyR
   }
   const providers = v.allowed_model_providers.map((s) => s.trim()).filter(Boolean)
   if (!sameList(providers, p.allowed_model_providers)) out.allowed_model_providers = providers
-  return { ...out, ...diffM6(v.m6, p), ...diffM12(v.m12, p), ...(diffM15(v.m15, p) as UpdatePolicyRequest) }
+  return { ...out, ...diffM6(v.m6, p), ...diffM12(v.m12, p), ...(diffM15(v.m15, p) as UpdatePolicyRequest), ...(diffM16(v.m16, p) as UpdatePolicyRequest) }
 }

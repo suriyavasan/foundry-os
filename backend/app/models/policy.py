@@ -25,6 +25,12 @@ DEFAULT_PURCHASE_TOLERANCE_BPS = 1000
 DEFAULT_PURCHASE_TOLERANCE_MIN_MICROS = 2_000_000
 DEFAULT_PURCHASE_CARD_TTL_HOURS = 72
 DEFAULT_SUBSCRIPTION_RENEWAL_ALERT_DAYS = 7
+# M16 radar defaults (docs/specs/m16: owner decisions).
+DEFAULT_RADAR_MAX_FETCHES_PER_DAY = 2000
+DEFAULT_RADAR_MAX_ITEMS_PER_DAY = 400
+DEFAULT_RADAR_MAX_IDEAS_PER_DAY = 5
+DEFAULT_RADAR_MAX_OPEN_IDEAS = 25
+DEFAULT_RADAR_MAX_GOALS_PER_WEEK = 1
 
 
 class CompanyPolicy(Base):
@@ -241,6 +247,60 @@ class CompanyPolicy(Base):
         server_default=str(DEFAULT_SUBSCRIPTION_RENEWAL_ALERT_DAYS),
         nullable=False,
     )
+    # M16 market radar (all human-only; an agent can never change them). ``radar_enabled`` is on
+    # for a new company (the Python default) and off for companies that existed before the
+    # migration, which sets the column to false for them (docs/specs/m16, owner decision 1).
+    radar_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true(), nullable=False
+    )
+    # Control-plane HTTP requests per company per day (robots.txt and redirects count).
+    radar_max_fetches_per_day: Mapped[int] = mapped_column(
+        Integer,
+        default=DEFAULT_RADAR_MAX_FETCHES_PER_DAY,
+        server_default=str(DEFAULT_RADAR_MAX_FETCHES_PER_DAY),
+        nullable=False,
+    )
+    # Stored items per company per day; overflow keeps the highest scores.
+    radar_max_items_per_day: Mapped[int] = mapped_column(
+        Integer,
+        default=DEFAULT_RADAR_MAX_ITEMS_PER_DAY,
+        server_default=str(DEFAULT_RADAR_MAX_ITEMS_PER_DAY),
+        nullable=False,
+    )
+    # Agent-created ideas per day, and the number of open ideas.
+    radar_max_ideas_per_day: Mapped[int] = mapped_column(
+        Integer,
+        default=DEFAULT_RADAR_MAX_IDEAS_PER_DAY,
+        server_default=str(DEFAULT_RADAR_MAX_IDEAS_PER_DAY),
+        nullable=False,
+    )
+    radar_max_open_ideas: Mapped[int] = mapped_column(
+        Integer,
+        default=DEFAULT_RADAR_MAX_OPEN_IDEAS,
+        server_default=str(DEFAULT_RADAR_MAX_OPEN_IDEAS),
+        nullable=False,
+    )
+    # The AI Co-founder (not only a human) may accept ideas into work.
+    radar_auto_accept: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true(), nullable=False
+    )
+    # Goals the Co-founder may create from ideas per week.
+    radar_max_goals_per_week: Mapped[int] = mapped_column(
+        Integer,
+        default=DEFAULT_RADAR_MAX_GOALS_PER_WEEK,
+        server_default=str(DEFAULT_RADAR_MAX_GOALS_PER_WEEK),
+        nullable=False,
+    )
+    # Agents may add feed sources (max 20, origin ``agent``); false = they can only suggest.
+    radar_agent_sources: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true(), nullable=False
+    )
+    # The weekly self-critique routine.
+    self_critique_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true(), nullable=False
+    )
+    # Owner contact appended to the radar User-Agent (NULL = none).
+    radar_contact_email: Mapped[str | None] = mapped_column(String(200))
     budget_lock_version: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)

@@ -11,13 +11,17 @@ from datetime import datetime
 
 from app.engine.context import EngineContext
 from app.engine.executor import RunExecutor
+
+# M16 radar
+from app.radar import JOB_KIND as RADAR_JOB_KIND
+from app.radar import jobs as radar_jobs
 from app.services import jobs, repo_sync
 from app.services import skills as skills_service
 from app.services.companies import SEED_JOB_KIND
 
 logger = logging.getLogger("company_os.worker")
 
-JOB_KINDS = ("execute_run", SEED_JOB_KIND, *repo_sync.JOB_KINDS)
+JOB_KINDS = ("execute_run", SEED_JOB_KIND, *repo_sync.JOB_KINDS, RADAR_JOB_KIND)  # M16 radar
 LEASE_SECONDS = 60
 POLL_SECONDS = 0.5
 SHUTDOWN_GRACE_SECONDS = 10.0
@@ -57,6 +61,8 @@ class Worker:
                 self._seed_skill_library(str(job.payload["company_id"]))
             elif job.kind in repo_sync.JOB_KINDS:  # M14: clone / sync a GitHub-backed project
                 repo_sync.run_job(ctx, job, self.worker_id)
+            elif job.kind == RADAR_JOB_KIND:  # M16 radar: poll the due sources of one company
+                radar_jobs.run_job(ctx, job, self.worker_id)
             else:
                 raise ValueError(f"unknown job kind {job.kind!r}")
         except Exception as exc:

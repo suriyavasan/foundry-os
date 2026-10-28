@@ -17,6 +17,10 @@ from sqlalchemy.orm import Session
 from app.guardrails import registry
 from app.models.guardrails import RateLimitHit
 
+# M16 radar: the keys live in ``app.radar`` (importing it is free), so this file does not depend on
+# ``registry.py``, which another work package edits.
+from app.radar import RADAR_FETCH_NOW_KEY, RADAR_FETCHES_KEY, RADAR_SOURCE_TESTS_KEY
+
 HOUR = 3600
 DAY = 86_400
 
@@ -45,6 +49,11 @@ LIMITS: dict[str, Limit] = {
         Limit(registry.GITHUB_WRITES, HOUR, per_agent=10, per_company=30),
         Limit(registry.GITHUB_PUSHES, HOUR, per_agent=20, per_company=60),
         Limit(registry.PURCHASE_REQUESTS, DAY, per_agent=5, per_company=20),
+        # M16 radar. The real daily budget is the owner's ``radar_max_fetches_per_day`` policy
+        # value, which the fetch job passes in; the figure here is only the default ceiling.
+        Limit(RADAR_FETCHES_KEY, DAY, per_agent=2000, per_company=2000),
+        Limit(RADAR_SOURCE_TESTS_KEY, HOUR, per_agent=10, per_company=10),
+        Limit(RADAR_FETCH_NOW_KEY, HOUR, per_agent=6, per_company=6),
     )
 }
 RETENTION = timedelta(days=2)

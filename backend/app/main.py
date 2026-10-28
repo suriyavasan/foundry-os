@@ -38,6 +38,7 @@ from app.api.routes import (
     policy,
     projects,
     providers,
+    radar,  # M16 radar
     reachability,
     reflections,
     repositories,
@@ -302,6 +303,7 @@ def create_app(
         wallet.router,
         agent_api.router,
         agent_repo.router,
+        radar.router,  # M16 radar
     ):
         app.include_router(router, prefix="/api")
     return app

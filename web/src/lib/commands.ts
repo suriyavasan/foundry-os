@@ -98,6 +98,11 @@ export interface CommandContext {
   repositories?: boolean
 }
 
+/** M16: extra search words for panels whose title does not say what is inside. */
+const PANEL_KEYWORDS: Partial<Record<(typeof SIMPLE_PANELS)[number], string[]>> = {
+  radar: ['market', 'competitors', 'critique', 'ideas', 'briefs', 'feed', 'sources', 'keywords', 'self-critique', 'inspiration'],
+}
+
 export function buildCommands(ctx: CommandContext): PaletteCommand[] {
   const out: PaletteCommand[] = []
   out.push({ id: 'act:hire', group: 'Actions', label: 'Propose a hire', keywords: ['new agent', 'employee', 'add'], action: { type: 'create', what: 'hire' } })
@@ -140,7 +145,7 @@ export function buildCommands(ctx: CommandContext): PaletteCommand[] {
   )
   for (const kind of SIMPLE_PANELS) {
     if (kind === 'repos' && ctx.repositories === false) continue
-    out.push({ id: `panel:${kind}`, group: 'Panels', label: `Open ${PANEL_TITLE[kind]}`, keywords: [kind, 'go', 'show'], action: { type: 'panel', panel: { kind } } })
+    out.push({ id: `panel:${kind}`, group: 'Panels', label: `Open ${PANEL_TITLE[kind]}`, keywords: [kind, 'go', 'show', ...(PANEL_KEYWORDS[kind] ?? [])], action: { type: 'panel', panel: { kind } } })
   }
   for (const a of ctx.agents) {
     if (a.status === 'retired' || a.status === 'rejected') continue

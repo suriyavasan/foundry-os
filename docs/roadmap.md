@@ -40,6 +40,7 @@ reachable from anywhere — without approving each step.*
 | M13 | Headless setup and a free public URL | `foundryos setup` (the whole onboarding in a terminal, resumable, scriptable with `--non-interactive` and `--secrets-stdin`); no browser on SSH or display-less boxes; Linux linger and macOS `user/` launchd fallback with LaunchDaemon hints; the Cloudflare quick tunnel as the free public URL with stored, audited, announced URL changes (`reach --watch`, `reach public start\|stop`, `public-url.json`); no passkeys on ephemeral origins; spec `specs/m13-headless-setup-and-public-url.md` | done (verified with fakes only) |
 | M14 | GitHub-backed projects | Onboarding asks for a new or an existing GitHub repository (fine-grained token, machine-user recommended); the project repository becomes a clone the control plane syncs (fetch, merge-not-rebase, never force-push); agents' work goes to GitHub through pull requests with internal review, CI evaluation and, for new repositories, automatic merge; issue triage, review comments, CI and security-alert fixes, stale-branch cleanup; push gate for secrets and workflow files; system GitHub operations pass the guardrail engine; spec `specs/m14-github-backed-projects.md` | done (verified with a fake GitHub API and local bare repositories only; no real GitHub) |
 | M15 | Agent cards and purchasing | Agents request purchases (`company_request_purchase`); a deterministic policy (bands all 0 by default, recurring and new vendors to a person, code ceilings), approval bound to the exact scope, per-purchase card from a provider adapter (`manual` / `stripe_issuing` / `mercury`) or the owner's own card, a human checkout task, verified expense on settlement, subscription tracking, freeze on stop/pause, a Wallet panel and widget on the canvas; the card number never touches Foundry; spec `specs/m15-agent-cards-and-purchasing.md`; decisions D45, D46 | done (verified with a fake card provider and recorded API responses only; no real Stripe Issuing or Mercury call) |
+| M16 | Self-critique and market radar | 100 seeded sources (57 fetched by a polite SSRF-guarded fetcher, 33 reached by agents through `site:` search, 10 off with a reason), keywords, an items feed, daily briefs, an ideas backlog with caps and duplicate checks, weekly self-critique and UI inspiration, a control-plane page reader, a Market Researcher role, four routines, watchdog D10, a Radar panel; spec `specs/m16-self-critique-and-market-radar.md`; decisions D47 to D49 | in progress: WP-2 (services, APIs, routines, runtime tools, docs) done and verified with fakes only; no real feed, Hacker News, One Page Love or Siteinspire call |
 
 Order: M3b ∥ M4-UI → M5 → M6 → M7 → M8 → M9. UI for each milestone ships with it.
 
@@ -70,6 +71,13 @@ detection, circuit breaker and emergency stop. Agents can never change their own
   require the Founder's approval by default (configurable).
 
 ## Status notes
+
+- **M16 status (2026-10-27):** the company reads the outside world and turns it into work. Sources are fetched by the
+  control plane (no model); the Market Researcher (the Co-founder until one is hired) writes a daily brief and proposes
+  ideas with evidence; the Co-founder accepts ideas into projects (one new goal a week at most); a weekly self-critique and
+  UI inspiration run for QA/Design. Outside text reaches agents only inside untrusted `content` fields. **Not run for
+  real:** any feed, Hacker News, One Page Love, Siteinspire or DuckDuckGo call. Details:
+  `specs/m16-self-critique-and-market-radar.md` section 8.
 
 - **M15 status (2026-10-27):** agents request purchases with `company_request_purchase`; a three-band policy (auto, AI
   Co-founder, human; all bands start at zero) decides; an approved purchase gets a single-use card with an exact limit

@@ -24,6 +24,7 @@ EXPECTED = {
     "project-lead": "generic",
     "marketing-lead": "marketing",
     "engineering-lead": "engineering",
+    "market-researcher": "research",  # M16
 }
 RUNTIME = REPO_DIR / "runtime"
 
@@ -41,6 +42,7 @@ def test_all_builtin_templates_load_and_cover_every_family():
 def test_company_authored_seed_skills_exist_and_are_wellformed():
     assert loader.company_seed_slugs() == [
         "hiring-playbook",
+        "market-radar-playbook",  # M16
         "sales-outreach-playbook",
         "support-triage",
         "writing-company-skills",

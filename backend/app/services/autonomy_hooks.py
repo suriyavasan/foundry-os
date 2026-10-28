@@ -46,6 +46,10 @@ def on_transition(
         _wake_for_blocked(db, task, principal, now)
     if target not in TERMINAL_TASK_STATUSES:
         return
+    if target == S.DONE:  # M16 radar: an accepted idea is done when its task is
+        from app.radar import ideas as radar_ideas
+
+        radar_ideas.on_task_done(db, task, principal)
     if task.kind == TaskKind.PLANNING and (task.idempotency_key or "").startswith(
         wakes.WAKE_KEY_PREFIX
     ):
@@ -271,6 +275,7 @@ def on_agent_activated(db: Session, agent: Agent, principal: Principal | None) -
     from app.services import projects as project_service
 
     builtin_schedules.ensure_ops_schedule(db, agent, principal)
+    builtin_schedules.ensure_radar_for_hire(db, agent, principal)  # M16 radar
     if agent.kind == "lead":  # a new lead takes the projects that wait for one
         for project in hiring.orphan_projects(db, agent.company_id):
             project_service.assign_lead(

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:media="http://search.yahoo.com/mrss/">
+  <channel>
+    <title>Example Blog</title>
+    <link>https://blog.example.test/</link>
+    <item>
+      <title>Why agent teams fail &amp; how to fix it</title>
+      <link>https://blog.example.test/agents-fail/?utm_source=rss&amp;ref=feed</link>
+      <guid isPermaLink="false">post-1</guid>
+      <pubDate>Mon, 27 Oct 2026 08:30:00 GMT</pubDate>
+      <dc:creator>Ada Writer</dc:creator>
+      <description>&lt;p&gt;Teams of agents drift. &lt;img src="https://img.example.test/cover.png"&gt; Read on.&lt;/p&gt;</description>
+      <media:content url="https://img.example.test/hero.jpg" medium="image"/>
+    </item>
+    <item>
+      <title>Plain post</title>
+      <link>https://blog.example.test/plain</link>
+      <description>No markup here.</description>
+      <content:encoded><![CDATA[<h2>Heading</h2><p>Body with <a href="x">link</a>.</p>]]></content:encoded>
+    </item>
+    <item>
+      <description>An item with neither a title nor a link is skipped.</description>
+    </item>
+  </channel>
+</rss>

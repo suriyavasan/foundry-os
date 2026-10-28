@@ -52,7 +52,9 @@ def test_overview_aggregates_reflect_real_work(client, company, scheduler, worke
 
 
 BUILTIN_SCHEDULES = (
-    6  # Co-founder heartbeat + 4 routines (incl. daily reflection), HR skills review
+    # Co-founder heartbeat + 4 routines (incl. daily reflection), HR skills review, and the three
+    # M16 radar routines (market-radar, ideas-triage, weekly-self-critique)
+    9
 )
 
 

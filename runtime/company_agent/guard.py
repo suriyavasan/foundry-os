@@ -88,21 +88,25 @@ def injection_categories(text: str) -> list[str]:
     return found[:MAX_FLAG_CATEGORIES]
 
 
-def tag_artifact_excerpts(payload: Any) -> Any:
-    """Wrap every ``excerpt`` (text of another agent's deliverable) in a context document and
-    flag injection phrases in it. Returns ``(payload, categories)``."""
+def tag_untrusted_fields(
+    payload: Any,
+    keys: tuple[str, ...],
+    source_of: Callable[[dict[str, Any]], str],
+) -> tuple[Any, list[str]]:
+    """Wrap every string under one of ``keys`` (anywhere in ``payload``) in ``<untrusted>`` tags whose
+    source is ``source_of(node)`` (the dict that holds the key), and flag injection phrases in it.
+    Returns ``(payload, categories)``; the input is not modified."""
     categories: list[str] = []
 
     def walk(node: Any) -> Any:
         if isinstance(node, dict):
             out = {}
             for key, value in node.items():
-                if key == "excerpt" and isinstance(value, str) and value.strip():
+                if key in keys and isinstance(value, str) and value.strip():
                     for c in injection_categories(value):
                         if c not in categories:
                             categories.append(c)
-                    label = node.get("id") or node.get("title") or "artifact"
-                    out[key] = wrap_untrusted(value, f"artifact:{label}")
+                    out[key] = wrap_untrusted(value, source_of(node))
                 else:
                     out[key] = walk(value)
             return out
@@ -111,6 +115,40 @@ def tag_artifact_excerpts(payload: Any) -> Any:
         return node
 
     return walk(payload), categories
+
+
+def tag_artifact_excerpts(payload: Any) -> Any:
+    """Wrap every ``excerpt`` (text of another agent's deliverable) in a context document and
+    flag injection phrases in it. Returns ``(payload, categories)``."""
+    return tag_untrusted_fields(
+        payload,
+        ("excerpt",),
+        lambda node: f"artifact:{node.get('id') or node.get('title') or 'artifact'}",
+    )
+
+
+def radar_source(node: dict[str, Any], default: str = "radar") -> str:
+    """The ``source`` label of a radar record's ``content``: ``radar:<source slug>`` for an item,
+    ``radar-idea:<id>`` for an idea, ``radar-brief:<id>`` for a brief theme, else ``default``."""
+    if node.get("source"):
+        return f"radar:{node['source']}"
+    if node.get("brief_id"):
+        return f"radar-brief:{node['brief_id']}"
+    if node.get("origin") and node.get("id"):
+        return f"radar-idea:{node['id']}"
+    if node.get("id"):
+        return f"{default}:{node['id']}"
+    return default
+
+
+RADAR_CONTENT_KEYS = ("content", "text", "excerpt")
+
+
+def tag_radar(payload: Any, default_source: str = "radar") -> tuple[Any, list[str]]:
+    """Wrap the outside text of a radar tool result (every ``content`` / ``text`` / ``excerpt``)."""
+    return tag_untrusted_fields(
+        payload, RADAR_CONTENT_KEYS, lambda node: radar_source(node, default_source)
+    )
 
 
 @dataclass

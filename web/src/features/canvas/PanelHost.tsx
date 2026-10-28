@@ -35,6 +35,7 @@ const CommandCenterPanel = lazy(() => import('@/features/commandcenter/CommandCe
 const RepositoriesPanel = lazy(() => import('@/features/repos/RepositoriesPanel').then((m) => ({ default: m.RepositoriesPanel })))
 const RepoPanel = lazy(() => import('@/features/repos/RepoPanel').then((m) => ({ default: m.RepoPanel })))
 const WalletPanel = lazy(() => import('@/features/wallet/WalletPanel').then((m) => ({ default: m.WalletPanel })))
+const RadarPanel = lazy(() => import('@/features/radar/RadarPanel').then((m) => ({ default: m.RadarPanel })))
 const SettingsPanel = lazy(() => import('@/features/settings/SettingsPanel').then((m) => ({ default: m.SettingsPanel })))
 
 /** Renders the drawer for the panel named in the URL. Remounts when the panel changes. */
@@ -75,6 +76,8 @@ function PanelSwitch({ panel }: { panel: NonNullable<ReturnType<typeof useCanvas
       return <SettingsPanel key={key} />
     case 'wallet':
       return <WalletPanel key={key} />
+    case 'radar':
+      return <RadarPanel key={key} />
     case 'integrations':
       return <IntegrationsPanel key={key} />
     case 'goals':

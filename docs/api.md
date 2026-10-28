@@ -1806,3 +1806,48 @@ also writes `policy.updated`. Event: `repository.updated {repository_id}`.
 
 **Verified and not verified (WP-C).** Verified against the GitHub fake and a local git remote (`backend/tests/test_m14_*.py`): every route above, tenancy and roles, the refusals, the local-history handling, the webhook signature
 path and the review rules. Not verified: any request against real GitHub (permission names, the organisation-approval and SSO answers, the hook API), the clone job itself (worker, WP-B).
+
+## Milestone 16 — Market radar (`/api/companies/{cid}/radar`, `/api/agent/v1/radar`)
+
+Schemas: `backend/app/schemas/radar.py`. Spec: `specs/m16-self-critique-and-market-radar.md`. Lists are `{items, next_cursor}`
+(keywords: one capped page, `next_cursor` null). Members and viewers read; owners and admins write; an agent's run token on
+an owner route is `403`; non-members and other companies' ids are `404`. Every write is audited (`radar.*`) and emits
+`radar.*` events.
+
+### Owner routes
+
+| Method and path | Purpose |
+|---|---|
+| `GET /radar` | `RadarStatus`: `enabled`, `self_critique_enabled`, source counts per category (`sources_fetched`, `sources_search_only`), item counts by status plus `flagged`, `open_ideas`, `ideas_accepted_this_week`, `last_fetched_at`, `last_brief_at`, `failing_sources`, `runner_role` (`market_researcher` \| `cofounder` \| `none`), `search_queries_per_day` |
+| `GET /radar/sources` (`category`, `enabled`, `origin`), `POST`, `GET/PATCH/DELETE /radar/sources/{id}` | registry; `read_via` is `fetch` or `web_search`; a seed is disabled, never deleted (`409`) |
+| `POST /radar/sources/{id}/test`, `POST /radar/sources/reseed`, `POST /radar/fetch-now` (`202`) | one fetch without storing (10 an hour), insert missing seeds, enqueue a fetch job (6 an hour) |
+| `GET/POST /radar/keywords`, `PATCH/DELETE /radar/keywords/{id}`, `POST /radar/keywords/derive` | keywords (`kind` product, competitor, topic, negative; `origin` derived, owner, agent) |
+| `GET /radar/items` (`source`, `category`, `status`, `q`, `flagged`), `PATCH /radar/items/{id}` | the feed; `{status: "dismissed" \| "new"}`; `flagged` = instruction-like text was found (`injection_flags`) |
+| `GET /radar/briefs` (`kind`), `GET /radar/briefs/{id}` | briefs; the detail adds the cited `items` and the `ideas` the author proposed in that run |
+| `GET /radar/ideas` (`status`, `kind`, `origin`), `POST`, `GET /radar/ideas/{id}` | the backlog; `POST` creates an owner idea |
+| `PATCH /radar/ideas/{id}` | `{action: accept \| reject \| merge \| reopen, project_id?, merge_into_id?, note?}`; accept creates the work task |
+
+Policy fields (human-only, `PATCH /policy`, `radar_policy.updated` audit): `radar_enabled`, `radar_max_fetches_per_day`,
+`radar_max_items_per_day`, `radar_max_ideas_per_day`, `radar_max_open_ideas`, `radar_auto_accept`,
+`radar_max_goals_per_week`, `radar_agent_sources`, `self_critique_enabled`, `radar_contact_email`.
+
+### Agent routes (run token; registered actions, fail closed)
+
+| Route | Action (tier) | Tool |
+|---|---|---|
+| `GET /radar/digest` (`kind`, `category`, `since`, `status`, `limit` <= 60) | `radar.read` (read) | `company_radar_digest` |
+| `POST /radar/read` `{url, item_id?}` | `radar.page_read` (external_read, `web_fetches_per_hour`) | `company_radar_read` |
+| `POST /radar/briefs` | `radar.brief` (internal_write) | `company_radar_brief` |
+| `POST /radar/ideas`, `POST /radar/ideas/{id}/decide` | `radar.idea.create` (internal_write, `tasks_created_per_hour`), `radar.idea.decide` | `company_radar_propose`, `company_radar_decide` |
+| `POST /radar/ui-search` | `radar.ui_search` (external_read, `web_fetches_per_hour`) | `company_radar_ui_search` |
+| `POST /radar/keywords`, `PATCH /radar/keywords/{id}` | `radar.keyword.manage` (internal_write) | `company_radar_keywords` |
+| `POST /radar/sources` | `radar.source.add` (external_read) | `company_radar_add_source` |
+
+Outside text is only in fields named `content`. Errors: `409 duplicate_idea` (`details.existing_kind`, `existing_id`),
+`409 brief_exists` (`details.existing_brief_id`), `409 limit_exceeded` (`details.limit` is `radar_max_ideas_per_day`,
+`radar_max_open_ideas`, `radar_max_goals_per_week` or an M12 cap), `409 radar_disabled`, `403 robots_disallowed`,
+`403` with `details.reason` `flagged_item` (read a flagged item's page without naming it) or `flagged_text` (an agent
+accepting an idea whose text looks like instructions), `429` with `details.key = radar_search_queries_per_day`.
+
+**Verified and not verified (M16 WP-2).** Verified with fakes: every route, role and refusal above, the page reader, the
+UI-search parsers (JSON and SSE fixtures) and the routines. Not verified: any real feed or service response.

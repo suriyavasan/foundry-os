@@ -71,6 +71,14 @@
     "company_revise_reflection": {"action": "reflection.revise"},
     "company_review_pull_request": {"action": "repo.pr.review"},
     "company_request_purchase": {"action": "purchase.request"},
-    "company_review_subscription": {"action": "subscription.review"}
+    "company_review_subscription": {"action": "subscription.review"},
+    "company_radar_digest": {"action": "radar.read"},
+    "company_radar_read": {"action": "radar.page_read"},
+    "company_radar_brief": {"action": "radar.brief"},
+    "company_radar_propose": {"action": "radar.idea.create"},
+    "company_radar_decide": {"action": "radar.idea.decide"},
+    "company_radar_keywords": {"action": "radar.keyword.manage"},
+    "company_radar_ui_search": {"action": "radar.ui_search"},
+    "company_radar_add_source": {"action": "radar.source.add"}
   }
 }

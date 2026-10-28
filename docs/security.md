@@ -355,3 +355,31 @@ reachable from agent-visible files. Other limits: LFS is not supported; GitHub c
 comments, CI logs) is untrusted input and is handed to agents only in `<untrusted>` blocks; a stolen
 token is as powerful as its permissions, so rotate it from Integrations if in doubt (a revoked token
 puts the repository in `auth_failed`, local work continues and nothing is lost).
+
+## 8. Market radar (M16)
+
+The radar reads the open internet, the most hostile input the company has. Layers, each enforced in code:
+
+* **Fetching** is done by the control plane, never by an agent: `GuardedTransport(PUBLIC_ONLY)` (no private, link-local,
+  metadata or reserved address; every redirect re-checked, at most 3, no https to http), robots.txt honoured per host with a
+  24 h cache, per-host spacing, size and time caps, XML through `defusedxml`, a daily request budget
+  (`radar_max_fetches_per_day`), the emergency stop and company pause checked before each request.
+* **Page reading** (`company_radar_read`) uses the same fetcher for any agent with the web toolset (and the Co-founder): HTML
+  only, 1 MB, 12,000 characters of plain text back, https image URLs only. A page that belongs to a radar item flagged for
+  instruction-like text is read only when the agent names that item.
+* **Text** is stored plain (tags, control and bidi characters stripped; `<untrusted` neutralised) and flagged. In the agent
+  API it appears only in `content` fields; the runtime wraps each in `<untrusted source=...>` and reports flags. It never
+  rides in a task description, a schedule template or the M12 digest, which carry counts only. Ideas are agent-written from
+  outside text, so they are wrapped the same way when another agent reads them, and an idea whose text trips the detector
+  can only be accepted by a person.
+* **Authority.** Agents cannot change `radar_*` policy, owner or derived keywords, or owner sources (403, audited); agent
+  feeds are validated by a test fetch, labelled "Added by an agent", capped at 20 and stored disabled when the owner has
+  turned `radar_agent_sources` off. Accepting an idea creates tasks through the M12 core (all caps); a new goal needs the
+  Co-founder, `radar_auto_accept` and the weekly cap. Search: 4 `web_search` queries a day in the radar routine, enforced
+  at `/guardrails/check-tool`.
+* **Privacy.** `company_radar_ui_search` sends the query and the server's IP to One Page Love (fallback Siteinspire), which
+  say they log them. A guardrail `deny` rule on `radar.ui_search` turns it off. The Content-Security-Policy still blocks
+  third-party images in the UI. `web_search` through DuckDuckGo has no API agreement.
+* **Residual risk.** Detection is pattern based; a model can still be persuaded by text it reads, which is why nothing a
+  radar item says can reach a permission, budget or approval, and why every effect is bounded by caps. Terms of service of
+  sites differ from robots.txt: the seed enables only sources with an allowing robots.txt and a public feed or documented API.

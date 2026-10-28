@@ -101,6 +101,16 @@ def _create_hr_agent(db: Session, company_id: str, founder: Agent, principal: Pr
     return hr
 
 
+def _seed_radar(db: Session, company_id: str, principal: Principal) -> None:
+    """M16: the company's own copy of the 100 seed sources and the keywords its profile implies
+    (deterministic, no model). The radar is on for a new company (the policy default)."""
+    from app.radar import keywords as radar_keywords
+    from app.radar import seed as radar_seed
+
+    radar_seed.seed_company(db, company_id)
+    radar_keywords.apply_derived(db, company_id, principal=principal)
+
+
 def create_company(db: Session, principal: Principal, data: CompanyCreate) -> Company:
     if not principal.is_human:
         raise Forbidden("Only human users can create companies")
@@ -146,6 +156,7 @@ def create_company(db: Session, principal: Principal, data: CompanyCreate) -> Co
         data={"founder_agent_id": founder.id, "slug": company.slug},
     )
     _create_hr_agent(db, company.id, founder, principal)
+    _seed_radar(db, company.id, principal)  # M16 radar: before the routines that read it
     builtin_schedules.ensure_company_builtins(db, company.id, principal)
     # The skill library is imported by the worker (scans take a while; creation stays fast).
     jobs.enqueue(

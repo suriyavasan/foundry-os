@@ -21,6 +21,7 @@ from app.runtimes.scripted import ScriptedRuntime
 from app.skills.env import SkillsEnv
 from tests.helpers import FakeClock
 from tests.m15_helpers import no_card_network  # noqa: F401  (autouse: no Stripe/Mercury calls)
+from tests.radar.conftest import no_radar_network  # noqa: F401  # M16 radar: offline fetcher
 
 
 def alembic_config(db_url: str) -> Config:

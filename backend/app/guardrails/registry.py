@@ -134,6 +134,35 @@ _API_ACTIONS = [
     _a("schedule.update", T.ORG_CHANGE, "Update a schedule"),
     # The route of every provider action; the real action (and tier) comes from the body.
     _a("provider.action", T.EXTERNAL_COMMUNICATION, "Run a provider action (see PROVIDER_ACTIONS)"),
+    # M16 radar: reading the outside world and turning it into ideas. An agent can never change
+    # the radar policy, an owner's sources or keywords; accepted ideas become M12 tasks.
+    _a("radar.read", T.READ, "Read the radar digest, open ideas and today's caps"),
+    _a(
+        "radar.page_read",
+        T.EXTERNAL_READ,
+        "Read one public web page through the control plane (SSRF-guarded, robots.txt honoured)",
+        rate_keys=(WEB_FETCHES,),
+    ),
+    _a("radar.brief", T.INTERNAL_WRITE, "Write a radar brief (one per kind per day)"),
+    _a(
+        "radar.idea.create",
+        T.INTERNAL_WRITE,
+        "Propose a radar idea with evidence",
+        rate_keys=(TASKS_CREATED,),
+    ),
+    _a("radar.idea.decide", T.INTERNAL_WRITE, "Accept, reject or merge a radar idea"),
+    _a(
+        "radar.ui_search",
+        T.EXTERNAL_READ,
+        "Search design references (One Page Love, Siteinspire public MCP)",
+        rate_keys=(WEB_FETCHES,),
+    ),
+    _a("radar.keyword.manage", T.INTERNAL_WRITE, "Add or change agent radar keywords"),
+    _a(
+        "radar.source.add",
+        T.EXTERNAL_READ,
+        "Propose an RSS/Atom/JSON source (validated by a test fetch)",
+    ),
 ]
 
 # Actions performed by the control plane with a stored credential (framework in M6, real providers
@@ -519,6 +548,16 @@ _ROUTES = [
     RouteSpec("POST", "/purchases", "purchase.request"),
     RouteSpec("GET", "/purchases/{purchase_id}", "purchase.read"),
     RouteSpec("POST", "/subscriptions/{subscription_id}/review", "subscription.review"),
+    # M16 radar
+    RouteSpec("GET", "/radar/digest", "radar.read"),
+    RouteSpec("POST", "/radar/read", "radar.page_read"),
+    RouteSpec("POST", "/radar/briefs", "radar.brief"),
+    RouteSpec("POST", "/radar/ideas", "radar.idea.create"),
+    RouteSpec("POST", "/radar/ideas/{idea_id}/decide", "radar.idea.decide"),
+    RouteSpec("POST", "/radar/ui-search", "radar.ui_search"),
+    RouteSpec("POST", "/radar/keywords", "radar.keyword.manage"),
+    RouteSpec("PATCH", "/radar/keywords/{keyword_id}", "radar.keyword.manage"),
+    RouteSpec("POST", "/radar/sources", "radar.source.add"),
 ]
 
 

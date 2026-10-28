@@ -124,6 +124,15 @@ export const qk = {
   purchaseForTask: (cid: string, taskId: string) => ['company', cid, 'purchases', 'task', taskId] as const,
   purchase: (cid: string, id: string) => ['company', cid, 'purchases', 'detail', id] as const,
   subscriptions: (cid: string) => ['company', cid, 'subscriptions'] as const,
+  // M16 market radar. radar.* stream events (and every mutation) invalidate the whole prefix.
+  radarAll: (cid: string) => ['company', cid, 'radar'] as const,
+  radarStatus: (cid: string) => ['company', cid, 'radar', 'status'] as const,
+  radarBriefs: (cid: string) => ['company', cid, 'radar', 'briefs'] as const,
+  radarBrief: (cid: string, id: string) => ['company', cid, 'radar', 'briefs', 'detail', id] as const,
+  radarIdeas: (cid: string, status: string = 'all') => ['company', cid, 'radar', 'ideas', status] as const,
+  radarItems: (cid: string, filters: object = {}) => ['company', cid, 'radar', 'items', filters] as const,
+  radarSources: (cid: string) => ['company', cid, 'radar', 'sources'] as const,
+  radarKeywords: (cid: string) => ['company', cid, 'radar', 'keywords'] as const,
   // The emergency stop is global (all companies).
   systemStatus: ['system', 'status'] as const,
   // The update check is installation-wide (owner only).

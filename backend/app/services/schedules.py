@@ -280,6 +280,12 @@ def update_schedule(
 
 def _skip_reason(db: Session, schedule: Schedule, template: dict, now: datetime) -> str | None:
     """Why a due schedule creates no task this time (it still counts as fired)."""
+    if template.get("radar"):  # M16 radar routines: skipped without new input (no model run)
+        from app.radar import digest as radar_digest
+
+        return radar_digest.skip_reason(
+            db, schedule.company_id, str(template.get("radar_kind") or ""), now
+        )
     project_id = template.get("project_id")
     if project_id:
         from app.models.enums import ProjectStatus
@@ -419,6 +425,12 @@ def _fire_one(factory: sessionmaker[Session], schedule_id: str, now: datetime) -
             description = template.get("description")
             if template.get("digest"):  # M12: the platform's deterministic standup digest
                 description = f"{description or ''}\n\n{digest.build(db, schedule.company_id, now)}"
+            if template.get("radar"):  # M16: counts only, never a word from any item (F6)
+                from app.radar import digest as radar_digest
+
+                description = (
+                    f"{description or ''}\n\n{radar_digest.counts_line(db, schedule.company_id)}"
+                )
             data = TaskCreate(
                 title=template.get("title") or schedule.name,
                 description=description,

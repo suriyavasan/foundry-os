@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 from pydantic import Field, field_validator
@@ -81,6 +82,17 @@ class Policy(PurchasePolicy):
     project_auto_complete: bool = True
     # M14 (only humans can change it).
     new_project_repository: NewProjectRepositoryLiteral = "local"
+    # M16 radar (only humans can change them).
+    radar_enabled: bool = True
+    radar_max_fetches_per_day: int = 2000
+    radar_max_items_per_day: int = 400
+    radar_max_ideas_per_day: int = 5
+    radar_max_open_ideas: int = 25
+    radar_auto_accept: bool = True
+    radar_max_goals_per_week: int = 1
+    radar_agent_sources: bool = True
+    self_critique_enabled: bool = True
+    radar_contact_email: str | None = None
     created_at: Timestamp
     updated_at: Timestamp
 
@@ -134,6 +146,30 @@ class PolicyUpdate(PurchasePolicyUpdate):
     project_auto_complete: bool | None = None
     # M14.
     new_project_repository: NewProjectRepositoryLiteral | None = None
+    # M16 radar. ``radar_contact_email`` accepts null (clear).
+    radar_enabled: bool | None = None
+    radar_max_fetches_per_day: int | None = Field(default=None, ge=0, le=100_000)
+    radar_max_items_per_day: int | None = Field(default=None, ge=0, le=100_000)
+    radar_max_ideas_per_day: int | None = Field(default=None, ge=0, le=100)
+    radar_max_open_ideas: int | None = Field(default=None, ge=0, le=1000)
+    radar_auto_accept: bool | None = None
+    radar_max_goals_per_week: int | None = Field(default=None, ge=0, le=20)
+    radar_agent_sources: bool | None = None
+    self_critique_enabled: bool | None = None
+    radar_contact_email: str | None = Field(default=None, max_length=200)
+
+    @field_validator("radar_contact_email")
+    @classmethod
+    def _contact_email(cls, v):
+        # Goes into an HTTP header: one plain address, no whitespace, angle brackets or CR/LF.
+        if v is None:
+            return None
+        v = v.strip()
+        if not v:
+            return None
+        if not re.fullmatch(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}", v):
+            raise ValueError("must be a plain e-mail address")
+        return v
 
     @field_validator(
         "autonomy_mode",
@@ -186,6 +222,16 @@ class PolicyUpdate(PurchasePolicyUpdate):
         "purchase_tolerance_min_micros",
         "purchase_card_ttl_hours",
         "subscription_renewal_alert_days",
+        # M16 radar (``radar_contact_email`` is the nullable one)
+        "radar_enabled",
+        "radar_max_fetches_per_day",
+        "radar_max_items_per_day",
+        "radar_max_ideas_per_day",
+        "radar_max_open_ideas",
+        "radar_auto_accept",
+        "radar_max_goals_per_week",
+        "radar_agent_sources",
+        "self_critique_enabled",
     )
     @classmethod
     def _not_null(cls, v):  # only the two budget caps are nullable (null = no limit)

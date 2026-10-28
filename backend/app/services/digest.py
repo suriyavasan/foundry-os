@@ -228,6 +228,14 @@ def _watchdog_lines(db: Session, company_id: str, now: datetime) -> list[str]:
     ]
 
 
+def _radar_lines(db: Session, company_id: str) -> list[str]:
+    """M16: the market radar's numbers (no item text); empty when the radar is off."""
+    from app.radar import digest as radar_digest
+
+    lines = radar_digest.strategy_line(db, company_id)
+    return ["Radar:", *lines] if lines else []
+
+
 def _fit(lines: list[str]) -> str:
     """Join the lines, dropping whole lines from the end until the text fits in 3 KB."""
     text = "\n".join(lines)
@@ -253,5 +261,6 @@ def build(db: Session, company_id: str, now: datetime) -> str:
         _spend_line(db, company_id, now),
         "Autonomy:",
         *_watchdog_lines(db, company_id, now),
+        *_radar_lines(db, company_id),  # M16 radar
     ]
     return _fit(lines)
