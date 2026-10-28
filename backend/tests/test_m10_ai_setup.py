@@ -36,7 +36,13 @@ def test_a_new_company_is_not_ready(client, company):
     assert s["ready"] is False and s["blocking_reason"] == "no_tested_provider"
     assert s["management"]["provider_id"] is None and s["management"]["last_test"] is None
     assert s["work_mode"] == "api" and s["work_runtime"] is None
-    assert {c["id"] for c in s["clis"]} == {"claude_code", "codex", "opencode", "antigravity"}
+    assert {c["id"] for c in s["clis"]} == {
+        "claude_code",
+        "codex",
+        "opencode",
+        "antigravity",
+        "cursor",
+    }
 
 
 def test_creation_is_blocked_until_ready_but_settings_stay_available(app, client, company):

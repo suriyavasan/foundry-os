@@ -69,3 +69,8 @@ export function writeCommandHistory(cid: string, items: string[]) {
 const UPDATE_DISMISSED_KEY = 'company-os.update-dismissed'
 export const getDismissedUpdate = () => safeGet(UPDATE_DISMISSED_KEY)
 export const setDismissedUpdate = (version: string) => safeSet(UPDATE_DISMISSED_KEY, version)
+
+/** Org chart direction chosen in this browser (left to right by default). */
+const ORG_ORIENTATION_KEY = 'company-os.org-orientation'
+export const getOrgOrientation = (): 'horizontal' | 'vertical' => (safeGet(ORG_ORIENTATION_KEY) === 'vertical' ? 'vertical' : 'horizontal')
+export const setOrgOrientation = (o: 'horizontal' | 'vertical') => safeSet(ORG_ORIENTATION_KEY, o)

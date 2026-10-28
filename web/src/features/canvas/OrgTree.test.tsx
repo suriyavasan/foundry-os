@@ -1,6 +1,6 @@
 import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { normalizeLive } from '@/lib/liveState'
 import { makeAgent, mockApi, page } from '@/test/factories'
 import { renderWithProviders } from '@/test/render'
@@ -24,6 +24,8 @@ function setup(onOpen = vi.fn()) {
 }
 
 describe('OrgTree', () => {
+  beforeEach(() => localStorage.clear())
+
   it('draws You (the Founder), the AI Co-founder and the reporting tree with names, roles and states', () => {
     setup()
     const tree = screen.getByRole('tree', { name: 'Organization chart' })
@@ -72,5 +74,24 @@ describe('OrgTree', () => {
     expect(fit).toHaveAttribute('aria-pressed', 'false')
     await userEvent.click(fit)
     expect(screen.getByRole('button', { name: 'Show actual size' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('reads left to right by default and switches to top-down, remembering the choice', async () => {
+    setup()
+    const tree = screen.getByRole('tree', { name: 'Organization chart' })
+    expect(tree).toHaveAttribute('data-orientation', 'horizontal')
+    await userEvent.click(screen.getByRole('button', { name: 'Lay out top to bottom' }))
+    expect(tree).toHaveAttribute('data-orientation', 'vertical')
+    expect(localStorage.getItem('company-os.org-orientation')).toBe('vertical')
+    // the team toggles and node content work the same in both directions
+    expect(screen.getByRole('button', { name: /Collapse Atlas's team/ })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Lay out left to right' }))
+    expect(tree).toHaveAttribute('data-orientation', 'horizontal')
+  })
+
+  it('opens in the direction this browser chose last', () => {
+    localStorage.setItem('company-os.org-orientation', 'vertical')
+    setup()
+    expect(screen.getByRole('tree', { name: 'Organization chart' })).toHaveAttribute('data-orientation', 'vertical')
   })
 })

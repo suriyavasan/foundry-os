@@ -9,6 +9,7 @@ Read this first, then `docs/architecture.md` and `docs/roadmap.md`.
 - `docs/` — architecture (with decision log) and roadmap. Update both when you change architecture or finish a milestone.
 - `runtime/` — our fork of Hermes Agent (the AI-employee runtime, own venv). Every upstream change is logged in `runtime/FORK.md`.
 - `vendor/hermes-agent/` — gitignored pristine upstream checkout, for diffing future syncs; never import from it or edit it.
+- `docs/backlog.md` — founder ideas not yet scheduled (B1, B2, …); promote to roadmap + spec when picked up.
 - `docs/specs/` — one spec per milestone; `docs/security.md`, `docs/deploy.md`, `docs/deploy-reachability.md` for operators.
 
 ## Commands

@@ -191,6 +191,42 @@ export function layoutOrg(roots: OrgPerson[], opts: LayoutOptions = {}): OrgLayo
   }
 }
 
+export type OrgOrientation = 'horizontal' | 'vertical'
+
+/**
+ * The same tree laid out left to right: depth runs along x and siblings stack along y. `nodeWidth` is the card's
+ * width (the depth axis), `nodeHeight` its height (the sibling axis), `gapX` the gap between levels and `gapY`
+ * between siblings. In the result a node's `x` is its LEFT edge and `y` its vertical CENTRE.
+ */
+export function layoutOrgHorizontal(roots: OrgPerson[], opts: LayoutOptions = {}): OrgLayout {
+  const { nodeWidth = 184, nodeHeight = 56, gapX = 48, gapY = 10, ...rest } = opts
+  // Lay out top-down with the axes swapped, then transpose.
+  const v = layoutOrg(roots, { ...rest, nodeWidth: nodeHeight, nodeHeight: nodeWidth, gapX: gapY, gapY: gapX })
+  const nodes = v.nodes.map((n) => ({ ...n, x: n.y, y: n.x }))
+  nodes.sort((a, b) => a.depth - b.depth || a.y - b.y)
+  return { nodes, edges: v.edges, width: v.height, height: v.width, nodeWidth, nodeHeight }
+}
+
+/** Elbow connector from the right-middle of the parent to the left-middle of the child (horizontal layout). */
+export function edgePathHorizontal(parent: LayoutNode, child: LayoutNode, nodeWidth: number, gapX: number, radius = 8): string {
+  const x1 = parent.x + nodeWidth
+  const y1 = parent.y
+  const x2 = child.x
+  const y2 = child.y
+  const midX = x1 + gapX / 2
+  if (Math.abs(y2 - y1) < 0.5) return `M ${x1} ${y1} H ${x2}`
+  const dir = y2 > y1 ? 1 : -1
+  const r = Math.min(radius, Math.abs(y2 - y1) / 2, gapX / 2)
+  return [
+    `M ${x1} ${y1}`,
+    `H ${midX - r}`,
+    `Q ${midX} ${y1} ${midX} ${y1 + dir * r}`,
+    `V ${y2 - dir * r}`,
+    `Q ${midX} ${y2} ${midX + r} ${y2}`,
+    `H ${x2}`,
+  ].join(' ')
+}
+
 /** Elbow connector from the bottom-centre of the parent to the top-centre of the child. */
 export function edgePath(parent: LayoutNode, child: LayoutNode, nodeHeight: number, gapY: number, radius = 8): string {
   const x1 = parent.x

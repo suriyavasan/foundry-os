@@ -2150,8 +2150,8 @@ export interface ProviderTest {
 
 export type AiBlockingReason = 'no_tested_provider' | 'provider_test_failed' | 'no_default_model'
 export type WorkMode = 'api' | 'hybrid'
-export type CliRuntimeId = 'claude_code' | 'codex' | 'opencode' | 'antigravity'
-export type WorkRuntime = 'company_agent' | 'cli:claude_code' | 'cli:codex' | 'cli:opencode' | 'cli:antigravity'
+export type CliRuntimeId = 'claude_code' | 'codex' | 'opencode' | 'antigravity' | 'cursor'
+export type WorkRuntime = 'company_agent' | 'cli:claude_code' | 'cli:codex' | 'cli:opencode' | 'cli:antigravity' | 'cli:cursor'
 export type CliAuthMode = 'own_login' | 'api_key'
 export type CliSandboxKind = 'os' | 'docker' | 'none'
 
@@ -2179,7 +2179,7 @@ export interface CliRuntimeStatus {
     model?: string | null
   }
   sandbox: { available: boolean; kind: CliSandboxKind; detail: string | null }
-  /** `manual`: a command the person runs themselves when there is no automatic install (Antigravity). */
+  /** `manual`: a command the person runs themselves when there is no automatic install (Antigravity, Cursor). */
   install: { available: boolean; command?: string | null; requires: string[]; manual?: string | null }
   login_hint: string | null
   warnings: string[]

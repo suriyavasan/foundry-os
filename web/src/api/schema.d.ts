@@ -2472,6 +2472,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/companies/{company_id}/finance/cli-usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Cli Usage */
+        get: operations["cli_usage_api_companies__company_id__finance_cli_usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/companies/{company_id}/finance/runs": {
         parameters: {
             query?: never;
@@ -6085,7 +6102,7 @@ export interface components {
              */
             work_mode: "api" | "hybrid";
             /** Work Runtime */
-            work_runtime: ("company_agent" | "cli:claude_code" | "cli:codex" | "cli:opencode" | "cli:antigravity") | null;
+            work_runtime: ("company_agent" | "cli:claude_code" | "cli:codex" | "cli:opencode" | "cli:antigravity" | "cli:cursor") | null;
             /** Clis */
             clis: components["schemas"]["CliRuntimeStatus"][];
         };
@@ -6102,7 +6119,7 @@ export interface components {
              */
             work_mode?: "api" | "hybrid";
             /** Work Runtime */
-            work_runtime?: ("company_agent" | "cli:claude_code" | "cli:codex" | "cli:opencode" | "cli:antigravity") | null;
+            work_runtime?: ("company_agent" | "cli:claude_code" | "cli:codex" | "cli:opencode" | "cli:antigravity" | "cli:cursor") | null;
             /** Work Model Provider Id */
             work_model_provider_id?: string | null;
             /** Work Model Name */
@@ -7011,7 +7028,7 @@ export interface components {
              * Id
              * @enum {string}
              */
-            id: "claude_code" | "codex" | "opencode" | "antigravity";
+            id: "claude_code" | "codex" | "opencode" | "antigravity" | "cursor";
             /**
              * Status
              * @enum {string}
@@ -7061,7 +7078,7 @@ export interface components {
              * Id
              * @enum {string}
              */
-            id: "claude_code" | "codex" | "opencode" | "antigravity";
+            id: "claude_code" | "codex" | "opencode" | "antigravity" | "cursor";
             /** Display Name */
             display_name: string;
             /** Installed */
@@ -7094,6 +7111,44 @@ export interface components {
             kind: "os" | "docker" | "none";
             /** Detail */
             detail: string;
+        };
+        /** CliUsage */
+        CliUsage: {
+            /** From */
+            from: string;
+            /** To */
+            to: string;
+            /** Timezone */
+            timezone: string;
+            /** Items */
+            items: components["schemas"]["CliUsageRow"][];
+        };
+        /** CliUsageRow */
+        CliUsageRow: {
+            /** Verified Micros */
+            verified_micros: number;
+            /** Estimated Micros */
+            estimated_micros: number;
+            /** Unknown Micros */
+            unknown_micros: number;
+            /** Runtime */
+            runtime: string;
+            /** Runs */
+            runs: number;
+            /** Succeeded */
+            succeeded: number;
+            /** Failed */
+            failed: number;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Output Tokens */
+            output_tokens: number;
+            /** Duration Seconds */
+            duration_seconds: number;
+            /** Subscription Runs */
+            subscription_runs: number;
+            /** Agents */
+            agents: string[];
         };
         /** CofounderBlocker */
         CofounderBlocker: {
@@ -20030,6 +20085,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FinanceTrend"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cli_usage_api_companies__company_id__finance_cli_usage_get: {
+        parameters: {
+            query?: {
+                from?: string | null;
+                /** @description YYYY-MM-DD, company timezone */
+                to?: string | null;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CliUsage"];
                 };
             };
             /** @description Validation Error */

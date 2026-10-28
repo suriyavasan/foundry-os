@@ -23,10 +23,11 @@ from app.core.principal import CompanyContext, require_human_admin
 from app.core.time import utcnow
 from app.models.agent import Agent
 from app.models.company import Company
+from app.models.enums import AgentStatus
 from app.models.guardrails import ExternalExpense
 from app.models.ledger import UsageRecord
 from app.models.provider import ModelProvider
-from app.models.run import TaskRun
+from app.models.run import RunEvent, TaskRun
 from app.models.work import Project, Task
 from app.schemas.finance import ExternalExpenseCreate
 from app.services import audit, events, policy
@@ -154,19 +155,22 @@ def _budgets(db: Session, ctx: CompanyContext, now: datetime, tz: ZoneInfo) -> l
 
     row("company", None, "day", limits.daily_budget_micros, day_start)
     row("company", None, "month", limits.monthly_budget_micros, month_start)
+    # Every working agent gets a day and a month row (limit None = no limit), so the founder can see
+    # what an unbudgeted agent spends and set its budget from Finance. Agents that stopped working
+    # only appear while they still carry a limit.
     agents = db.scalars(
         select(Agent)
         .where(
             Agent.company_id == ctx.company_id,
-            (Agent.daily_budget_micros.is_not(None)) | (Agent.monthly_budget_micros.is_not(None)),
+            (Agent.status.in_((AgentStatus.ACTIVE, AgentStatus.PAUSED)))
+            | (Agent.daily_budget_micros.is_not(None))
+            | (Agent.monthly_budget_micros.is_not(None)),
         )
         .order_by(Agent.created_at, Agent.id)
     )
     for agent in agents:
-        if agent.daily_budget_micros is not None:
-            row("agent", agent.id, "day", agent.daily_budget_micros, day_start)
-        if agent.monthly_budget_micros is not None:
-            row("agent", agent.id, "month", agent.monthly_budget_micros, month_start)
+        row("agent", agent.id, "day", agent.daily_budget_micros, day_start)
+        row("agent", agent.id, "month", agent.monthly_budget_micros, month_start)
     return out
 
 
@@ -559,9 +563,126 @@ def create_expense(
     return row
 
 
+# ---------------------------------------------------------------- CLI usage (B8)
+
+
+def cli_usage(
+    db: Session,
+    ctx: CompanyContext,
+    from_: str | None,
+    to: str | None,
+    *,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Per coding-CLI usage in the period. Every CLI in the catalog is present (zeros when unused).
+
+    Runs/duration/agents come from ``task_runs`` (a run belongs to the period it started in);
+    tokens and cost from the usage ledger, like the other reports. A subscription run (the
+    person's own CLI login) is detected from the persisted final ``usage`` run event whose
+    ``billing.subscription`` is true; it has no dollar amount, so it is only counted.
+    """
+    from app.runtimes.cli.catalog import CLIS
+
+    _readable(ctx)
+    p = resolve_period(db, ctx, from_, to, now=now)
+    rows: dict[str, dict[str, Any]] = {}
+
+    def row(runtime: str) -> dict[str, Any]:
+        return rows.setdefault(
+            runtime,
+            {
+                "runtime": runtime,
+                "runs": 0,
+                "succeeded": 0,
+                "failed": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "duration_seconds": 0,
+                **_split(),
+                "subscription_runs": 0,
+                "agents": [],
+            },
+        )
+
+    for spec in CLIS.values():
+        row(spec.runtime_id)
+
+    when = func.coalesce(TaskRun.started_at, TaskRun.queued_at)
+    runs = db.execute(
+        select(
+            TaskRun.id,
+            TaskRun.runtime,
+            TaskRun.status,
+            TaskRun.agent_id,
+            TaskRun.started_at,
+            TaskRun.finished_at,
+        ).where(
+            TaskRun.company_id == ctx.company_id,
+            TaskRun.runtime.like("cli:%"),
+            when >= p.start,
+            when < p.end,
+        )
+    ).all()
+    run_runtime: dict[str, str] = {}
+    for run_id, runtime, status, agent_id, started, finished in runs:
+        r = row(runtime)
+        run_runtime[run_id] = runtime
+        r["runs"] += 1
+        if status == "succeeded":
+            r["succeeded"] += 1
+        elif status in WASTED_STATUSES:
+            r["failed"] += 1
+        if started and finished and finished > started:
+            r["duration_seconds"] += int((finished - started).total_seconds())
+        if agent_id not in r["agents"]:
+            r["agents"].append(agent_id)
+
+    ids = list(run_runtime)
+    for i in range(0, len(ids), 500):
+        chunk = ids[i : i + 500]
+        subscription_runs: set[str] = set()
+        for run_id, payload in db.execute(
+            select(RunEvent.run_id, RunEvent.payload).where(
+                RunEvent.company_id == ctx.company_id,
+                RunEvent.run_id.in_(chunk),
+                RunEvent.type == "usage",
+            )
+        ):
+            billing = payload.get("billing") if isinstance(payload, dict) else None
+            if isinstance(billing, dict) and billing.get("subscription") is True:
+                subscription_runs.add(run_id)
+        for run_id in subscription_runs:
+            row(run_runtime[run_id])["subscription_runs"] += 1
+
+    for runtime, kind, cost, t_in, t_out in db.execute(
+        select(
+            UsageRecord.runtime,
+            UsageRecord.cost_kind,
+            func.coalesce(func.sum(UsageRecord.cost_micros), 0),
+            func.coalesce(func.sum(UsageRecord.input_tokens), 0),
+            func.coalesce(func.sum(UsageRecord.output_tokens), 0),
+        )
+        .where(*_usage_where(ctx, p), UsageRecord.runtime.like("cli:%"))
+        .group_by(UsageRecord.runtime, UsageRecord.cost_kind)
+    ):
+        r = row(runtime)
+        r["input_tokens"] += int(t_in or 0)
+        r["output_tokens"] += int(t_out or 0)
+        if kind in KINDS:
+            r[f"{kind}_micros"] += int(cost or 0)
+
+    return {
+        "from": p.from_date.isoformat(),
+        "to": p.to_date.isoformat(),
+        "timezone": p.timezone,
+        "items": list(rows.values()),
+    }
+
+
 __all__ = [
     "Period",
     "breakdown",
+    "cli_usage",
     "create_expense",
     "list_expenses",
     "occurrences",

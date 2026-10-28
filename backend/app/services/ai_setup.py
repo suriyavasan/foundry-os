@@ -38,6 +38,7 @@ WORK_RUNTIMES = (
     "cli:codex",
     "cli:opencode",
     "cli:antigravity",
+    "cli:cursor",
 )
 
 

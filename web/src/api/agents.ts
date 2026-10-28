@@ -33,6 +33,8 @@ async function invalidateAgentRelated(qc: QueryClient, companyId: string) {
     qc.invalidateQueries({ queryKey: qk.overview(companyId) }),
     qc.invalidateQueries({ queryKey: qk.departments(companyId) }),
     qc.invalidateQueries({ queryKey: qk.activityAll(companyId) }),
+    // budgets are shown against spend in Finance
+    qc.invalidateQueries({ queryKey: qk.financeAll(companyId) }),
   ])
 }
 

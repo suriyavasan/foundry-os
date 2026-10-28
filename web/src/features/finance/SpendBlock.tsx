@@ -4,8 +4,9 @@ import { utilization } from '@/lib/finance'
 import { COST_KIND_LABEL, formatCost, formatUsd } from '@/lib/money'
 
 /**
- * One period of spend against its limit. Verified spend is the solid segment and the headline number ("charged");
- * estimated spend is a separate hatched segment with its own label and is never added to the headline. Unknown-cost
+ * One period of spend against its limit. The estimate is the headline, labelled "est." and "not a charge", because
+ * most providers never report a charge; verified spend ("charged") is listed separately and the two are never
+ * summed into one figure. On the bar, verified is the solid segment and the estimate the hatched one. Unknown-cost
  * usage is reported as such, without a dollar figure. `thresholds` (percent) are drawn as ticks only when the
  * policy supplies them.
  */
@@ -21,24 +22,24 @@ export function SpendBlock({ title, row, limitMicros, thresholds }: { title: str
         <span className="text-[11.5px] text-fg-3">{limit ? `Limit ${formatUsd(limit)}` : 'No limit set'}</span>
       </div>
       <div className="mt-1 flex items-baseline gap-2">
-        <span className="text-[22px] leading-7 font-semibold tracking-tight text-fg tabular-nums">{formatCost(verified, 'verified')}</span>
-        <span className="text-[12px] text-fg-3">charged · {COST_KIND_LABEL.verified.toLowerCase()}</span>
+        <span className="text-[22px] leading-7 font-semibold tracking-tight text-fg tabular-nums">{formatCost(estimated, 'estimated')}</span>
+        <span className="text-[12px] text-fg-3">{COST_KIND_LABEL.estimated.toLowerCase()} · not a charge</span>
       </div>
       {limit && <BudgetBar className="mt-2" util={util} thresholds={thresholds ?? []} label={`${title} spend against limit`} />}
       <dl className="mt-2 space-y-0.5 text-[12px]">
-        <div className="flex items-center justify-between gap-2">
-          <dt className="flex items-center gap-1.5 text-fg-3">
-            <span aria-hidden className="inline-block size-2 rounded-sm bg-success" />
-            Verified
-          </dt>
-          <dd className="text-fg-2 tabular-nums">{formatCost(verified, 'verified')}</dd>
-        </div>
         <div className="flex items-center justify-between gap-2">
           <dt className="flex items-center gap-1.5 text-fg-3">
             <span aria-hidden className="cos-hatch inline-block size-2 rounded-sm text-warning" />
             Estimated
           </dt>
           <dd className="text-fg-2 tabular-nums">{formatCost(estimated, 'estimated')}</dd>
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <dt className="flex items-center gap-1.5 text-fg-3">
+            <span aria-hidden className="inline-block size-2 rounded-sm bg-success" />
+            Verified
+          </dt>
+          <dd className="text-fg-2 tabular-nums">{formatCost(verified, 'verified')}</dd>
         </div>
         {unknown > 0 && (
           <div className="flex items-center justify-between gap-2">

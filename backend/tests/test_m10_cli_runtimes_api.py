@@ -39,7 +39,7 @@ def items(client) -> dict[str, dict]:
 
 def test_status_of_clis_installed_or_not(client, company, bin_dir):
     s = items(client)
-    assert set(s) == {"claude_code", "codex", "opencode", "antigravity"}
+    assert set(s) == {"claude_code", "codex", "opencode", "antigravity", "cursor"}
     codex = s["codex"]
     assert codex["installed"] is False and codex["binary_path"] is None and codex["version"] is None
     assert codex["install"] == {
@@ -223,7 +223,7 @@ def test_the_install_argv_never_contains_sudo(client, company, bin_dir):
 
     for spec in CLIS.values():
         if spec.install_command is None:  # Antigravity: a curl | bash installer we never run
-            assert spec.id == "antigravity" and spec.npm_package is None
+            assert spec.id in ("antigravity", "cursor") and spec.npm_package is None
             continue
         assert spec.install_command[:3] == ["npm", "install", "-g"]
         assert "sudo" not in spec.install_command

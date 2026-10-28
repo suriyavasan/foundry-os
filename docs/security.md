@@ -116,8 +116,8 @@ Open - listed so nobody assumes they are handled:
 
 | Control | Status | Evidence |
 |---|---|---|
-| Dangerous permission flags (`--dangerously-skip-permissions`, `bypassPermissions`, OpenCode `--auto`, Codex `danger-full-access`, Antigravity `always-proceed`) never built; spawn refused if present | enforced | `backend/tests/test_m10_cli_*` argv assertions |
-| Shell only inside an OS sandbox (Codex `--sandbox workspace-write`); Claude Bash, OpenCode bash and Antigravity `command(*)` denied | enforced | adapter tests |
+| Dangerous permission flags (`--dangerously-skip-permissions`, `bypassPermissions`, OpenCode `--auto`, Codex `danger-full-access`, Antigravity `always-proceed`, Cursor `--yolo`) never built; spawn refused if present | enforced | `backend/tests/test_m10_cli_*` argv assertions |
+| Shell only inside an OS sandbox (Codex `--sandbox workspace-write`); Claude Bash, OpenCode bash and Antigravity `command(*)` and Cursor `Shell(*)` denied | enforced | adapter tests |
 | `api_key` mode: isolated HOME per agent, key only in the child env | enforced | adapter tests |
 | `own_login` mode: uses the real HOME — the CLI can read the user's files within its own tool permissions | **accepted risk, warned in UI** | docs/cli-runtimes.md |
 | Company actions only via the MCP server → agent API (tiers, rate limits, DLP) | enforced | MCP server tests, live OpenCode run |

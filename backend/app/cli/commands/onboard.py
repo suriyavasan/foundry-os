@@ -1086,7 +1086,7 @@ class Wizard:
                     [
                         "API only: everything runs through the model API (simplest)",
                         "API + coding CLIs: employees' work tasks run in Claude Code, Codex, "
-                        "OpenCode or Antigravity on this machine",
+                        "OpenCode, Antigravity or Cursor on this machine",
                     ],
                 )
                 mode = "api" if n == 1 else "hybrid"
@@ -1177,7 +1177,7 @@ class Wizard:
         if spec.npm_package is None:
             manual = spec.manual_install or install.get("manual")
             self.say(
-                f"{spec.display_name} has no automatic install (Google ships a shell installer)."
+                f"{spec.display_name} has no automatic install (the vendor ships a shell installer)."
             )
             self.say("Run this yourself, in another terminal, after reading the script:")
             self.say(f"  {manual}")
@@ -2065,7 +2065,8 @@ def register(app: typer.Typer) -> None:
             str | None, typer.Option("--work-mode", help="api, or hybrid (API + a coding CLI).")
         ] = None,
         cli: Annotated[
-            str | None, typer.Option("--cli", help="claude_code, codex, opencode or antigravity.")
+            str | None,
+            typer.Option("--cli", help="claude_code, codex, opencode, antigravity or cursor."),
         ] = None,
         cli_auth: Annotated[
             str | None,

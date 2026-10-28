@@ -69,6 +69,7 @@ export const qk = {
   financeSummary: (cid: string, from: string, to: string) => ['company', cid, 'finance', 'summary', from, to] as const,
   financeBreakdown: (cid: string, groupBy: FinanceGroupBy, from: string, to: string) => ['company', cid, 'finance', 'breakdown', groupBy, from, to] as const,
   financeTrend: (cid: string, from: string, to: string) => ['company', cid, 'finance', 'trend', from, to] as const,
+  financeCliUsage: (cid: string, from: string, to: string) => ['company', cid, 'finance', 'cli-usage', from, to] as const,
   financeRuns: (cid: string, from: string, to: string) => ['company', cid, 'finance', 'runs', from, to] as const,
   expenses: (cid: string, from: string, to: string) => ['company', cid, 'finance', 'expenses', from, to] as const,
   // M7 accounts & team. Auth and notifications are per user, not per company.

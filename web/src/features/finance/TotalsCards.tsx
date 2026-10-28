@@ -18,7 +18,8 @@ function Tile({ label, swatch, value, hint, valueClass }: { label: string; swatc
 }
 
 /**
- * Totals split by provenance. Only the verified figure is called "charged". An estimate carries "≈" and "est." and its
+ * Totals split by provenance. The estimate leads, because most providers never report
+ * a charge; only the verified figure is called "charged". An estimate carries "≈" and "est." and its
  * own hatched swatch; unpriced usage never shows a dollar amount.
  */
 export function TotalsCards({ summary }: { summary: FinanceSummary }) {
@@ -27,17 +28,17 @@ export function TotalsCards({ summary }: { summary: FinanceSummary }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" role="group" aria-label="Totals for the period">
       <Tile
-        label="Charged"
-        swatch={<span aria-hidden className="inline-block size-2 rounded-sm bg-success" />}
-        value={formatCost(totals.verified_micros, 'verified')}
-        hint={COST_KIND_HELP.verified}
-      />
-      <Tile
         label="Estimated"
         swatch={<span aria-hidden className="cos-hatch inline-block size-2 rounded-sm text-warning" />}
         value={formatCost(totals.estimated_micros, 'estimated')}
-        valueClass="text-fg-2"
         hint="Not a charge. Computed from token counts and list prices; the real bill may differ."
+      />
+      <Tile
+        label="Charged"
+        swatch={<span aria-hidden className="inline-block size-2 rounded-sm bg-success" />}
+        value={formatCost(totals.verified_micros, 'verified')}
+        valueClass="text-fg-2"
+        hint={totals.verified_micros > 0 ? COST_KIND_HELP.verified : 'Most providers do not report charges, so this often stays at zero. Only reported charges count here.'}
       />
       {totals.unknown_micros > 0 ? (
         <Tile label={COST_KIND_LABEL.unknown} swatch={<span aria-hidden className="inline-block size-2 rounded-sm bg-neutral" />} value={formatCost(totals.unknown_micros, 'unknown')} valueClass="text-fg-2" hint={COST_KIND_HELP.unknown} />
@@ -55,8 +56,8 @@ export function TotalsCards({ summary }: { summary: FinanceSummary }) {
             <div className="text-[11.5px] font-medium tracking-wide text-fg-3 uppercase">Wasted on failed, cancelled and timed-out runs</div>
             {wastedAny ? (
               <>
-                <div className="text-[15px] font-semibold tabular-nums text-fg">{formatCost(wasted.verified_micros, 'verified')} charged</div>
-                {wasted.estimated_micros > 0 && <div className="text-[13px] tabular-nums text-fg-2">{formatCost(wasted.estimated_micros, 'estimated')}</div>}
+                <div className="text-[15px] font-semibold tabular-nums text-fg">{formatCost(wasted.estimated_micros, 'estimated')}</div>
+                <div className="text-[13px] tabular-nums text-fg-2">{formatCost(wasted.verified_micros, 'verified')} charged</div>
                 <div className="text-[12.5px] text-fg-3">
                   {wasted.runs} run{wasted.runs === 1 ? '' : 's'}
                   {totals.verified_micros > 0 ? ` · ${Math.round((wasted.verified_micros / totals.verified_micros) * 100)}% of charged` : ''}

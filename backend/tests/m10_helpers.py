@@ -46,6 +46,7 @@ VERSIONS = {
     "codex": "codex-cli 0.164.0",
     "opencode": "1.18.3",
     "agy": "1.3.3",
+    "agent": "2026.10.28-fake",
 }
 
 # What a fake CLI does is described by a JSON "script" next to it: lines to print, an exit code,
@@ -68,6 +69,8 @@ record = {
 candidates = [a.split("=", 1)[-1] for a in sys.argv[1:]] + [os.environ.get("OPENCODE_CONFIG", "")]
 gem = os.path.join(os.environ.get("HOME", ""), ".gemini")
 candidates += [os.path.join(gem, "antigravity-cli", "settings.json"), os.path.join(gem, "config", "mcp_config.json")]
+cur = os.path.join(os.environ.get("HOME", ""), ".cursor")
+candidates += [os.path.join(cur, "cli-config.json"), os.path.join(cur, "mcp.json")]
 blob = " ".join(sys.argv[1:])
 for c in candidates:
     if c and os.path.isfile(c):
@@ -300,15 +303,76 @@ ANTIGRAVITY_OK = [
     },
 ]
 
+# Cursor CLI (``agent -p --output-format stream-json``): shapes from cursor.com/docs/cli/reference/output-format.
+CURSOR_OK = [
+    {
+        "type": "system",
+        "subtype": "init",
+        "apiKeySource": "env",
+        "cwd": "/w",
+        "session_id": "s1",
+        "model": "Fake",
+        "permissionMode": "default",
+    },
+    {
+        "type": "user",
+        "message": {"role": "user", "content": [{"type": "text", "text": "go"}]},
+        "session_id": "s1",
+    },
+    {
+        "type": "tool_call",
+        "subtype": "started",
+        "call_id": "c1",
+        "tool_call": {
+            "function": {"name": "company_submit_artifact", "arguments": '{"title": "Brief"}'}
+        },
+        "session_id": "s1",
+    },
+    {
+        "type": "tool_call",
+        "subtype": "completed",
+        "call_id": "c1",
+        "tool_call": {
+            "function": {"name": "company_submit_artifact", "arguments": "{}"},
+            "result": {"success": {"content": "ok"}},
+        },
+        "session_id": "s1",
+    },
+    {
+        "type": "assistant",
+        "message": {
+            "role": "assistant",
+            "content": [{"type": "text", "text": "All done, the brief is saved."}],
+        },
+        "session_id": "s1",
+    },
+    {
+        "type": "result",
+        "subtype": "success",
+        "is_error": False,
+        "duration_ms": 1500,
+        "duration_api_ms": 1500,
+        "result": "All done, the brief is saved.",
+        "session_id": "s1",
+    },
+]
+
 
 def register_cli_adapters(app) -> None:
     """The test app's registry only holds the scripted runtime: add the four CLI adapters."""
     from app.runtimes.cli.antigravity import AntigravityAdapter
     from app.runtimes.cli.claude_code import ClaudeCodeAdapter
     from app.runtimes.cli.codex import CodexAdapter
+    from app.runtimes.cli.cursor import CursorAdapter
     from app.runtimes.cli.opencode import OpenCodeAdapter
 
-    for cls in (ClaudeCodeAdapter, CodexAdapter, OpenCodeAdapter, AntigravityAdapter):
+    for cls in (
+        ClaudeCodeAdapter,
+        CodexAdapter,
+        OpenCodeAdapter,
+        AntigravityAdapter,
+        CursorAdapter,
+    ):
         adapter = cls(
             app.state.settings, app.state.session_factory, app.state.keys, app.state.cli_env
         )

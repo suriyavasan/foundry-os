@@ -1,7 +1,7 @@
 # Coding-CLI runtimes (Milestone 10)
 
-Company OS can run an employee's *work* through a coding CLI instead of the built-in `company_agent` runtime: **Claude Code**, **Codex CLI**, **OpenCode** or **Google Antigravity CLI**
-(`cli:claude_code`, `cli:codex`, `cli:opencode`, `cli:antigravity`). Management — the AI Co-founder, HR, leads, planning, reviews, hiring — always uses the company agent with the API
+Company OS can run an employee's *work* through a coding CLI instead of the built-in `company_agent` runtime: **Claude Code**, **Codex CLI**, **OpenCode**, **Google Antigravity CLI** or **Cursor CLI**
+(`cli:claude_code`, `cli:codex`, `cli:opencode`, `cli:antigravity`, `cli:cursor`). Management — the AI Co-founder, HR, leads, planning, reviews, hiring — always uses the company agent with the API
 model. API contract: `docs/api.md` ("Milestone 10"); spec: `docs/specs/m10-ai-setup-cli-reflections.md`; code: `backend/app/runtimes/cli/`, `backend/app/services/cli_runtimes.py`,
 `runtime/company_agent/mcp_server.py`.
 
@@ -110,6 +110,49 @@ stored like the other CLI keys (encrypted credential, injected into one child's 
 server could not be switched off through a documented setting, and the sandbox is therefore reported as `available: false` (no shell is ever allowed). Telemetry has no `settings.json` key (docs: it is stored with the Google account);
 none was disabled.
 
+### Cursor CLI (not installed — coded from the official documentation)
+
+The Cursor CLI (binary `agent`) is **not installed on the development machine and was never run**; nothing below was exercised against the real binary. Source pages, all read 2026-10-28:
+`cursor.com/docs/cli/overview`, `/docs/cli/reference/parameters`, `/docs/cli/reference/output-format`, `/docs/cli/reference/authentication`, `/docs/cli/reference/permissions`, `/docs/cli/headless`,
+`/docs/cli/mcp` and `/docs/context/mcp`. Adapter: `backend/app/runtimes/cli/cursor.py`; fake-binary tests: `backend/tests/test_m10_cli_cursor.py`.
+
+Exact argv (all documented flags; the prompt is the last argument; `<ws>` is the run's workspace):
+
+```
+run:   agent -p --output-format stream-json --sandbox enabled --trust --workspace <ws> --force --approve-mcps [--model <m>] "<prompt>"
+test:  agent -p --output-format stream-json --sandbox enabled --trust --workspace <ws> [--model <m>] "<prompt>"
+```
+
+| Item | Source | How it is used |
+|---|---|---|
+| `-p, --print`, `--output-format stream-json` | docs (parameters, headless) | NDJSON events: `system`/`user`/`assistant`/`tool_call` (`started`, `completed`)/`result` |
+| `--sandbox enabled`, `--trust`, `--workspace <path>` | docs (parameters) | the CLI's own sandbox on (not exercised), no trust prompt in headless mode, workspace pinned |
+| `--force` | docs (headless: print mode only *proposes* changes without it) | **run mode only**, together with deny rules (below). The alias `--yolo` is in the forbidden-flag guard. Not passed by the connectivity test |
+| `--approve-mcps` | docs (parameters, mcp) | **run mode only**: otherwise the `company` MCP server is never approved |
+| `--model <model>` | docs (parameters) | only when the agent/CLI settings name a model |
+| `CURSOR_API_KEY` | docs (authentication, headless) | the API key, in the child's environment only (never `--api-key`, which would be visible in argv) |
+| `~/.cursor/mcp.json` | docs (context/mcp): `{"mcpServers": {name: {type: "stdio", command, args, env}}}` | generated (0600) in the isolated `HOME` every run; only the `company` server (empty in the test) |
+| `~/.cursor/cli-config.json` | docs (permissions): `permissions.{allow,deny}`, tokens `Shell()`, `Read()`, `Write()`, `WebFetch()`, `Mcp(server:tool)`, deny beats allow | generated (0600) every run. Run: allow `Read(**)`, `Write(**)`, `Mcp(company:*)`; deny `Shell(*)`, `WebFetch(*)`, writes to `.cursor/` and to the per-run directory, reads of the per-run directory (run token). Test: allow nothing, deny shell, web, writes and every MCP tool |
+
+Only `api_key` mode exists (`PUT /api/cli-runtimes/cursor/auth` with `own_login` → 422): the documentation does not say where a browser login (`agent login`) is stored nor how to relocate the
+config directory, so an own-login run would mean writing the company MCP server into the person's real `~/.cursor`, which Company OS never does. `headless_login_argv` is `None`.
+
+Cost and usage: the documented `result` event carries only timing, `is_error`, the text and IDs — **no tokens and no cost** — so the adapter records none (no usage row is invented; cost is
+`unknown`, never `estimated`). The `apiKeySource` field of the `system` init event is ignored.
+
+**Install is manual.** Cursor's installer is `curl https://cursor.com/install -fsS | bash` (macOS/Linux/WSL; `irm 'https://cursor.com/install?win32=true' | iex` on Windows PowerShell). It is not an
+npm package and Company OS never runs a `curl | bash` script: `POST /api/cli-runtimes/cursor/install` answers 409, `install.manual` and a status warning carry the command.
+
+**Known gaps (the documentation does not say, so nothing depends on it):**
+- How `--force` interacts with deny rules is described only as "unless they are explicitly denied" (parameters page); the permissions page does not detail it. The adapter relies on that sentence plus `--sandbox enabled`; it is the
+  first thing to verify with the real binary. Without `--force` a work run could not write files.
+- Whether `Shell(*)` / `WebFetch(*)` / `Read(**)` globs behave as written, and whether absolute-path rules (per-run directory, `~/.cursor`) match.
+- The `tool_call` shape for MCP tools (the docs show only read/write tools and "other tools may use `function.{name,arguments}`"); the parser accepts both and strips a `company_`-style prefix, unverified.
+- Whether `cli-config.json` holding only `permissions` (the real file also has other keys) is accepted; whether `.cursor/mcp.json` or `.cursor/cli.json` inside a real project repository (project config outranks global)
+  could add MCP servers that `--approve-mcps` then starts. For scratch workspaces the file is removed before each run; a project repository's own file is left alone.
+- No documented flag for a run timeout (the framework's own supervisor enforces `max_run_seconds`), for telemetry, for auto-update, or to disable the CLI's other built-in tools or subagents. The older binary name `cursor-agent` is not in the pages read and is not searched for.
+- The `--version` output format, the `--model` name list (`--list-models`), and the exit codes beyond "non-zero on failure" are undocumented.
+
 ## Install
 
 `npm install -g @anthropic-ai/claude-code`, `npm install -g @openai/codex`, `npm install -g opencode-ai` (package names exist on the npm registry: `npm view` 2026-10-24). `POST /api/cli-runtimes/{id}/install`
@@ -118,14 +161,14 @@ install was run.** Interactive logins are the person's step in a terminal.
 
 **Antigravity CLI is not an npm package.** Google's installer is `curl -fsSL https://antigravity.google/cli/install.sh | bash` (macOS/Linux; PowerShell and CMD variants on Windows; it places `agy` in
 `~/.local/bin`; docs/getting-started). Foundry AI OS never runs a `curl | bash` installer: `POST /api/cli-runtimes/antigravity/install` answers 409 with that command, `install.available` is `false`,
-`install.command` is `null`, and `install.manual` plus a status warning carry the command for the person to run in their own terminal.
+`install.command` is `null`, and `install.manual` plus a status warning carry the command for the person to run in their own terminal. **Cursor CLI is handled the same way** (`curl https://cursor.com/install -fsS | bash`).
 
 ## Isolation model
 
 | | `api_key` | `own_login` |
 |---|---|---|
-| `HOME` | `data/agents/<agent id>/cli-home` (per agent) | the real `HOME` (the CLI must find its own login). Not offered for Antigravity CLI |
-| credentials | the key from the credential store, in the child's environment only (`ANTHROPIC_API_KEY`, `CODEX_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`… or a custom-provider variable for OpenCode) | none: Company OS never reads, copies or logs a CLI's credential files |
+| `HOME` | `data/agents/<agent id>/cli-home` (per agent) | the real `HOME` (the CLI must find its own login). Not offered for Antigravity CLI or Cursor CLI |
+| credentials | the key from the credential store, in the child's environment only (`ANTHROPIC_API_KEY`, `CODEX_API_KEY`, `GEMINI_API_KEY`, `CURSOR_API_KEY`, `OPENROUTER_API_KEY`… or a custom-provider variable for OpenCode) | none: Company OS never reads, copies or logs a CLI's credential files |
 | cost kind | `estimated` when the CLI reports a cost, else the reservation is charged as an `estimated`; a **local** model is `verified` $0 | `unknown`, nothing charged (`billing_note: subscription`) |
 | UI | recommended | warning: weaker isolation, check the tool's terms |
 
@@ -176,7 +219,7 @@ Using a personal subscription login (Claude Pro/Max, ChatGPT plans) for automate
 
 ## What was and was not verified
 
-Verified by automated tests (`backend/tests/test_m10_cli_*.py` (Antigravity: `test_m10_cli_antigravity.py`), fake binaries that record argv, environment and generated files): argv/flags per CLI and mode, the forbidden-flag guard, HOME isolation, minimal
+Verified by automated tests (`backend/tests/test_m10_cli_*.py` (Antigravity: `test_m10_cli_antigravity.py`; Cursor: `test_m10_cli_cursor.py`), fake binaries that record argv, environment and generated files): argv/flags per CLI and mode, the forbidden-flag guard, HOME isolation, minimal
 environment, the key only in the child's environment, the token only in a 0600 file, success / failure / crash / malformed lines / cancel with SIGTERM ignored / budget flag, artifact collection when the task was not completed,
 cost kinds, the install endpoint (needs `confirm`, exact argv, no shell/sudo, redacted log, fake npm), the connectivity test, hybrid routing. The MCP server: `runtime/company_agent/tests/test_mcp_server.py` (protocol, tool
 subset, errors, secrecy).
@@ -185,4 +228,4 @@ Verified live (2026-10-24, macOS, temporary Ollama on :11435 with `qwen2.5:7b`, 
 task dispatched to `cli:opencode`, the model calling `company_get_context`, `company_submit_artifact` and `company_complete_task` through the MCP server, the task `done`, run recorded as `verified` $0 (50,730 input / 301 output tokens),
 `external_directory` denial of a path above the workspace.
 
-**Not verified:** Claude Code runs (never started), Antigravity CLI runs (installed, but only `--version`/`--help` were run; none of its settings, permission rules or event shapes were exercised), Codex (not installed), `own_login` runs of any CLI, the real `npm install`, Codex's sandbox, any cloud provider key, Docker.
+**Not verified:** Cursor CLI (not installed: no flag, event shape, config file or permission rule was run; see its section for the gaps), Claude Code runs (never started), Antigravity CLI runs (installed, but only `--version`/`--help` were run; none of its settings, permission rules or event shapes were exercised), Codex (not installed), `own_login` runs of any CLI, the real `npm install`, Codex's sandbox, any cloud provider key, Docker.

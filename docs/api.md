@@ -1115,10 +1115,17 @@ agent and key within ten minutes raises a `rate_limit` alert. Agent-API endpoint
   default month-to-date, at most 366 days, echoed back with `timezone`):
   `GET /summary` -> `FinanceSummary {from, to, timezone, totals {verified_micros, estimated_micros, unknown_micros, input_tokens,
   output_tokens, runs}, wasted {split + runs}` (failed, cancelled, timed-out runs)`, external_expenses_micros, budgets [BudgetStatus {scope,
-  agent_id, period, limit_micros, verified_micros, estimated_micros}]}`; `GET /breakdown?group_by=agent|project|provider|model|runtime` ->
+  agent_id, period, limit_micros, verified_micros, estimated_micros}]}` (budget periods are the current day/month; company `day` + `month`
+  always; agents: `day` + `month` for every active/paused agent and any other agent with a limit, `limit_micros` null = no limit); `GET /breakdown?group_by=agent|project|provider|model|runtime` ->
   `{group_by, from, to, items [{key, label, <split>, input_tokens, output_tokens, runs}]}` (costliest first, `unassigned` for none);
   `GET /trend` -> `{from, to, points [{date, <split>}]}` (one point per local day, zero-filled); `GET /runs` (page, newest finished first)
   -> `FinanceRun {run_id, task_id, task_title, agent_id, status, started_at, finished_at, cost_micros, cost_kind, model, provider}`.
+- **CLI usage** (B8): `GET /companies/{cid}/finance/cli-usage?from=&to=` (same access and range rules) -> `{from, to, timezone, items [{runtime
+  (`cli:<id>`), runs, succeeded, failed (failed + cancelled + timed out), input_tokens, output_tokens, duration_seconds, verified_micros,
+  estimated_micros, unknown_micros, subscription_runs, agents [agent_id]}]}`. One row per CLI in the catalog (zeros when unused), `cli:*`
+  runtimes only. Runs, duration and agents come from `task_runs` (a run belongs to the period it started in); tokens and the cost split from
+  the usage ledger. `subscription_runs` counts runs on the person's own CLI login, detected from the run's final `usage` event
+  (`billing.subscription: true`); those carry no dollar amount.
 - **External expenses**: `GET /finance/expenses?from=&to=` (page; recurring ones are listed when an occurrence falls in the range),
   `POST /finance/expenses {vendor, description?, amount_micros, recurrence: one_time|monthly|yearly, project_id?, incurred_on}` (humans
   only; audit + event `expense.created`). Reported separately as `external_expenses_micros` (monthly/yearly expenses count once per
@@ -1545,7 +1552,7 @@ Migration `0009_ai_setup_cli_reflections` (existing companies get the `daily-ref
 default (`policy.default_model_provider_id` + `default_model_name`) and its latest test **for that model** has `ok: true`. Providers tested before M10 carry no
 `checks`, so an existing company is not ready until its provider is tested again.
 
-`PUT` (owner/admin) `AiSetupUpdate {management_provider_id, management_model, work_mode: "api"|"hybrid", work_runtime: "cli:claude_code"|"cli:codex"|"cli:opencode"|"cli:antigravity"|null}`
+`PUT` (owner/admin) `AiSetupUpdate {management_provider_id, management_model, work_mode: "api"|"hybrid", work_runtime: "cli:claude_code"|"cli:codex"|"cli:opencode"|"cli:antigravity"|"cli:cursor"|null}`
 → `AiSetupStatus`. Makes the provider the company default (equipping the Co-founder and HR), stores the work mode. `hybrid` needs a `cli:*` runtime that is installed and has
 a sign-in mode; `api` clears the runtime. 409 `ai_not_ready` otherwise, 404 for a provider of another company, 403 for viewers/members.
 
@@ -1576,10 +1583,10 @@ has one, else `context_length` of the provider). OpenRouter's public model list 
 
 | Method & path | Purpose |
 |---|---|
-| `GET /cli-runtimes` → `{items: [CliRuntimeStatus], next_cursor: null}`; `GET /cli-runtimes/{id}` | `id` ∈ `claude_code`, `codex`, `opencode`, `antigravity` (Antigravity CLI, binary `agy`) |
-| `POST /cli-runtimes/{id}/install` `{confirm: true}` → `202 CliInstallLog` | runs exactly `install.command` (`npm install -g <package>`) as a supervised child: no shell, no sudo, 15 min limit. `confirm` missing/false → 422 and nothing starts; no npm → 409; already installed → 409; `antigravity` (no npm package; Google ships a `curl \| bash` installer, never run from here) → 409 with the manual command |
+| `GET /cli-runtimes` → `{items: [CliRuntimeStatus], next_cursor: null}`; `GET /cli-runtimes/{id}` | `id` ∈ `claude_code`, `codex`, `opencode`, `antigravity` (Antigravity CLI, binary `agy`), `cursor` (Cursor CLI, binary `agent`; `api_key` only, manual install) |
+| `POST /cli-runtimes/{id}/install` `{confirm: true}` → `202 CliInstallLog` | runs exactly `install.command` (`npm install -g <package>`) as a supervised child: no shell, no sudo, 15 min limit. `confirm` missing/false → 422 and nothing starts; no npm → 409; already installed → 409; `antigravity` / `cursor` (no npm package; the vendor ships a `curl \| bash` installer, never run from here) → 409 with the manual command |
 | `GET /cli-runtimes/{id}/install-log` → `CliInstallLog` | `{id, status: none|running|succeeded|failed, command, started_at, finished_at, exit_code, lines[≤400]}`, output scrubbed of secret-looking spans |
-| `PUT /cli-runtimes/{id}/auth` `{mode: "own_login"|"api_key", credential_id?, model_provider_id?, model?}` → `CliRuntimeStatus` | `mode` must be in the CLI's `auth_modes` (Antigravity CLI: `api_key` only, a Gemini API key; `own_login` → 422). `api_key` needs `credential_id` (a credential of a company you administer; never returned). `model_provider_id` (OpenCode only) points the CLI at a company model provider (endpoint and key). OpenCode needs `model_provider_id` or a `provider/model` name in `model`. Clears `last_test` |
+| `PUT /cli-runtimes/{id}/auth` `{mode: "own_login"|"api_key", credential_id?, model_provider_id?, model?}` → `CliRuntimeStatus` | `mode` must be in the CLI's `auth_modes` (Antigravity CLI: `api_key` only, a Gemini API key; Cursor CLI: `api_key` only, a Cursor API key; `own_login` → 422). `api_key` needs `credential_id` (a credential of a company you administer; never returned). `model_provider_id` (OpenCode only) points the CLI at a company model provider (endpoint and key). OpenCode needs `model_provider_id` or a `provider/model` name in `model`. Clears `last_test` |
 | `POST /cli-runtimes/{id}/test` → `CliRuntimeStatus` | one tiny headless prompt ("Reply with the single word OK.") in a temp dir, 60 s limit, `$0.05` cap where the CLI supports one, no tools / no company tools; stores `auth.last_test` |
 
 `CliRuntimeStatus`: `{id, display_name, installed, binary_path, version, auth_modes: ["own_login","api_key"], auth: {mode, configured, credential_id, last_test: {ok, detail, tested_at}|null, model_provider_id, model},

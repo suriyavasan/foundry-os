@@ -22,6 +22,7 @@ SKIP_DIRS = {
     ".codex",
     ".agents",
     ".gemini",
+    ".cursor",
 }
 
 

@@ -8,7 +8,7 @@ process's environment.
 
 The install endpoint runs exactly the command it shows (``npm install -g <package>``), only with
 ``confirm: true``, never through a shell and never with sudo, as a supervised child whose redacted
-output is kept for ``GET .../install-log``. A CLI without an npm package (Antigravity: Google's
+output is kept for ``GET .../install-log``. A CLI without an npm package (Antigravity, Cursor: the vendor's
 ``curl | bash`` installer) is never installed by this endpoint: the status carries a ``manual`` hint."""
 
 from __future__ import annotations
@@ -121,6 +121,17 @@ def status_of(db: Session, cli_env: CliEnvironment, cli_id: str) -> dict[str, An
         if binary is None:
             warnings.append(
                 "Foundry AI OS cannot install it (Google ships a shell installer, which is never run "
+                f"from here). In a terminal, run: {spec.manual_install}"
+            )
+    if cli_id == "cursor":
+        warnings.append(
+            "Cursor CLI support is coded from Cursor's documentation and tested with a fake binary; "
+            "it is not installed on the development machine and was never run. It runs only with a "
+            "Cursor API key (no own login: that would mean writing into your own ~/.cursor)."
+        )
+        if binary is None:
+            warnings.append(
+                "Foundry AI OS cannot install it (Cursor ships a shell installer, which is never run "
                 f"from here). In a terminal, run: {spec.manual_install}"
             )
     if cli_id == "claude_code":
@@ -350,7 +361,7 @@ def start_install(
     if install_command is None:
         raise Conflict(
             f"{spec.display_name} cannot be installed from here (it is not an npm package). "
-            f"Run Google's installer yourself in a terminal: {spec.manual_install}"
+            f"Run the vendor's installer yourself in a terminal: {spec.manual_install}"
         )
     if confirm is not True:
         raise ValidationFailed(

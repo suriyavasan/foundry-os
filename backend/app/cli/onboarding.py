@@ -26,7 +26,7 @@ from app.schemas.repository import parse_repo_ref, valid_branch_name, valid_repo
 
 STEPS = ("service", "account", "2fa", "company", "ai", "work", "repo", "public-url")
 WORK_MODES = ("api", "hybrid")
-CLI_IDS = ("claude_code", "codex", "opencode", "antigravity")
+CLI_IDS = ("claude_code", "codex", "opencode", "antigravity", "cursor")
 # --cli-auth value -> what the wizard does ("provider" = OpenCode on the company's model provider).
 CLI_AUTH_FLAGS = {"own-login": "own_login", "api-key": "api_key", "provider": "provider"}
 PUBLIC_URL_CHOICES = ("quick", "named", "tailscale", "off")
@@ -147,6 +147,8 @@ def validate_options(opts: WizardOptions) -> None:
         raise usage("--cli-auth provider only works with --cli opencode.")
     if opts.cli_auth == "own-login" and opts.cli == "antigravity":
         raise usage("Antigravity CLI has no own-login mode; use --cli-auth api-key.")
+    if opts.cli_auth == "own-login" and opts.cli == "cursor":
+        raise usage("Cursor CLI has no own-login mode; use --cli-auth api-key.")
     if opts.idea is not None:
         idea_error(opts.idea)
     if opts.timezone is not None:

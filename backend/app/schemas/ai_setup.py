@@ -12,9 +12,9 @@ from app.schemas.providers import ProviderTest
 BlockingReasonLiteral = Literal["no_tested_provider", "provider_test_failed", "no_default_model"]
 WorkModeLiteral = Literal["api", "hybrid"]
 WorkRuntimeLiteral = Literal[
-    "company_agent", "cli:claude_code", "cli:codex", "cli:opencode", "cli:antigravity"
+    "company_agent", "cli:claude_code", "cli:codex", "cli:opencode", "cli:antigravity", "cli:cursor"
 ]
-CliIdLiteral = Literal["claude_code", "codex", "opencode", "antigravity"]
+CliIdLiteral = Literal["claude_code", "codex", "opencode", "antigravity", "cursor"]
 CliAuthModeLiteral = Literal["own_login", "api_key"]
 
 

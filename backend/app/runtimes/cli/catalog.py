@@ -22,7 +22,7 @@ FORBIDDEN_ARGV = (
 
 @dataclass(frozen=True)
 class CliSpec:
-    id: str  # claude_code | codex | opencode | antigravity
+    id: str  # claude_code | codex | opencode | antigravity | cursor
     display_name: str
     binaries: tuple[str, ...]  # executable names looked up on PATH and in extra locations
     known_dirs: tuple[str, ...]  # extra places a user-level install lands (relative to ~ if no /)
@@ -98,6 +98,20 @@ CLIS: dict[str, CliSpec] = {
         key_env="GEMINI_API_KEY",
         manual_install="curl -fsSL https://antigravity.google/cli/install.sh | bash",
     ),
+    "cursor": CliSpec(
+        id="cursor",
+        display_name="Cursor CLI",
+        binaries=("agent",),
+        known_dirs=(".local/bin",),
+        npm_package=None,  # Cursor ships a shell installer (curl | bash), which we never run
+        login_hint=(
+            "Create a Cursor API key in the Cursor Dashboard (API Keys) and add it here (no own-login "
+            "mode: Foundry AI OS never writes into your own ~/.cursor)"
+        ),
+        auth_modes=("api_key",),
+        key_env="CURSOR_API_KEY",
+        manual_install="curl https://cursor.com/install -fsS | bash",
+    ),
 }
 
 
@@ -155,6 +169,16 @@ def sandbox_for(cli_id: str, installed: bool) -> dict[str, object]:
                 "Shell commands are denied by permission rules (command(*)), as are URL fetches; only "
                 "workspace files and the company tools are allowed. agy's own terminal sandbox flag is "
                 "on but was not exercised."
+            ),
+        }
+    if cli_id == "cursor":
+        return {
+            "available": False,
+            "kind": "none",
+            "detail": (
+                "Shell commands and web fetches are denied by permission rules (Shell(*), WebFetch(*)); "
+                "only workspace files and the company tools are allowed. agent's own --sandbox enabled "
+                "is on but was not exercised."
             ),
         }
     return {

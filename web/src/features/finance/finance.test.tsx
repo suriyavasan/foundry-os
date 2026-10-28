@@ -140,6 +140,14 @@ describe('Finance: cost kinds', () => {
     expect(within(totals).getByText(/20% of charged/)).toBeInTheDocument()
   })
 
+  it('leads with the estimate, because most providers never report a charge', async () => {
+    setup()
+    const dialog = await openFinance()
+    const totals = await within(dialog).findByRole('group', { name: 'Totals for the period' })
+    const labels = within(totals).getAllByText(/^(Estimated|Charged)$/).map((el) => el.textContent)
+    expect(labels).toEqual(['Estimated', 'Charged'])
+  })
+
   it('never gives unpriced usage a dollar figure', async () => {
     setup({ summary: () => jsonResponse(makeFinanceSummary({ totals: { verified_micros: 0, estimated_micros: 0, unknown_micros: 7_000_000, input_tokens: 1, output_tokens: 1, runs: 1 } })) })
     const dialog = await openFinance()
@@ -182,6 +190,60 @@ describe('Finance: budgets', () => {
     const dialog = await openFinance()
     const company = (await within(dialog).findByRole('progressbar', { name: 'Company monthly budget' })).parentElement!
     await waitFor(() => expect([...company.querySelectorAll('[data-threshold]')].map((t) => t.getAttribute('data-threshold'))).toEqual(['25', '75']))
+  })
+
+  const agentRows = [
+    { scope: 'agent', agent_id: 'a2', period: 'day', limit_micros: 500_000, verified_micros: 0, estimated_micros: 250_000 },
+    { scope: 'agent', agent_id: 'a2', period: 'month', limit_micros: null, verified_micros: 0, estimated_micros: 720_000 },
+  ]
+
+  it('shows each agent with its daily and monthly budget side by side, limit or not', async () => {
+    setup({ summary: () => jsonResponse(makeFinanceSummary({ budgets: agentRows as never })) })
+    const dialog = await openFinance()
+    const section = await within(dialog).findByRole('region', { name: 'Agent budgets' })
+    expect(within(section).getByText('Iris')).toBeInTheDocument()
+    expect(within(section).getByRole('progressbar', { name: 'Agent daily budget' })).toBeInTheDocument()
+    expect(within(section).getByText('50% used')).toBeInTheDocument()
+    // no monthly limit: no bar, but the spend is still shown, as an estimate
+    expect(within(section).queryByRole('progressbar', { name: 'Agent monthly budget' })).not.toBeInTheDocument()
+    expect(within(section).getByText('No limit')).toBeInTheDocument()
+    expect(within(section).getByText('≈ $0.72 est.')).toBeInTheDocument()
+  })
+
+  it('lets an owner set an agent\'s daily and monthly budget from Finance', async () => {
+    const { api } = setup({ summary: () => jsonResponse(makeFinanceSummary({ budgets: agentRows as never })), extra: { 'PATCH /companies/c1/agents/a2': { ...iris, daily_budget_micros: 1_000_000, monthly_budget_micros: 20_000_000 } } })
+    const dialog = await openFinance()
+    const user = userEvent.setup()
+    await user.click(await within(dialog).findByRole('button', { name: 'Edit budget for Iris' }))
+    const form = within(dialog).getByRole('form', { name: 'Budget for Iris' })
+    const daily = within(form).getByLabelText('Daily budget (USD)')
+    const monthly = within(form).getByLabelText('Monthly budget (USD)')
+    await user.clear(daily)
+    await user.type(daily, '1')
+    await user.clear(monthly)
+    await user.type(monthly, '20')
+    await user.click(within(form).getByRole('button', { name: 'Save budget' }))
+    await waitFor(() => expect(api.calls.find((c) => c.method === 'PATCH')?.body).toEqual({ daily_budget_micros: 1_000_000, monthly_budget_micros: 20_000_000 }))
+    await waitFor(() => expect(within(dialog).queryByRole('form', { name: 'Budget for Iris' })).not.toBeInTheDocument())
+  })
+
+  it('rejects an invalid amount before calling the server', async () => {
+    const { api } = setup({ summary: () => jsonResponse(makeFinanceSummary({ budgets: agentRows as never })) })
+    const dialog = await openFinance()
+    const user = userEvent.setup()
+    await user.click(await within(dialog).findByRole('button', { name: 'Edit budget for Iris' }))
+    const form = within(dialog).getByRole('form', { name: 'Budget for Iris' })
+    await user.type(within(form).getByLabelText('Daily budget (USD)'), 'abc')
+    await user.click(within(form).getByRole('button', { name: 'Save budget' }))
+    expect(await within(form).findByText(/Enter a USD amount/)).toBeInTheDocument()
+    expect(api.calls.some((c) => c.method === 'PATCH')).toBe(false)
+  })
+
+  it('does not offer budget editing to a viewer', async () => {
+    setup({ summary: () => jsonResponse(makeFinanceSummary({ budgets: agentRows as never })), extra: { '/me': viewerMe } })
+    const dialog = await openFinance()
+    await within(dialog).findByRole('region', { name: 'Agent budgets' })
+    expect(within(dialog).queryByRole('button', { name: /Edit budget/ })).not.toBeInTheDocument()
   })
 
   it('says so when no budget is set', async () => {

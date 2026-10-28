@@ -495,6 +495,36 @@ def test_summary_splits_provenance_wasted_cost_and_budget_status(app, client, co
     assert day["verified_micros"] == 107_000 and month["estimated_micros"] == 55_000
 
 
+def test_budget_status_lists_every_working_agent_for_both_periods(app, client, company):
+    cid = company["id"]
+    ann = new_agent(client, cid, name="Ann", daily_budget_micros=200_000)["id"]
+    bob = new_agent(client, cid, name="Bob")["id"]
+    r = client.patch(
+        api(cid, f"/agents/{bob}"),
+        json={"monthly_budget_micros": None, "daily_budget_micros": None},
+    )
+    assert r.status_code == 200, r.text
+    gone = new_agent(client, cid, name="Gus")["id"]
+    client.patch(
+        api(cid, f"/agents/{gone}"),
+        json={"monthly_budget_micros": None, "daily_budget_micros": None},
+    )
+    assert client.post(api(cid, f"/agents/{gone}/retire")).status_code == 200
+    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S")
+    add_usage(app, cid, bob, now, 40_000, "estimated")
+
+    rows = client.get(api(cid, "/finance/summary")).json()["budgets"]
+    agent_rows = {(b["agent_id"], b["period"]): b for b in rows if b["scope"] == "agent"}
+    # both periods for every working agent, with or without a limit
+    assert agent_rows[(ann, "day")]["limit_micros"] == 200_000
+    assert (bob, "day") in agent_rows and (bob, "month") in agent_rows
+    # an unbudgeted agent still reports what it spends, so a budget can be set from Finance
+    assert agent_rows[(bob, "month")]["limit_micros"] is None
+    assert agent_rows[(bob, "month")]["estimated_micros"] == 40_000
+    # a retired agent without a limit is not listed
+    assert not any(agent_id == gone for agent_id, _ in agent_rows)
+
+
 def test_breakdown_by_every_dimension_and_run_pages(app, client, company):
     cid = company["id"]
     a1, a2 = new_agent(client, cid, name="Ann")["id"], new_agent(client, cid, name="Bob")["id"]

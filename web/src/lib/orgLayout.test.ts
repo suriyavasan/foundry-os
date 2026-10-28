@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { makeAgent } from '@/test/factories'
-import { HUMAN_ID, edgePath, expandableIds, layoutOrg } from './orgLayout'
+import { HUMAN_ID, edgePath, edgePathHorizontal, expandableIds, layoutOrg, layoutOrgHorizontal } from './orgLayout'
 import { buildOrgTree } from './orgTree'
 
 const founder = makeAgent({ id: 'f', name: 'Atlas', kind: 'founder', reports_to_human: true })
@@ -126,5 +126,45 @@ describe('expandableIds', () => {
   it('lists only nodes with reports', () => {
     const tree = buildOrgTree([founder, mk('a', 'f'), mk('b', 'a')])
     expect(expandableIds(tree).sort()).toEqual(['a', 'f'])
+  })
+})
+
+describe('layoutOrgHorizontal', () => {
+  const agents = [founder, mk('a', 'f'), mk('b', 'f'), mk('c', 'a')]
+  const opts = { nodeWidth: 184, nodeHeight: 56, gapX: 48, gapY: 10, padding: 20 }
+
+  it('runs depth left to right and stacks siblings top to bottom', () => {
+    const l = layoutOrgHorizontal(buildOrgTree(agents), opts)
+    const m = new Map(l.nodes.map((n) => [n.id, n]))
+    // each level starts one card + one level gap to the right of its parent
+    expect(m.get(HUMAN_ID)!.x).toBe(20)
+    expect(m.get('f')!.x).toBe(20 + 184 + 48)
+    expect(m.get('a')!.x).toBe(m.get('b')!.x)
+    expect(m.get('c')!.x).toBe(m.get('a')!.x + 184 + 48)
+    // siblings do not overlap vertically (centres at least a card height apart)
+    expect(Math.abs(m.get('b')!.y - m.get('a')!.y)).toBeGreaterThanOrEqual(56)
+    // a parent is centred on its children
+    expect(m.get('f')!.y).toBe((m.get('a')!.y + m.get('b')!.y) / 2)
+  })
+
+  it('is the top-down layout transposed', () => {
+    const v = layoutOrg(buildOrgTree(agents), { nodeWidth: 56, nodeHeight: 184, gapX: 10, gapY: 48, padding: 20 })
+    const h = layoutOrgHorizontal(buildOrgTree(agents), opts)
+    expect([h.width, h.height]).toEqual([v.height, v.width])
+    expect(h.edges).toEqual(v.edges)
+    expect([h.nodeWidth, h.nodeHeight]).toEqual([184, 56])
+  })
+})
+
+describe('edgePathHorizontal', () => {
+  const p = { id: 'p', agent: null, parentId: null, depth: 0, x: 0, y: 100, childCount: 1, hiddenCount: 0, collapsed: false }
+  it('is a straight line for horizontally aligned nodes', () => {
+    expect(edgePathHorizontal(p, { ...p, id: 'c', x: 150, y: 100 }, 100, 50)).toBe('M 100 100 H 150')
+  })
+  it('leaves from the right edge and elbows toward the child', () => {
+    const d = edgePathHorizontal(p, { ...p, id: 'c', x: 150, y: 200 }, 100, 50)
+    expect(d.startsWith('M 100 100')).toBe(true)
+    expect(d.endsWith('H 150')).toBe(true)
+    expect(d).toContain('V')
   })
 })

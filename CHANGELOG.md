@@ -10,6 +10,16 @@ automatically with the next patch version (see `docs/install.md`, "Cut a release
 
 ### Added
 
+- Cursor CLI (`agent`) as a fifth coding-CLI work runtime (`cli:cursor`). It runs only with a Cursor API key in an
+  isolated per-agent home, with shell commands and web fetches denied by generated permission rules. It is coded
+  from Cursor's documentation and tested with a fake binary; it has not been run against the real CLI. Cursor's
+  installer is a `curl | bash` script, so Foundry AI OS shows the command for you to run yourself.
+- Dashboard "Coding CLIs" card (`GET /finance/cli-usage`): per CLI, today or this month, runs (succeeded / failed),
+  tokens, time spent, cost (estimate first), the agents using it, and whether it is installed and how it signs in.
+  Runs on a personal subscription login are labelled "subscription — not billed here", never "$0 charged".
+- Finance: set any agent's daily and monthly budget inline from Budget utilization. Every working agent is listed
+  with both periods side by side, including agents without a limit (their spend is still shown).
+- `docs/backlog.md`: the running list of founder ideas (B1, B2, …) before they become milestones.
 - Google Antigravity CLI (`agy`) as a fourth coding-CLI work runtime (`cli:antigravity`), next to Claude Code,
   Codex and OpenCode. It runs only with a Gemini API key (Google AI Studio) in an isolated per-agent home, with
   shell commands and URL fetches denied by generated permission rules and only the workspace files and the
@@ -36,6 +46,10 @@ automatically with the next patch version (see `docs/install.md`, "Cut a release
 
 ### Changed
 
+- Finance leads with the estimate: most providers never report a charge, so "Estimated" comes first and "Charged"
+  second (with a note when it is $0) in the totals, the wasted-runs strip, budget rows and the spend blocks.
+- The organization chart reads left to right by default (compact cards, levels side by side). One button switches
+  back to top-down; the choice is remembered in the browser.
 - On a machine with no screen (SSH session, container, Linux without a display) `foundryos`, `start`, `open` and `up`
   no longer try to open a browser. They print the local address, an SSH port-forward hint and the public URL, and
   offer `foundryos setup`. `FOUNDRYOS_OPEN_BROWSER=1` forces a browser, `FOUNDRYOS_NO_BROWSER=1` never opens one.

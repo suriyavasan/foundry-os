@@ -137,3 +137,24 @@ class ExternalExpenseCreate(RequestModel):
     recurrence: RecurrenceLiteral = "one_time"
     project_id: str | None = None
     incurred_on: date
+
+
+class CliUsageRow(CostSplit):
+    runtime: str
+    runs: int
+    succeeded: int
+    failed: int
+    input_tokens: int
+    output_tokens: int
+    duration_seconds: int
+    subscription_runs: int
+    agents: list[str]
+
+
+class CliUsage(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    from_: str = Field(alias="from")
+    to: str
+    timezone: str
+    items: list[CliUsageRow]

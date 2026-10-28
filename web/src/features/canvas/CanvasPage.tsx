@@ -9,6 +9,7 @@ import { COMMAND_INPUT_ID } from '@/features/commandcenter/CommandInput'
 import { useCanvas } from './CanvasContext'
 import { ApprovalsWidget } from './widgets/ApprovalsWidget'
 import { ArtifactsWidget } from './widgets/ArtifactsWidget'
+import { CliUsageWidget } from './widgets/CliUsageWidget'
 import { GoalsWidget } from './widgets/GoalsWidget'
 import { LiveActivityWidget } from './widgets/LiveActivityWidget'
 import { CommandCenterWidget } from './widgets/CommandCenterWidget'
@@ -71,6 +72,7 @@ export function CanvasPage() {
           <ArtifactsWidget className="xl:col-span-4" />
           <RoutinesWidget className="xl:col-span-4" />
           <SkillsWidget className="xl:col-span-4" />
+          <CliUsageWidget className="md:col-span-2 xl:col-span-8" />
         </div>
       )}
     </main>

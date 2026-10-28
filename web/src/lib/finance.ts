@@ -174,6 +174,30 @@ export function budgetRows(budgets: BudgetStatus[], thresholds: number[] = DEFAU
   })
 }
 
+export interface AgentBudget {
+  agentId: string
+  /** `util.limit` is null when the agent has no limit for that period. */
+  day: Utilization
+  month: Utilization
+}
+
+/**
+ * One entry per agent with its daily and monthly budget side by side, limit or not (an unbudgeted agent still shows
+ * what it spends). Fullest budget first; agents without any limit last, by spend.
+ */
+export function agentBudgets(budgets: BudgetStatus[], thresholds: number[] = DEFAULT_THRESHOLDS): AgentBudget[] {
+  const byAgent = new Map<string, AgentBudget>()
+  for (const b of budgets) {
+    if (b.scope !== 'agent' || !b.agent_id) continue
+    const entry = byAgent.get(b.agent_id) ?? { agentId: b.agent_id, day: utilization(0, 0, null, thresholds), month: utilization(0, 0, null, thresholds) }
+    entry[b.period] = utilization(b.verified_micros, b.estimated_micros, b.limit_micros, thresholds)
+    byAgent.set(b.agent_id, entry)
+  }
+  const fullest = (a: AgentBudget) => Math.max(a.day.usedPct ?? -1, a.month.usedPct ?? -1)
+  const spent = (a: AgentBudget) => a.month.verified + a.month.estimated
+  return [...byAgent.values()].sort((a, b) => fullest(b) - fullest(a) || spent(b) - spent(a))
+}
+
 /* ================================== cost provenance ================================== */
 
 export const EMPTY_SPLIT: CostSplit = { verified_micros: 0, estimated_micros: 0, unknown_micros: 0 }

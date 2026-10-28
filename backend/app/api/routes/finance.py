@@ -9,6 +9,7 @@ from fastapi import APIRouter, Query
 from app.api.deps import CompanyCtx, DbSession
 from app.schemas.common import Page
 from app.schemas.finance import (
+    CliUsage,
     ExternalExpense,
     ExternalExpenseCreate,
     FinanceBreakdown,
@@ -55,6 +56,16 @@ def trend(
     to: Day = None,
 ):
     return finance.trend(db, ctx, from_, to)
+
+
+@router.get("/cli-usage", response_model=CliUsage, response_model_by_alias=True)
+def cli_usage(
+    ctx: CompanyCtx,
+    db: DbSession,
+    from_: Annotated[str | None, Query(alias="from", max_length=10)] = None,
+    to: Day = None,
+):
+    return finance.cli_usage(db, ctx, from_, to)
 
 
 @router.get("/runs", response_model=Page[FinanceRun])

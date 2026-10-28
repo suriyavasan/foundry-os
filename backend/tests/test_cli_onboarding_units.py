@@ -171,7 +171,7 @@ def test_options_are_validated_before_anything_happens():
     for bad in (
         ok(only="nope"), ok(work_mode="both"), ok(cli="vim"), ok(cli_auth="magic"), ok(public_url="lan"),
         ok(provider="gemini"), ok(public_url="named"), ok(idea="x" * 300), ok(timezone="Mars/Base"),
-        ok(base_url="ftp://x"), ok(cli="codex", cli_auth="provider"), ok(cli="antigravity", cli_auth="own-login"),
+        ok(base_url="ftp://x"), ok(cli="codex", cli_auth="provider"), ok(cli="antigravity", cli_auth="own-login"), ok(cli="cursor", cli_auth="own-login"),
         ok(work_mode="api", cli="codex"),
     ):  # fmt: skip
         with pytest.raises(CliError) as exc:
@@ -198,6 +198,7 @@ def test_headless_login_argv_is_defined_for_the_own_login_clis_and_is_safe():
     assert CLIS["codex"].headless_login_argv == ("codex", "login", "--device-auth")
     assert CLIS["opencode"].headless_login_argv == ("opencode", "auth", "login")
     assert CLIS["antigravity"].headless_login_argv is None  # api_key only
+    assert CLIS["cursor"].headless_login_argv is None  # api_key only
     for spec in CLIS.values():
         if spec.headless_login_argv:
             assert_safe_argv(list(spec.headless_login_argv))
