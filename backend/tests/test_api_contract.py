@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+from app.core.install import APP_VERSION
 from app.main import create_app
 from app.runtimes.registry import RuntimeRegistry
 from tests.conftest import agents_url, new_agent
@@ -15,7 +16,7 @@ def test_health_and_me(client):
     assert h.json() == {
         "status": "ok",
         "database": "ok",
-        "version": "0.1.0",
+        "version": APP_VERSION,  # the repository's VERSION
         "auth_mode": "password",
     }
     me = client.get("/api/me").json()

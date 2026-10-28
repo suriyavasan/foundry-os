@@ -399,6 +399,7 @@ def settings_for(env: Env) -> Settings:
 
 
 def test_check_asks_github_once_a_day_and_caches(env, monkeypatch, tmp_path):
+    monkeypatch.setattr(install, "APP_VERSION", "0.1.0")  # independent of the repository's VERSION
     seen: list[str] = []
     monkeypatch.setattr(
         updatecheck,
@@ -519,6 +520,7 @@ def test_opt_out_by_environment_and_by_preference(env, monkeypatch, tmp_path):
 
 
 def test_update_check_command_output(env, monkeypatch, tmp_path):
+    monkeypatch.setattr(install, "APP_VERSION", "0.1.0")  # independent of the repository's VERSION
     monkeypatch.setattr(
         updatecheck,
         "http_client_factory",
