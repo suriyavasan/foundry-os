@@ -20,6 +20,7 @@ ApprovalKindLiteral = Literal[
     "production_deploy",
     "sensitive_action",
     "hire",
+    "outsource_job",
     "other",
 ]
 
@@ -95,6 +96,22 @@ class Policy(PurchasePolicy):
     radar_agent_sources: bool = True
     self_critique_enabled: bool = True
     radar_contact_email: str | None = None
+    # M21 agent meetings (only humans can change them): switch and daily caps.
+    meetings_enabled: bool = True
+    max_meetings_per_agent_per_day: int = 3
+    max_meetings_per_company_per_day: int = 12
+    # M18 (only humans can change them): how long a pending approval waits.
+    approval_timeout_seconds: int = 86_400
+    agent_approval_timeout_seconds: int = 1_800
+    # M18 Part B (only humans can change them): self-check before completing; durable work graph.
+    self_check_enabled: bool = True
+    work_graph_enabled: bool = True
+    # M22 (only humans can change it): the most one outsourced job may be budgeted at (micro-USD).
+    outsource_max_job_micros: int = 200_000_000
+    # M23 (read-only here; set through PUT /intensity): the level and whether a pace field was
+    # edited by hand since.
+    intensity: int = 3
+    intensity_custom: bool = False
     created_at: Timestamp
     updated_at: Timestamp
 
@@ -159,6 +176,19 @@ class PolicyUpdate(PurchasePolicyUpdate):
     radar_agent_sources: bool | None = None
     self_critique_enabled: bool | None = None
     radar_contact_email: str | None = Field(default=None, max_length=200)
+    # M21 agent meetings.
+    meetings_enabled: bool | None = None
+    max_meetings_per_agent_per_day: int | None = Field(default=None, ge=0, le=50)
+    max_meetings_per_company_per_day: int | None = Field(default=None, ge=0, le=500)
+    # M18: human approvals wait 1 h - 7 days, Co-founder approvals 5 min - 24 h.
+    approval_timeout_seconds: int | None = Field(default=None, ge=3_600, le=604_800)
+    agent_approval_timeout_seconds: int | None = Field(default=None, ge=300, le=86_400)
+    # M18 Part B: the agent verifies its own result against the acceptance criteria; the durable
+    # work graph orchestrates each task run (off = today's one-shot runs).
+    self_check_enabled: bool | None = None
+    work_graph_enabled: bool | None = None
+    # M22: ceiling of one outsourced job ($0 - $10,000).
+    outsource_max_job_micros: int | None = Field(default=None, ge=0, le=10_000_000_000)
 
     @field_validator("radar_contact_email")
     @classmethod
@@ -234,6 +264,16 @@ class PolicyUpdate(PurchasePolicyUpdate):
         "radar_max_goals_per_week",
         "radar_agent_sources",
         "self_critique_enabled",
+        # M21
+        "meetings_enabled",
+        "max_meetings_per_agent_per_day",
+        "max_meetings_per_company_per_day",
+        # M18
+        "approval_timeout_seconds",
+        "agent_approval_timeout_seconds",
+        "self_check_enabled",
+        "work_graph_enabled",
+        "outsource_max_job_micros",
     )
     @classmethod
     def _not_null(cls, v):  # only the two budget caps are nullable (null = no limit)

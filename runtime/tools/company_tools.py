@@ -8,6 +8,14 @@ Work (every employee):
     company_get_context, company_create_task, company_update_task, company_complete_task,
     company_review_task, company_submit_artifact, company_report_progress,
     company_record_decision, company_request_approval, company_decide_approval
+Founder questions (M18): company_ask_founder (a preference only the Founder can know; always with the
+    default you will use, non-blocking unless asked; the server limits how many)
+Human work and outsourcing (M22): company_request_human_work (every role: ask a person for something only a
+    person can do -- sign, call, KYC, an errand; the server limits how many), company_draft_outsource_job (HR only
+    on the server: prepare a freelance job; a person approves it, posts it and records the result -- nothing is
+    ever posted, messaged or paid by Foundry itself)
+Meetings (M21): company_schedule_meeting / company_cancel_meeting (every role), company_meeting_say (only inside
+    a meeting-turn run: speak once, which ends the turn)
 Planning (M12; leads and managers): company_plan_project -- create a project's whole first task
     list (<= 8 tasks, dependencies by key) in one call.
 Colleagues and hiring (M4):
@@ -396,7 +404,14 @@ def company_update_task(args: dict[str, Any], **_: Any) -> str:
     if action == "block":
         if not str(args.get("reason") or "").strip():
             return _err("invalid_arguments", "A reason is required when blocking a task.")
-        result = _call("PATCH", f"/tasks/{task_id}", json={"status": "blocked", "reason": str(args["reason"])})
+        condition = " ".join(str(args.get("unblock_condition") or "").split())
+        if not condition:
+            return _err("invalid_arguments",
+                        "unblock_condition is required when blocking a task: say in one sentence what would "
+                        "unblock it. If you only need an answer from the founder, call company_ask_founder "
+                        "(blocking=true) instead of blocking.")
+        result = _call("PATCH", f"/tasks/{task_id}", json={
+            "status": "blocked", "reason": str(args["reason"]), "unblock_condition": condition[:300]})
     elif action == "unblock":
         result = _call("PATCH", f"/tasks/{task_id}", json=_clean({"status": "unblocked", "reason": args.get("reason")}))
     elif action == "reassign":
@@ -405,7 +420,8 @@ def company_update_task(args: dict[str, Any], **_: Any) -> str:
         result = _call("PATCH", f"/tasks/{task_id}", json={"assignee_agent_id": str(args["assignee_agent_id"]).strip()})
     elif action == "retry":
         result = _call("POST", f"/tasks/{task_id}/retry", json=_clean({
-            "reason": args.get("reason"), "assignee_agent_id": args.get("assignee_agent_id")}))
+            "reason": args.get("reason"), "assignee_agent_id": args.get("assignee_agent_id"),
+            "new_instructions": args.get("new_instructions")}))
     elif action == "cancel":
         result = _call("POST", f"/tasks/{task_id}/cancel", json=_clean({"reason": args.get("reason")}))
     else:
@@ -542,6 +558,139 @@ def company_record_decision(args: dict[str, Any], **_: Any) -> str:
         "context": context_obj if isinstance(context_obj, dict) else None,
     })
     return _call("POST", "/decisions", json=body)
+
+
+def company_ask_founder(args: dict[str, Any], **_: Any) -> str:
+    """Ask the Founder a question only they can answer. Always with the default you will use."""
+    if (bad := _need(args, "question", "default_answer")):
+        return bad
+    blocking = str(args.get("blocking") if args.get("blocking") is not None else "").strip().lower() in (
+        "1", "true", "yes")
+    try:
+        hours = int(args.get("deadline_hours")) if str(args.get("deadline_hours") or "").strip() else 4
+    except (TypeError, ValueError):
+        return _err("invalid_arguments", "deadline_hours must be a whole number of hours (1-24)")
+    options = [o[:120] for o in (_str_list(args.get("options")) or [])][:6]
+    default_answer = str(args["default_answer"]).strip()
+    result = _call("POST", "/questions", json=_clean({
+        "question": str(args["question"]).strip(), "default_answer": default_answer,
+        "options": options, "blocking": blocking, "deadline_hours": hours}))
+    parsed = _json_of(result)
+    if not isinstance(parsed, dict) or _is_error(parsed) or _is_pending(parsed):
+        return result
+    task_id = ctx.config().task_id
+    if blocking and task_id:
+        ctx.mark_task_blocked(task_id)  # the task waits for the founder: this run is over
+        parsed["next"] = ("Your task is parked until the founder answers or the deadline passes (then your "
+                          f"default applies: {default_answer[:200]}). Stop now: do not call company_complete_task. "
+                          "You continue in a later run with the answer in your context.")
+    else:
+        parsed["next"] = (f"Keep going with your default now: {default_answer[:200]}. State this assumption in "
+                          "your result. If the founder answers something else you are woken with the answer.")
+    return _out(parsed)
+
+
+HUMAN_CATEGORIES = ["signature", "call", "identity", "payment", "physical", "account", "legal", "other"]
+MARKETPLACES = ["fiverr", "upwork", "other"]
+
+
+def company_request_human_work(args: dict[str, Any], **_: Any) -> str:
+    """Ask a person to do something only a person can do. By default your own task waits for it."""
+    if (bad := _need(args, "title", "instructions", "category", "why_human")):
+        return bad
+    category = str(args["category"]).strip().lower()
+    if category not in HUMAN_CATEGORIES:
+        return _err("invalid_arguments", f"category must be one of: {', '.join(HUMAN_CATEGORIES)}")
+    try:
+        hours = int(args.get("due_in_hours")) if str(args.get("due_in_hours") or "").strip() else 48
+    except (TypeError, ValueError):
+        return _err("invalid_arguments", "due_in_hours must be a whole number of hours (1-720)")
+    raw_blocks = args.get("blocks_my_task")
+    blocks = True if raw_blocks is None or str(raw_blocks).strip() == "" else str(raw_blocks).strip().lower() in (
+        "1", "true", "yes")
+    result = _call("POST", "/human-work", json=_clean({
+        "title": str(args["title"]).strip(), "instructions": str(args["instructions"]).strip(),
+        "category": category, "why_human": str(args["why_human"]).strip(),
+        "due_in_hours": hours, "assignee_member_id": str(args.get("assignee_member_id") or "").strip(),
+        "blocks_my_task": blocks}))
+    parsed = _json_of(result)
+    if not isinstance(parsed, dict) or _is_error(parsed) or _is_pending(parsed):
+        return result
+    task_id = ctx.config().task_id
+    if parsed.get("blocks_my_task") and task_id:
+        ctx.mark_task_blocked(task_id)  # the task waits for the person: this run is over
+    return _out(parsed)
+
+
+def company_draft_outsource_job(args: dict[str, Any], **_: Any) -> str:
+    """HR only: prepare a freelance job. Nothing is posted or paid; a person approves and does the rest."""
+    if (bad := _need(args, "title", "brief", "marketplace", "budget_usd")):
+        return bad
+    marketplace = str(args["marketplace"]).strip().lower()
+    if marketplace not in MARKETPLACES:
+        return _err("invalid_arguments", f"marketplace must be one of: {', '.join(MARKETPLACES)}")
+    try:
+        budget = float(_usd_to_micros(args["budget_usd"], "budget_usd")) / 1_000_000
+    except ValueError as exc:
+        return _err("invalid_arguments", str(exc))
+    if budget <= 0:
+        return _err("invalid_arguments", "budget_usd must be more than zero")
+    skills = [s[:60] for s in (_str_list(args.get("skills")) or [])][:10]
+    return _call("POST", "/outsource-jobs", json=_clean({
+        "title": str(args["title"]).strip()[:200], "brief": str(args["brief"]).strip(),
+        "skills": skills, "marketplace": marketplace, "budget_usd": budget,
+        "task_id": str(args.get("task_id") or "").strip()}))
+
+
+def company_schedule_meeting(args: dict[str, Any], **_: Any) -> str:
+    """Call a meeting with 1-3 colleagues. The server enforces who may join and the daily limits."""
+    if (bad := _need(args, "title", "agenda", "expected_outcome")):
+        return bad
+    participants = _str_list(args.get("participant_agent_ids")) or []
+    if not 1 <= len(participants) <= 3:
+        return _err("invalid_arguments", "participant_agent_ids must list 1 to 3 colleagues' agent ids")
+    try:
+        minutes = int(args.get("start_in_minutes") or 0)
+    except (TypeError, ValueError):
+        return _err("invalid_arguments", "start_in_minutes must be a whole number (0-10080)")
+    return _call("POST", "/meetings", json=_clean({
+        "title": str(args["title"]).strip(), "agenda": str(args["agenda"]).strip(),
+        "expected_outcome": str(args["expected_outcome"]).strip(),
+        "participant_agent_ids": participants, "start_in_minutes": minutes,
+        "project_id": args.get("project_id") or None, "task_id": args.get("task_id") or None}))
+
+
+def company_meeting_say(args: dict[str, Any], **_: Any) -> str:
+    """Speak once in your own meeting turn. Success ends the turn (and this run)."""
+    meeting_id = str(args.get("meeting_id") or "").strip()
+    if not meeting_id:
+        return _err("invalid_arguments", "meeting_id is required")
+    body: dict[str, Any] = {"message": str(args.get("message") or "").strip()}
+    for key in ("accept", "decline"):
+        body[key] = _str_list(args.get(key)) or []
+    proposals = args.get("propose")
+    body["propose"] = [p for p in proposals if isinstance(p, dict)] if isinstance(proposals, list) else []
+    body["pass_turn"] = str(args.get("pass_turn") or "").strip().lower() in ("1", "true", "yes")
+    if str(args.get("final") or "").strip().lower() in ("1", "true", "yes"):
+        body["final"] = True
+        body["summary"] = str(args.get("summary") or "").strip() or None
+        for key in ("decisions", "action_items"):
+            value = args.get(key)
+            body[key] = [v for v in value if isinstance(v, dict)] if isinstance(value, list) else []
+    result = _call("POST", f"/meetings/{quote(meeting_id, safe='')}/say", json=body)
+    parsed = _json_of(result)
+    task_id = ctx.config().task_id
+    if isinstance(parsed, dict) and not _is_error(parsed) and not _is_pending(parsed) and task_id:
+        ctx.mark_task_completed(task_id)  # the turn is over: this run ends
+    return result
+
+
+def company_cancel_meeting(args: dict[str, Any], **_: Any) -> str:
+    """Cancel a meeting you organize."""
+    if (bad := _need(args, "meeting_id", "reason")):
+        return bad
+    return _call("POST", f"/meetings/{quote(str(args['meeting_id']).strip(), safe='')}/cancel",
+                 json={"reason": str(args["reason"]).strip()[:500]})
 
 
 def company_request_approval(args: dict[str, Any], **_: Any) -> str:
@@ -1506,11 +1655,15 @@ _TOOLS: dict[str, tuple[dict[str, Any], Callable[..., str], str]] = {
         company_plan_project, "🗂️"),
     "company_update_task": (
         _schema("company_update_task",
-                "Block/unblock a task (with a reason), reassign one you manage (or hand your own running task to "
-                "a colleague), retry a failed task you manage, or cancel one. Defaults to your task.",
+                "Block/unblock a task (block needs a reason AND unblock_condition; to wait for an answer from the "
+                "founder use company_ask_founder with blocking=true instead), reassign one you manage (or hand your "
+                "own running task to a colleague), retry a failed task you manage (new_instructions = retry with a "
+                "new approach, once per task), or cancel one. Defaults to your task.",
                 {"action": {"type": "string", "enum": ["block", "unblock", "reassign", "retry", "cancel"]},
                  "task_id": _str("Task id (default: your current task)"),
                  "reason": _str("Why (required for block)"),
+                 "unblock_condition": _str("Block only: what would unblock the task (max 300 chars)"),
+                 "new_instructions": _str("Retry only: what to do differently this time (max 2000 chars)"),
                  "assignee_agent_id": _str("New assignee (for reassign, or retry with another agent)")},
                 ["action"]),
         company_update_task, "✏️"),
@@ -1556,6 +1709,95 @@ _TOOLS: dict[str, tuple[dict[str, Any], Callable[..., str], str]] = {
                  "related_task_id": _str("Related task id (default: your task)")},
                 ["title"]),
         company_record_decision, "🧭"),
+    "company_ask_founder": (
+        _schema("company_ask_founder",
+                "Ask the founder a question ONLY when it is a preference only they can know (not for choices you "
+                "can undo: decide those and use company_record_decision). Always give the default you will use; "
+                "you keep going with it unless blocking=true (your task then waits for the answer or the deadline). "
+                "Limits: few questions per day. Never put secrets in it.",
+                {"question": _str("The question, plain text (max 1000 chars)"),
+                 "default_answer": _str("What you will do if the founder does not answer (max 500 chars)"),
+                 "options": {"type": "array", "items": _S, "description": "Up to 6 short answer choices (optional)"},
+                 "blocking": {"type": "boolean", "description": "Wait for the answer (parks your task; default false)"},
+                 "deadline_hours": {"type": "integer", "description": "Hours until the default applies (1-24, default 4)"}},
+                ["question", "default_answer"]),
+        company_ask_founder, "❓"),
+    "company_request_human_work": (
+        _schema("company_request_human_work",
+                "Ask a PERSON to do something only a person can do: sign a form, make a phone call, pass identity "
+                "checks (KYC), run a physical errand, take a bank or account step, give legal sign-off. Use it only "
+                "when you truly cannot do it yourself (not for a preference: that is company_ask_founder). Write "
+                "step-by-step instructions the person can follow and say why it needs a person. By default your "
+                "task waits until the person is done and you continue with their comment and files. Few per agent "
+                "and company at a time. Never put secrets in it.",
+                {"title": _str("What needs doing, short (max 300 chars)"),
+                 "instructions": _str("Step-by-step instructions for the person (max 4000 chars)"),
+                 "category": {"type": "string", "enum": HUMAN_CATEGORIES, "description": "What kind of thing it is"},
+                 "why_human": _str("Why only a person can do it (max 300 chars)"),
+                 "due_in_hours": {"type": "integer", "description": "Hours until it is due (1-720, default 48)"},
+                 "assignee_member_id": _str("A specific colleague's member id (optional; empty = any person can take it)"),
+                 "blocks_my_task": {"type": "boolean", "description": "Your task waits for it (default true)"}},
+                ["title", "instructions", "category", "why_human"]),
+        company_request_human_work, "🙋"),
+    "company_draft_outsource_job": (
+        _schema("company_draft_outsource_job",
+                "HR only: prepare a freelance job for a marketplace (Fiverr, Upwork or other) when the company lacks "
+                "the skill or capacity. This only DRAFTS it: a person must approve it, post it on the marketplace "
+                "themselves, hire and pay. You never post, message or pay anyone. The brief is public: context, "
+                "deliverables, acceptance criteria and timeline, with no secrets, e-mail addresses or phone numbers. "
+                "The budget (USD) must fit the company's per-job ceiling and monthly budget; few open jobs at a time.",
+                {"title": _str("Job title (max 200 chars)"),
+                 "brief": _str("Context, deliverables, acceptance criteria, timeline (max 6000 chars)"),
+                 "skills": {"type": "array", "items": _S, "description": "Up to 10 skills the freelancer needs"},
+                 "marketplace": {"type": "string", "enum": MARKETPLACES, "description": "Where a person will post it"},
+                 "budget_usd": {"type": "number", "description": "Maximum budget in US dollars"},
+                 "task_id": _str("The task this work serves (optional)")},
+                ["title", "brief", "marketplace", "budget_usd"]),
+        company_draft_outsource_job, "🧾"),
+    "company_schedule_meeting": (
+        _schema("company_schedule_meeting",
+                "Call a short meeting with 1-3 colleagues when you need to agree something with them that does "
+                "not need the founder (a plan, a split of work, a decision). Each speaks in turn; the outcome "
+                "becomes decisions and tasks owned by the participants who accept them. Limited per day: decide "
+                "yourself when you can.",
+                {"title": _str("Meeting title (max 200 chars)"),
+                 "agenda": _str("What to discuss (max 2000 chars)"),
+                 "expected_outcome": _str("What should be decided or produced (max 500 chars)"),
+                 "participant_agent_ids": {"type": "array", "items": _S,
+                                           "description": "Agent ids of 1-3 colleagues (see company_find_colleagues)"},
+                 "start_in_minutes": {"type": "integer", "description": "Start in this many minutes (default 0 = now)"},
+                 "project_id": _str("Related project id (optional)"),
+                 "task_id": _str("The task that prompted the meeting (optional)")},
+                ["title", "agenda", "expected_outcome", "participant_agent_ids"]),
+        company_schedule_meeting, "🗓️"),
+    "company_meeting_say": (
+        _schema("company_meeting_say",
+                "Speak in YOUR turn of a meeting, exactly once; this ends your turn. Add action items with "
+                "propose (each with an owner), accept or decline items you own by id, or pass_turn=true. The "
+                "organizer's final turn uses final=true with summary, decisions and action_items.",
+                {"meeting_id": _str("Meeting id (in your task)"),
+                 "message": _str("What you say (max 4000 chars)"),
+                 "propose": {"type": "array", "items": {"type": "object", "properties": {
+                     "title": _S, "description": _S, "owner_agent_id": _S}, "required": ["title", "owner_agent_id"]},
+                             "description": "Action items to propose: {title, description, owner_agent_id}"},
+                 "accept": {"type": "array", "items": _S, "description": "Ids of action items you own and accept"},
+                 "decline": {"type": "array", "items": _S, "description": "Ids of action items you own and decline"},
+                 "pass_turn": {"type": "boolean", "description": "Nothing to add"},
+                 "final": {"type": "boolean", "description": "The organizer's closing turn"},
+                 "summary": _str("Final turn: what was discussed and agreed"),
+                 "decisions": {"type": "array", "items": {"type": "object", "properties": {
+                     "title": _S, "rationale": _S}, "required": ["title"]}, "description": "Final turn: decisions"},
+                 "action_items": {"type": "array", "items": {"type": "object", "properties": {
+                     "id": _S, "title": _S, "description": _S, "owner_agent_id": _S}},
+                                  "description": "Final turn: agreed items (id of a proposal, or a new one with owner)"}},
+                ["meeting_id"]),
+        company_meeting_say, "🗣️"),
+    "company_cancel_meeting": (
+        _schema("company_cancel_meeting",
+                "Cancel a meeting you organize (it has not ended yet).",
+                {"meeting_id": _str("Meeting id"), "reason": _str("Why (max 500 chars)")},
+                ["meeting_id", "reason"]),
+        company_cancel_meeting, "🚫"),
     "company_request_approval": (
         _schema("company_request_approval",
                 "Request approval for a risky or costly action (purchase, hire, deploy...). Returns an approval id.",

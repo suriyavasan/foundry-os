@@ -212,7 +212,7 @@ describe('CLI tile vocabulary', () => {
   })
 
   it('reads the install log in the usual spellings', () => {
-    expect(normalizeInstallLog({ status: 'running', lines: ['a', 'b'] })).toEqual({ state: 'running', lines: ['a', 'b'], exit_code: null })
+    expect(normalizeInstallLog({ status: 'running', lines: ['a', 'b'] })).toEqual({ state: 'running', lines: ['a', 'b'], exit_code: null, method: null, sha256: null })
     expect(normalizeInstallLog({ status: 'none', lines: [] }).state).toBe('idle')
     expect(normalizeInstallLog({ state: 'done', log: 'x\ny\n', exit_code: 0 })).toMatchObject({ state: 'succeeded', lines: ['x', 'y'] })
     expect(normalizeInstallLog({ done: true, exit_code: 1 }).state).toBe('failed')

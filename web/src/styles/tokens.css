@@ -72,6 +72,17 @@
   --live-paused: #5c606b;
   --live-proposed: var(--info);
   --live-failed: var(--danger);
+
+  /* illustrated faces (M20): the circle behind an employee's face; picked by a hash of the id.
+     Mid tones so dark hair and light skin both read on them in this theme. */
+  --avatar-bg-1: #5d78d6;
+  --avatar-bg-2: #3f9a86;
+  --avatar-bg-3: #b9744f;
+  --avatar-bg-4: #9a68c4;
+  --avatar-bg-5: #c25f82;
+  --avatar-bg-6: #4f93b8;
+  --avatar-bg-7: #8f9a45;
+  --avatar-bg-8: #7a7fa8;
 }
 
 :root[data-theme='light'] {
@@ -135,6 +146,15 @@
   --live-paused: #b0b4be;
   --live-proposed: var(--info);
   --live-failed: var(--danger);
+
+  --avatar-bg-1: #c3d0fb;
+  --avatar-bg-2: #b5e3d6;
+  --avatar-bg-3: #f3cfb4;
+  --avatar-bg-4: #dcc8f5;
+  --avatar-bg-5: #f4c4d4;
+  --avatar-bg-6: #b9dbee;
+  --avatar-bg-7: #dde4a8;
+  --avatar-bg-8: #cfd2ea;
 }
 
 :root {

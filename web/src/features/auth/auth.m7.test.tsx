@@ -45,12 +45,12 @@ describe('AuthGate on an M7 backend', () => {
   it('shows the setup wizard on a fresh install', async () => {
     vi.stubGlobal('fetch', mockApi({ '/auth/session': { state: 'setup_required', user: null } }).impl)
     renderGate()
-    // M10: the onboarding opens on a welcome screen; the account form is the second of six steps.
+    // M10: the onboarding opens on a welcome screen; the account form is the second of seven steps.
     expect(await screen.findByRole('heading', { name: 'A company that runs itself.' })).toBeInTheDocument()
-    expect(screen.getByText(/Step 1 of 6/)).toBeInTheDocument()
+    expect(screen.getByText(/Step 1 of 7/)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /Start/ }))
     expect(await screen.findByRole('heading', { name: 'Create your account' })).toBeInTheDocument()
-    expect(screen.getByText(/Step 2 of 6/)).toBeInTheDocument()
+    expect(screen.getByText(/Step 2 of 7/)).toBeInTheDocument()
   })
 
   it('keeps the owner-token flow on a backend without /auth/session', async () => {
@@ -292,6 +292,8 @@ describe('setup wizard', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
     await screen.findByRole('heading', { name: 'Where should your code live?' })
     await userEvent.click(screen.getByRole('button', { name: /No GitHub for now/ }))
+    await screen.findByRole('heading', { name: 'Talk to your company from your phone' }) // M19: the chat apps step (skippable)
+    await userEvent.click(screen.getByRole('button', { name: 'Skip for now' }))
     await screen.findByRole('heading', { name: 'Meet your team' })
   }
 
@@ -332,8 +334,12 @@ describe('setup wizard', () => {
     expect(await screen.findByText(/GitHub projects are not built into this server/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Create a new repository/ })).toBeDisabled()
     await userEvent.click(screen.getByRole('button', { name: /No GitHub for now/ }))
-    await screen.findByRole('heading', { name: 'Meet your team' })
+    await screen.findByRole('heading', { name: 'Talk to your company from your phone' })
     expect(api.calls.find((c) => c.path === '/companies/c9/notes')!.body).toEqual({ body: 'A newsletter about research papers' })
+    // This backend has no chat apps: the step says so and the person skips it.
+    expect(await screen.findByText(/Not built yet/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Skip for now' }))
+    await screen.findByRole('heading', { name: 'Meet your team' })
     expect(api.calls.some((c) => c.method === 'PATCH')).toBe(false)
     await userEvent.click(screen.getByRole('button', { name: /Launch/ }))
     expect(await screen.findByText('the app')).toBeInTheDocument()

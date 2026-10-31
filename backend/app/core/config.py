@@ -65,6 +65,9 @@ class Settings(BaseSettings):
     worker_concurrency: int = 4
     engine_tick_seconds: float = 2.0  # scheduler tick (dispatch, schedules)
     engine_poll_seconds: float = 0.5  # worker queue poll
+    # M19: the engine process runs the chat-channel supervisor (Telegram polling, Discord gateway,
+    # the outbox). Off = chat channels can be configured but nothing is delivered.
+    channels_enabled: bool = True
 
     # --- Milestone 4: skills & HR -----------------------------------------------------------
     # Checkout of our Hermes fork: source of the bundled/optional skills and of the skills guard.

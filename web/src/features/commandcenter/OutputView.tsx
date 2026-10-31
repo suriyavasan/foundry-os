@@ -9,19 +9,19 @@ import type { Panel } from '@/lib/panels'
  * A structured output: text (markdown, rendered safely), a table, a list, or an error; links beneath it open panels.
  * Nothing here executes or injects anything from the server: cells are React text, links are parsed into known panels.
  */
-export function OutputView({ output, onOpenPanel, className }: { output: CommandOutput; onOpenPanel: (p: Panel) => void; className?: string }) {
+export function OutputView({ output, onOpenPanel, className, compact = false }: { output: CommandOutput; onOpenPanel: (p: Panel) => void; className?: string; compact?: boolean }) {
   const o = normalizeCommandOutput(output)
   if (!o) return null
   const isError = o.kind === 'error'
   return (
-    <div className={clsx('space-y-2', isError && 'rounded-md border border-danger/40 bg-danger-subtle px-3 py-2', className)} data-kind={o.kind}>
+    <div className={clsx(compact ? 'space-y-1.5' : 'space-y-2', isError && (compact ? 'rounded-2xl rounded-bl-md border border-danger/40 bg-danger-subtle px-3 py-2' : 'rounded-md border border-danger/40 bg-danger-subtle px-3 py-2'), className)} data-kind={o.kind}>
       {o.title && (
         <p className={clsx('flex items-center gap-1.5 text-[12.5px] font-semibold', isError ? 'text-danger' : 'text-fg')}>
           {isError && <AlertTriangle className="size-3.5 shrink-0" aria-hidden />}
           {o.title}
         </p>
       )}
-      {o.text && (isError ? <p className="text-[13px] break-words text-fg">{o.text}</p> : <Markdown source={o.text} className="text-[13px] text-fg-2" />)}
+      {o.text && (isError ? <p className="text-[13px] break-words text-fg">{o.text}</p> : <Markdown source={o.text} className={compact ? 'text-[13.5px] text-fg [&_ol]:my-1 [&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_ul]:my-1' : 'text-[13px] text-fg-2'} />)}
       {o.kind === 'table' && o.rows.length > 0 && (
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-left text-[12.5px]">

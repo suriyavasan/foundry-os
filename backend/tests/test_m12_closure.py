@@ -83,7 +83,10 @@ def test_a_task_blocked_by_an_agent_wakes_the_project_lead_at_once(app, client, 
     sess = start_run(
         app, client, cid, w.specialist["id"], task_title="Needs a key", project_id=p["id"]
     )
-    r = sess.patch(f"/tasks/{sess.task_id}", json={"status": "blocked", "reason": "no API key"})
+    r = sess.patch(
+        f"/tasks/{sess.task_id}",
+        json={"status": "blocked", "reason": "no API key", "unblock_condition": "when it is fixed"},
+    )
     assert r.status_code == 200, r.text
     [reason] = wake_reasons(app, w.lead["id"])
     assert reason["trigger"] == "blocked" and "no API key" in reason["text"]
@@ -96,11 +99,21 @@ def test_blocking_wakes_the_assignees_manager_else_the_cofounder_never_the_block
     cid = w.cid
     clear_wakes(app)
     sess = start_run(app, client, cid, w.specialist["id"], task_title="No project")
-    sess.patch(f"/tasks/{sess.task_id}", json={"status": "blocked", "reason": "stuck"})
+    sess.patch(
+        f"/tasks/{sess.task_id}",
+        json={"status": "blocked", "reason": "stuck", "unblock_condition": "when it is fixed"},
+    )
     assert [x["trigger"] for x in wake_reasons(app, w.lead["id"])] == ["blocked"]
     clear_wakes(app)
     mine = start_run(app, client, cid, w.lead["id"], task_title="Lead's own", kind="work")
-    mine.patch(f"/tasks/{mine.task_id}", json={"status": "blocked", "reason": "need a decision"})
+    mine.patch(
+        f"/tasks/{mine.task_id}",
+        json={
+            "status": "blocked",
+            "reason": "need a decision",
+            "unblock_condition": "when it is fixed",
+        },
+    )
     assert [x["trigger"] for x in wake_reasons(app, w.founder["id"])] == ["blocked"]
     assert wake_reasons(app, w.lead["id"]) == []
 

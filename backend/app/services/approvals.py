@@ -12,7 +12,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime
+import logging
+from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select, update
@@ -23,12 +24,15 @@ from app.core.principal import CompanyContext, Principal, Role
 from app.core.refs import parse_ref
 from app.core.time import utcnow
 from app.models.agent import Agent
+from app.models.company import Company
 from app.models.enums import (
     AgentKind,
     AgentStatus,
     ApprovalStatus,
     Approver,
     AutonomyMode,
+    CompanyStatus,
+    TaskStatus,
 )
 from app.models.governance import Approval
 from app.models.policy import CompanyPolicy
@@ -38,7 +42,9 @@ from app.services.agents import _find_secret_paths
 from app.services.common import get_task_or_404
 from app.services.pagination import paginate
 
+logger = logging.getLogger("company_os.approvals")
 _UNSET: Any = object()
+SWEEP_BATCH = 100
 _DECISIONS = {
     "approve": (ApprovalStatus.APPROVED, "approval.approved", "Approved"),
     "reject": (ApprovalStatus.REJECTED, "approval.rejected", "Rejected"),
@@ -58,7 +64,13 @@ def compute_scope_hash(scope: dict[str, Any]) -> str:
     return hashlib.sha256(canonical_scope(scope).encode()).hexdigest()
 
 
+# M22: outward-facing and money: a person decides, whatever the policy or autonomy mode says.
+ALWAYS_HUMAN_KINDS = frozenset({"outsource_job"})
+
+
 def derive_approver(limits: CompanyPolicy, kind: str) -> Approver:
+    if kind in ALWAYS_HUMAN_KINDS:
+        return Approver.HUMAN
     if limits.autonomy_mode == AutonomyMode.SUPERVISED:
         return Approver.HUMAN
     return Approver.HUMAN if kind in limits.human_approval_required_for else Approver.FOUNDER
@@ -98,6 +110,12 @@ def create_approval(
 ) -> Approval:
     if ctx.role in (Role.VIEWER, Role.MEMBER):
         raise Forbidden("Only owners, admins and agents can request approvals")
+    if data.kind in ALWAYS_HUMAN_KINDS:
+        raise ValidationFailed(
+            "An outsourcing approval is created with the job: HR drafts it with "
+            "company_draft_outsource_job",
+            details=[{"loc": ["body", "kind"], "msg": "not requestable here"}],
+        )
     approver_member_id: str | None = None
     if data.approver_ref:
         if not ctx.is_human_admin:
@@ -169,17 +187,44 @@ def create_approval_record(
     guardrail engine passes ``approver`` (peer / founder / human) and the guarded tier + action."""
     limits = policy.load_policy(db, company_id)
     approver = approver or derive_approver(limits, kind)
+    requester_id = (
+        requested_by_agent_id
+        if requested_by_agent_id is not _UNSET
+        else (principal.id if principal.is_agent else None)
+    )
+    routed_note: str | None = None
+    if approver == Approver.FOUNDER:
+        # M18: the Co-founder may not decide its own request, and there may be no active Co-founder
+        # at all. Either way the approval would be a dead end: a person decides it (and is told).
+        founder = db.scalar(
+            select(Agent).where(
+                Agent.company_id == company_id,
+                Agent.kind == AgentKind.FOUNDER,
+                Agent.status.in_([AgentStatus.ACTIVE, AgentStatus.PAUSED]),
+            )
+        )
+        if founder is None or founder.id == requester_id:
+            approver = Approver.HUMAN
+            routed_note = (
+                "the Co-founder cannot decide its own request"
+                if founder is not None
+                else "there is no AI Co-founder to decide it"
+            )
+    now = utcnow()
+    expires_at: datetime | None
+    if subject is not None and subject[0] == "purchase_request":
+        expires_at = None  # purchasing keeps its own 7-day rule
+    elif approver == Approver.HUMAN:
+        expires_at = now + timedelta(seconds=limits.approval_timeout_seconds)
+    else:
+        expires_at = now + timedelta(seconds=limits.agent_approval_timeout_seconds)
     scope = dict(scope or {})
     approval = Approval(
         company_id=company_id,
         kind=kind,
         status=ApprovalStatus.PENDING,
         approver=approver,
-        requested_by_agent_id=(
-            requested_by_agent_id
-            if requested_by_agent_id is not _UNSET
-            else (principal.id if principal.is_agent else None)
-        ),
+        requested_by_agent_id=requester_id,
         approver_member_id=approver_member_id,
         task_id=task_id,
         title=title,
@@ -198,6 +243,7 @@ def create_approval_record(
         reviewer_agent_id=reviewer_agent_id,
         outbound=outbound,
         dlp_findings=dlp_findings,
+        expires_at=expires_at,
     )
     db.add(approval)
     db.flush()
@@ -215,6 +261,8 @@ def create_approval_record(
             "amount_micros": amount_micros,
             "tier": tier,
             "action": action,
+            "expires_at": expires_at.isoformat() if expires_at else None,
+            "routed_to_human": routed_note,
         },
     )
     events.emit(
@@ -232,11 +280,24 @@ def create_approval_record(
     )
     if approver == Approver.HUMAN:  # a person has to decide: tell them (M7 notifications)
         _notify_needed(db, approval, principal)
+    elif approver == Approver.FOUNDER:  # M18: the Co-founder decides now, not at its next heartbeat
+        from app.services import wakes
+
+        wakes.wake_founder(
+            db,
+            company_id,
+            "approval_pending",
+            f"Approval needed: {approval.title}",
+            ref_type="approval",
+            ref_id=approval.id,
+            actor_agent_id=requester_id,
+            now=now,
+        )
     return approval
 
 
-def _notify_needed(db: Session, approval: Approval, principal: Principal) -> None:
-    exclude = principal.id if principal.is_human else None
+def _notify_needed(db: Session, approval: Approval, principal: Principal | None) -> None:
+    exclude = principal.id if principal is not None and principal.is_human else None
     title = f"Approval needed: {approval.title}"
     common = {"related_type": "approval", "related_id": approval.id, "body": approval.reason}
     if approval.approver_member_id:
@@ -386,6 +447,11 @@ def decide(
 
         db.flush()  # autoflush is off: the decision must be in the database before it is consumed
         domains.apply_decision(db, ctx, approval, decision)
+    if approval.subject_type == "outsource_job":  # M22
+        from app.services import outsourcing  # local: outsourcing depends on this module
+
+        db.flush()
+        outsourcing.apply_decision(db, ctx, approval, decision)
     if approval.subject_type == "guardrail":
         from app.guardrails import peer  # local: the guardrail engine depends on this module
 
@@ -395,6 +461,9 @@ def decide(
 
         db.flush()
         purchasing.apply_decision(db, ctx, approval, decision)
+    from app.services import graph_waits  # M18 Part B: a graph task parked on it runs again
+
+    graph_waits.release_for_approval(db, approval, now)
     if approval.requested_by_agent_id and approval.subject_type != "agent_hire":
         # the requester continues once it is decided (a hire wakes the new hire's manager instead)
         from app.services import wakes
@@ -429,6 +498,15 @@ def _wake_text(approval: Approval, status: str) -> str:
             )
         note = f" Note: {approval.decision_note}" if approval.decision_note else ""
         return f"{text}.{note} Do not request the same purchase again; find another way."
+    if approval.subject_type == "outsource_job":  # M22
+        if status == ApprovalStatus.APPROVED:
+            return (
+                f"{text}. A person will post the job on the marketplace themselves and record who "
+                "was hired. You do not post, message or pay anyone: nothing more to do until a "
+                "delivery is recorded."
+            )
+        note = f" Note: {approval.decision_note}" if approval.decision_note else ""
+        return f"{text}.{note} Do not draft the same job again; adjust it or find another way."
     if approval.subject_type != "guardrail":
         return text
     if status == ApprovalStatus.APPROVED:
@@ -530,3 +608,197 @@ def consume(
     db.commit()
     db.refresh(approval)
     return approval
+
+
+# ---------------------------------------------------------------- M18: deadlines
+
+
+def _system_ctx(company_id: str) -> CompanyContext:
+    """The context the deadline sweep hands to the subject handlers (hire, plan, domain, guardrail)
+    when it declines an approval: no principal, so every audit row is attributed to the System. Only
+    the *reject* branches run with it; none of them looks at the caller's role."""
+    return CompanyContext(company_id=company_id, principal=None, role=Role.OWNER)  # type: ignore[arg-type]
+
+
+def _timeout_label(seconds: int) -> str:
+    return f"{max(1, round(seconds / 3600))}h"
+
+
+def _return_waiting_task(db: Session, approval: Approval, now: datetime) -> None:
+    """The task that waited on this approval (blocked with ``error.approval_id``) goes back to the
+    queue with a note telling the agent the action was declined by timeout. No commit."""
+    from app.models.work import Task
+    from app.services import tasks
+
+    if not approval.task_id:
+        return
+    task = db.scalar(
+        select(Task).where(Task.id == approval.task_id, Task.company_id == approval.company_id)
+    )
+    if task is None or task.status != TaskStatus.BLOCKED:
+        return
+    if (task.error or {}).get("approval_id") != approval.id:
+        return
+    task.review_note = (
+        "The approval you were waiting for was declined by timeout (nobody answered in time). "
+        "Finish the task another way, or record why you cannot."
+    )
+    tasks._unblock(db, task, None)
+
+
+def _escalate_to_human(db: Session, approval: Approval, now: datetime) -> None:
+    """A Co-founder (or peer) approval nobody decided in time is handed to a person, once."""
+    limits = policy.load_policy(db, approval.company_id)
+    was = approval.approver
+    if was == Approver.PEER:  # the reviewer's task is no longer needed
+        from app.guardrails import peer
+        from app.services import runs as run_service
+        from app.services import tasks
+
+        review = peer.review_task_for(db, approval)
+        if review is not None and TaskStatus(review.status) not in tasks.TERMINAL_TASK_STATUSES:
+            tasks.transition(db, review, TaskStatus.CANCELLED, principal=None, reason="escalated")
+            run_service.request_cancel_for_task(db, review, "task_cancelled", None)
+        approval.reviewer_agent_id = None
+    approval.approver = Approver.HUMAN
+    approval.approver_member_id = None
+    approval.expires_at = now + timedelta(seconds=limits.approval_timeout_seconds)
+    approval.updated_at = now
+    audit.record(
+        db,
+        company_id=approval.company_id,
+        principal=None,
+        action="approval.escalated",
+        target_type="approval",
+        target_id=approval.id,
+        summary=f"No decision from the {was}: '{approval.title}' now needs a person",
+        data={"kind": approval.kind, "from": str(was), "to": "human"},
+    )
+    events.emit(
+        db,
+        approval.company_id,
+        "approval.updated",
+        {"approval_id": approval.id, "approver": "human", "status": approval.status},
+    )
+    _notify_needed(db, approval, None)
+
+
+def _expire(db: Session, approval: Approval, now: datetime) -> None:
+    """A human approval nobody decided in time is *declined* (status ``expired``), never approved.
+    The requester is woken to continue another way. No commit."""
+    limits = policy.load_policy(db, approval.company_id)
+    note = (
+        f"No answer within {_timeout_label(limits.approval_timeout_seconds)}; declined by timeout"
+    )
+    approval.status = ApprovalStatus.EXPIRED
+    approval.decided_by_type = "system"
+    approval.decided_by_id = None
+    approval.decided_at = now
+    approval.decision_note = note
+    approval.updated_at = now
+    audit.record(
+        db,
+        company_id=approval.company_id,
+        principal=None,
+        action="approval.expired",
+        target_type="approval",
+        target_id=approval.id,
+        summary=f"Approval expired: {approval.title}",
+        data={"kind": approval.kind, "approver": str(approval.approver), "reason": "timeout"},
+    )
+    events.emit(
+        db,
+        approval.company_id,
+        "approval.decided",
+        {
+            "approval_id": approval.id,
+            "status": ApprovalStatus.EXPIRED.value,
+            "kind": approval.kind,
+            "decided_by_type": "system",
+        },
+    )
+    ctx = _system_ctx(approval.company_id)
+    if approval.subject_type == "agent_hire":
+        from app.services import hiring
+
+        hiring.apply_hire_decision(db, ctx, approval, "reject")
+    elif approval.subject_type == "agent_plan":
+        from app.services import tasks
+
+        tasks.apply_plan_decision(db, ctx, approval, "reject")
+    elif approval.subject_type == "domain_registration":
+        from app.services import domains
+
+        db.flush()
+        domains.apply_decision(db, ctx, approval, "reject")
+    elif approval.subject_type == "outsource_job":  # M22
+        from app.services import outsourcing
+
+        db.flush()
+        outsourcing.apply_decision(db, ctx, approval, "reject")
+    elif approval.subject_type == "guardrail":
+        from app.guardrails import peer
+
+        peer.after_decision(db, ctx, approval, "reject", note)
+    _return_waiting_task(db, approval, now)
+    from app.services import graph_waits  # M18 Part B: a graph task parked on it runs again
+
+    graph_waits.release_for_approval(db, approval, now)
+    if approval.requested_by_agent_id:
+        from app.services import wakes
+
+        wakes.wake_agent(
+            db,
+            approval.company_id,
+            approval.requested_by_agent_id,
+            "approval_expired",
+            f"Approval declined by timeout: {approval.title}. {note}. Do NOT repeat the same "
+            "request: finish another way, or record why you cannot.",
+            ref_type="approval",
+            ref_id=approval.id,
+            now=now,
+        )
+
+
+def sweep_deadlines(db: Session, now: datetime, *, limit: int = SWEEP_BATCH) -> dict[str, int]:
+    """Scheduler pass (every 60 s): pending approvals past ``expires_at`` in active companies,
+    oldest first, at most ``limit`` per call. A Co-founder/peer approval is handed to a human
+    (once); a human one expires (declined). Each approval commits on its own; one failure never
+    stops the others. Timeouts never approve anything."""
+    rows = list(
+        db.execute(
+            select(Approval.id, Approval.company_id)
+            .join(Company, Company.id == Approval.company_id)
+            .where(
+                Approval.status == ApprovalStatus.PENDING,
+                Approval.expires_at.is_not(None),
+                Approval.expires_at <= now,
+                Company.status == CompanyStatus.ACTIVE,
+            )
+            .order_by(Approval.expires_at, Approval.id)
+            .limit(limit)
+        ).all()
+    )
+    out = {"escalated": 0, "expired": 0}
+    for approval_id, company_id in rows:
+        try:
+            approval = db.scalar(
+                select(Approval).where(
+                    Approval.id == approval_id,
+                    Approval.company_id == company_id,
+                    Approval.status == ApprovalStatus.PENDING,
+                )
+            )
+            if approval is None:
+                continue
+            if approval.approver == Approver.HUMAN:
+                _expire(db, approval, now)
+                out["expired"] += 1
+            else:
+                _escalate_to_human(db, approval, now)
+                out["escalated"] += 1
+            db.commit()
+        except Exception:
+            db.rollback()
+            logger.exception("approval deadline sweep failed for %s", approval_id)
+    return out

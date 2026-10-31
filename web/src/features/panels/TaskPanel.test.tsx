@@ -100,3 +100,24 @@ describe('task detail panel', () => {
     expect((await screen.findAllByText('Task not found')).length).toBeGreaterThan(0)
   })
 })
+
+describe('run timeline: work graph steps (M18)', () => {
+  it('shows graph.node events as compact step lines and other events as before', async () => {
+    const graphEvents: RunEvent[] = [
+      { seq: 1, type: 'graph.node', payload: { node: 'prepare', outcome: 'ok', summary: 'prepare: ok' }, occurred_at: '2026-10-23T12:00:06Z' },
+      { seq: 2, type: 'progress', payload: { message: 'Reading the brief' }, occurred_at: '2026-10-23T12:00:07Z' },
+      { seq: 3, type: 'graph.node', payload: { node: 'check', outcome: 'failed/revise', revisions: 1, summary: 'check: failed/revise' }, occurred_at: '2026-10-23T12:00:30Z' },
+      { seq: 4, type: 'graph.node', payload: { node: 'check', outcome: 'passed', summary: 'check: passed' }, occurred_at: '2026-10-23T12:00:50Z' },
+      { seq: 5, type: 'graph.node', payload: { node: 'wait_founder', outcome: 'waiting', summary: 'wait_founder: waiting' }, occurred_at: '2026-10-23T12:00:55Z' },
+    ]
+    setup(undefined, { '/companies/c1/runs/r1/events': page(graphEvents) })
+    renderAt('/c/c1?panel=task:t1&run=r1')
+    const dialog = await screen.findByRole('dialog', { name: /Run · Write brief/ })
+    const log = await within(dialog).findByRole('log', { name: 'Run events' })
+    const steps = within(log).getAllByTestId('graph-step').map((s) => s.textContent)
+    expect(steps).toEqual(['›Prepared the task', '›Revising (1/2)', '›Self-check passed', '›Waiting for your answer'])
+    expect(within(log).getByText('Reading the brief')).toBeInTheDocument()
+    // graph steps do not carry the raw type chip
+    expect(within(log).queryByText('graph.node')).not.toBeInTheDocument()
+  })
+})

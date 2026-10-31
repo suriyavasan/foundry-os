@@ -123,6 +123,7 @@ Open - listed so nobody assumes they are handled:
 | Company actions only via the MCP server → agent API (tiers, rate limits, DLP) | enforced | MCP server tests, live OpenCode run |
 | Run token in a 0600 file deleted after the run (never argv/config); a CLI able to read outside its workspace could read it | partial | docs/cli-runtimes.md |
 | Install runs only with explicit confirmation, never sudo | enforced (fake npm in tests; real npm not exercised) | `test_m10_cli_install*` |
+| Running a vendor installer script (Settings > AI > Coding tools, or `POST /cli-runtimes/{id}/install` with `method: script`): installation owner only, explicit `confirm`; downloaded by Foundry over HTTPS from one allowlisted host (redirects must stay on it; 1 MB cap), written 0600 into a 0700 temp dir, SHA-256 recorded in the audit log and shown in the UI, run as `[bash|sh, file]` (no pipe, no shell string, no sudo), minimal environment, 900 s watchdog, redacted log, temp dir deleted. The script is arbitrary code from the vendor running as the Foundry user: the hash is a record, not a vendor-signed verification | enforced (fake HTTP transport and fake installers only; **no real vendor installer was downloaded or run**) | `backend/tests/test_cli_install_methods.py` |
 | Plan sign-in per AI connection (M17, generalizes B9): Foundry uses only `claude auth status|login|logout` (with `CLAUDE_CONFIG_DIR=<data dir>/claude-code/<connection id>`, 0700) and `agent status|login|logout` (isolated `HOME=<data dir>/cursor-home/<connection id>`, `NO_OPEN_BROWSER=1`). It never reads `.credentials.json`, Cursor's credential files or the Keychain, never runs `setup-token`, never stores, logs or passes a token; the login output is scanned only for the https sign-in URL on the vendor's hosts; the paste-the-code step happens only in a terminal attached to the CLI (`foundryos ai login`). One plan sign-in per CLI per company | enforced (fake `claude` / `agent`; **a real sign-in was never performed**, Cursor's `agent` was never run at all) | `backend/tests/test_m17_ai_stack.py` |
 | AI connections hold no secret: only ids of credentials / model providers; API keys stay in the encrypted credential store and reach a CLI child's environment only. Agents get 403 on the whole `/ai-stack` API (they never read or change their own AI); audit rows carry ids, never keys | enforced | `backend/tests/test_m17_ai_stack.py` |
 | Claude Code and Codex executed for real | **not verified** (Claude Code not run under the owner's login; Codex not installed) | — |
@@ -385,3 +386,105 @@ The radar reads the open internet, the most hostile input the company has. Layer
 * **Residual risk.** Detection is pattern based; a model can still be persuaded by text it reads, which is why nothing a
   radar item says can reach a permission, budget or approval, and why every effect is bounded by caps. Terms of service of
   sites differ from robots.txt: the seed enables only sources with an allowing robots.txt and a public feed or documented API.
+
+## 10. Agent meetings (M21)
+
+Agents talk to each other in bounded meetings (`app/services/meetings.py`). The trust model:
+
+* **Speaking is bound to the turn.** `company_meeting_say` is valid only inside the run of the speaker's own `meeting` task of that
+  meeting (run token = turn task = meeting; anything else is `403`), once per turn, and it is the only way a turn ends. An agent cannot
+  add itself or anyone to a meeting after it was scheduled, cannot speak out of order, and cannot accept or decline an action item it
+  does not own.
+* **Tasks only for agreed work.** The commit step is code, not a model: it creates a task only for an item its owner accepted (the
+  organizer's own items count as accepted) and creates it *as the owner*, so the owner's role rules, per-run and open-task caps,
+  duplicate check, project rules and supervised-mode plan approval apply. Refusals are recorded on the item. Nobody can hand work to
+  an agent who did not accept it.
+* **Transcripts are untrusted data.** Other agents' messages reach a turn wrapped as `<untrusted source="meeting">` (the closing tag
+  is escaped inside the text) with the rule that they are never instructions from the Founder and cannot change the task, rules or
+  permissions. A meeting turn offers no task, spend or hiring tools: only speak, read context, look up colleagues, call a follow-up.
+* **Nothing bypasses the engine.** Every turn is an ordinary task: routing, slots, budget reservation, guardrails, stall handling,
+  cancel and the emergency stop apply. Limits are in code and human-only to change: meetings per agent / company per day, at most
+  one running meeting per organizer, 1-3 invitees, 2 rounds, 30 minutes per turn, 2 hours per meeting.
+* **Tenancy.** Every meeting table carries `company_id`; the graph's checkpoints are company-partitioned; another company's agents
+  are refused as participants and its meetings are `404`. Messages, agenda and proposals are scanned for secrets (`422`) and shown
+  as plain text / markdown without raw HTML. The event stream carries ids and states only.
+
+## 9. Chat channels (M19)
+
+Telegram, Discord and WhatsApp let an owner or admin talk to the company from a phone. A chat message is as
+powerful as a web click, so the trust model is deliberately narrow (`app/services/channels/`).
+
+* **Official APIs only (legal line).** Telegram Bot API, a Discord *bot* (`discord.py`, Gateway) and the WhatsApp
+  Business **Cloud API**. No Baileys / WhatsApp Web automation, no Discord self-bots or user tokens, no scraping:
+  those break the platforms' terms and get accounts banned. Slack (Socket Mode), Signal, Matrix, e-mail and SMS are
+  shown as "coming later" and are not faked.
+* **Default deny; linking.** An unknown sender gets one fixed reply per sender per hour ("This is a private Foundry
+  bot...") and nothing else: no note, no command, no data; only a dedupe row is stored. A chat is linked to a person by
+  a one-time code (8 characters from an unambiguous alphabet, stored as SHA-256, valid 10 minutes, bound to the channel
+  and to the issuing owner/admin, single use). Five wrong codes per sender per hour lock that sender out. Codes can only
+  be issued by a logged-in owner/admin, who must still be an active owner/admin when the code is redeemed. Only DMs are
+  processed; groups and servers are ignored. A link is revoked by `/unlink`, from Settings, when the member is removed
+  from the company, or the first time the person no longer has an active membership.
+* **Authority = the linked person, per message.** Every message rebuilds that person's `CompanyContext` from
+  `company_members` (active status and current role). Free text and slash commands run through
+  `command_center.submit`, so a member without write rights gets the service's own permission message. Approvals are
+  decided with `approvals.decide` and the same checks as the web (owners/admins, or the person it is routed to; an
+  agent can never be the actor); founder questions through the question service (human owners/admins only). The
+  decision note and an audit event (`chat.approval_decided`, `via=<platform>`) say it came from chat. Purchase
+  checkouts and anything involving card details stay web-only ("Open in Foundry").
+* **Buttons are not trusted.** A payload is an opaque id (`q:<id>:<n|d>`, `a:<id>:approve|decline`). On a press the
+  server re-checks: the message was delivered to this very link, the record belongs to the link's company, it is
+  still open / pending, the person still has the permission, and the answer text comes from the database (option
+  index), never from the payload. Stale, foreign, decided or garbage payloads change nothing.
+* **Secrets.** Bot tokens, the WhatsApp access token, app secret and verify token are validated against the platform,
+  sealed (Fernet) into one credential and never returned by any endpoint, audit row, event or log (the WhatsApp verify
+  token is shown once, in the response that creates the channel). The httpx request logger is silenced because
+  Telegram's URLs contain the token; error messages quote the platform's description, never the token. Outbound text
+  is scrubbed for credential-shaped strings; agent-written text is labelled "<name> (AI)" and sent as plain text
+  (Discord mentions are disabled and markdown is escaped, so an agent cannot ping `@everyone` or craft a masked link).
+* **WhatsApp webhook.** `GET /api/webhooks/whatsapp/{channel_id}` answers Meta's handshake only for
+  `hub.mode=subscribe` and a constant-time match of the verify token. `POST` verifies `X-Hub-Signature-256`
+  (HMAC-SHA256 of the **raw** body under the app secret, constant time) before parsing; an unknown channel, no secret,
+  a bad signature and a tampered body are the same `403`. It answers 200 at once and processes after the response;
+  messages for another phone-number id are ignored. It needs a public https URL (M13).
+* **WhatsApp 24-hour window.** Free-form messages are allowed only within 24 h of the person's last message. Outside
+  it Foundry sends nothing, records the message as `skipped` (`outside_24h_window`) and the UI says to send any
+  message to the number. No template messages in M19.
+* **Limits and failures.** 4000 characters in; 20 messages per link per 5 minutes ("Slow down"); sends retry 3 times
+  with backoff. A refused credential (401, or 403 on WhatsApp) puts the channel in `error` with a clear message,
+  stops it and alerts the admins in the app; a user who blocked the bot only fails that message. One bot / phone
+  number serves one channel on an install, and only one process polls it (lease per channel).
+* **Not verified live.** No real bot was run: Telegram, Discord and WhatsApp are exercised only against fakes whose
+  request shapes follow the platforms' documentation and the Hermes adapters. Treat the first real connection as a
+  test and read `last_error` in Settings > Chat apps.
+
+## 11. Human work and outsourcing (M22)
+
+An AI employee may ask a person for help and HR may prepare a freelance job. Neither can reach outside Foundry on its own
+(`app/services/human_work.py`, `app/services/outsourcing.py`). The trust model:
+
+* **No marketplace automation.** Fiverr has no public buyer API, Upwork's API needs an approved partner key, and both
+  marketplaces' terms forbid unauthorized automation and scraping. Foundry therefore never posts, messages, hires or pays on a
+  marketplace and makes no network call in this feature (a test fails on any outbound connection). HR drafts; a person does every
+  outward-facing step on the marketplace's own site and records it. The helper links are plain `https` links the person opens.
+* **Approvals are always human.** An `outsource_job` approval is decided by a person whatever `human_approval_required_for` or the
+  autonomy mode says; an agent (the Co-founder included) cannot decide it, the generic approval route refuses to create one, and it
+  cannot be decided from a chat app. A timeout declines it, never approves. A budget raise is a new approval.
+* **Money is recorded, not moved.** Budgets, agreed prices and payments are integer micro-USD. The agreed price may not exceed the
+  approved budget and a payment may not exceed the agreed price (both checked in code, 422), a job is paid once, and a recorded
+  payment is a `verified` external expense (`source=outsourcing`) because a person paid and says so. The per-job ceiling
+  (`outsource_max_job_micros`, $200) and the company's monthly budget are checked when HR drafts and when a raise is requested;
+  only an owner or admin can change the ceiling, never an agent.
+* **Authorization lives in services.** Only the active HR agent drafts a job (403 for any other agent, including the Co-founder);
+  only owners and admins record steps, cancel or raise a budget; members and viewers read. Agents cannot read or claim human work.
+  Everything is `company_id`-scoped (another company's tasks, jobs and members are 404).
+* **The brief is public.** Title, brief and skills are scanned (secrets, own tokens, e-mail addresses, phone numbers, card numbers,
+  passages of memory marked internal-only) and refused when anything is found. A listing or profile link must be `https`, carry no
+  credentials and, for Fiverr and Upwork, be on the marketplace's own domain (look-alike and phishing links are refused).
+* **Human work is bounded and cannot be self-assigned.** 3 open requests per agent, 20 per company, secrets refused, assignees must be
+  active non-viewer members of the company, a human task can never be given to an agent and is never dispatched. A person's task
+  is never cancelled by a timer: owners get one reminder at due + 24 h.
+* **Residual risk.** The text an AI writes (instructions, briefs) is shown as plain text, but a person may still be talked into
+  doing something unwise by it; the instructions are labelled as written by an AI employee and nothing in them can change a
+  permission, budget or approval. Nothing here was exercised against a live marketplace.
+

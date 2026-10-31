@@ -12,13 +12,17 @@ from app.guardrails import ratelimit
 from app.radar import ENQUEUE_INTERVAL_SECONDS as RADAR_ENQUEUE_INTERVAL_SECONDS  # M16 radar
 from app.radar import jobs as radar_jobs  # M16 radar
 from app.services import (
+    approvals,  # M18 deadline sweep
     autonomy_watchdog,
     card_reconcile,
     command_center,
     emergency,
     events,
+    human_work,  # M22 overdue human work reminders
     jobs,
+    meetings,  # M21 agent meetings
     purchasing,
+    questions,  # M18 deadline sweep
     repo_sync,
     schedules,
     subscriptions,
@@ -63,6 +67,7 @@ def expire_purchases(db, *, now: datetime) -> int:
 TICK_SECONDS = 2.0
 PRUNE_INTERVAL_SECONDS = 3600
 WATCHDOG_INTERVAL_SECONDS = autonomy_watchdog.INTERVAL_SECONDS
+DEADLINE_SWEEP_SECONDS = 60  # M18: approval and founder-question deadlines
 # M15 agent cards: three deterministic passes, skipped during the emergency stop.
 CARD_SYNC_INTERVAL_SECONDS = 15 * 60
 CARD_BALANCE_INTERVAL_SECONDS = 60 * 60
@@ -79,6 +84,8 @@ class TickReport:
     repo_syncs: int = 0  # repository syncs enqueued this tick (M14)
     cards: dict[str, int] = field(default_factory=dict)  # M15: card passes that ran this tick
     radar_jobs: int = 0  # M16 radar: radar_fetch jobs enqueued this tick
+    deadlines: dict[str, int] = field(default_factory=dict)  # M18: approvals / questions swept
+    meetings: dict[str, int] = field(default_factory=dict)  # M21: meetings started / resumed
 
 
 class Scheduler:
@@ -96,6 +103,7 @@ class Scheduler:
         self._last_purchase_expiry: datetime | None = None
         self._last_subscriptions: datetime | None = None
         self._last_radar_enqueue: datetime | None = None  # M16 radar
+        self._last_deadline_sweep: datetime | None = None  # M18
 
     def start(self, now: datetime | None = None) -> recovery.RecoveryReport:
         """Startup recovery (also fires any schedule that came due while we were down)."""
@@ -146,6 +154,18 @@ class Scheduler:
                     report.radar_jobs = radar_jobs.enqueue_due(self.ctx.session_factory, now)
                 except Exception:  # a radar problem must not stop dispatching
                     logger.exception("radar fetch enqueue failed")
+            if self._last_deadline_sweep is None or now - self._last_deadline_sweep >= timedelta(
+                seconds=DEADLINE_SWEEP_SECONDS
+            ):  # M18: before the wakes, so the agents it wakes are materialized in this tick
+                self._last_deadline_sweep = now
+                try:
+                    report.deadlines = self.deadline_sweep(now)
+                except Exception:  # a sweep problem must not stop dispatching
+                    logger.exception("deadline sweep failed")
+            try:  # M21: start / resume meeting graphs (short writes, no model work)
+                report.meetings = meetings.advance(self.ctx.session_factory, now)
+            except Exception:  # a meeting problem must not stop dispatching
+                logger.exception("meeting sweep failed")
             report.woke_task_ids = wakes.materialize_due(self.ctx.session_factory, now)
             report.dispatch = dispatch_tick(self.ctx, now)
         if self._last_recovery is None or now - self._last_recovery >= timedelta(
@@ -159,6 +179,18 @@ class Scheduler:
             self._last_prune = now
             self.prune(now)
         return report
+
+    def deadline_sweep(self, now: datetime) -> dict[str, int]:
+        """M18: pending approvals past their deadline (Co-founder -> a person, once; a person's ->
+        declined) and open founder questions past theirs (the agent's default stands). Bounded
+        batches; each item commits on its own. Timeouts never approve anything."""
+        with self.ctx.session_factory() as db:
+            result = approvals.sweep_deadlines(db, now)
+        with self.ctx.session_factory() as db:
+            result["questions_defaulted"] = questions.sweep_deadlines(db, now)
+        with self.ctx.session_factory() as db:  # M22: a reminder for human work 24 h overdue
+            result["human_work_reminded"] = human_work.sweep_reminders(db, now)
+        return result
 
     def _card_passes(self, now: datetime, report: TickReport) -> None:
         """Card sync (15 min), balance check (hourly) and subscription check (daily). Each runs in

@@ -56,6 +56,10 @@ class Approval(TimestampMixin, Base):
     reviewer_agent_id: Mapped[str | None] = mapped_column(ForeignKey("agents.id"))
     outbound: Mapped[dict | None] = mapped_column(JSON)
     dlp_findings: Mapped[list | None] = mapped_column(JSON)
+    # M18: a pending approval is never open-ended. Past this moment the sweep re-routes a Co-founder
+    # approval to a human (once) or expires a human one (declined by timeout, never approved).
+    # NULL: no deadline (purchase requests keep their own 7-day rule; decided approvals).
+    expires_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
 
     @property
     def approver_ref(self) -> str | None:

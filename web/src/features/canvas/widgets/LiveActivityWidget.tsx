@@ -6,6 +6,7 @@ import { Avatar } from '@/components/avatar'
 import { EmptyState, ErrorState, LoadingState, Widget } from '@/components/ui'
 import { formatDateTime, formatRelative } from '@/lib/format'
 import { feedItemForAudit, mergeFeed, type FeedItem, type FeedTone } from '@/lib/streamEvents'
+import { RunningMeetings } from '@/features/meetings/RunningMeetings'
 import { AgentChip } from '@/features/shared/AgentChip'
 import { useCanvas } from '../CanvasContext'
 import { useAgentMap, useTick } from '../hooks'
@@ -47,6 +48,7 @@ export function LiveActivityWidget({ className }: { className?: string }) {
       expandLabel="Open full activity log"
       className={className}
     >
+      <RunningMeetings />
       {audit.isPending && items.length === 0 ? (
         <LoadingState rows={6} label="Loading activity" />
       ) : audit.isError && items.length === 0 ? (

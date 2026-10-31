@@ -4,6 +4,7 @@ import shutil
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
+import httpx
 import pytest
 from alembic.config import Config
 from fastapi import FastAPI
@@ -79,6 +80,38 @@ def _ai_gate(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) ->
         monkeypatch.setattr(ai_setup, "ENFORCED", False)
 
 
+# M18 Part B: the work graph is on by default and runs most of the suite. These tests were written for
+# one-shot runs and assert something the graph deliberately changes: the exact event list of a run
+# (it adds ``graph.node`` events), the manager review of a task whose self-check passed (it goes
+# straight to done), or the timing of the first events (the graph checkpoints before the runtime
+# starts). They run with ``policy.work_graph_enabled=false`` semantics; the graph's own behaviour
+# is covered by tests/test_m18_work_graph*.py.
+ONE_SHOT_TESTS = frozenset(
+    {
+        "test_engine.py::test_ready_task_runs_to_done_with_events_and_usage",
+        "test_containment.py::test_a_run_without_events_for_stall_seconds_is_cancelled_as_stalled",
+        "test_company_agent_adapter.py::test_engine_success_end_to_end",
+        "test_company_agent_adapter.py::test_engine_cancel_through_the_api",
+        "test_company_agent_adapter.py::test_engine_event_log_has_no_seq_collisions_with_server_progress",
+        "test_autonomy_flow.py::test_note_to_finished_project_through_every_layer",
+        "test_autonomy_loops.py::test_revision_loop_makes_a_new_review_task_per_revision_and_stops_at_the_limit",
+        "test_m12_e2e.py::test_api_mode_a_note_becomes_finished_work_and_the_next_goal_without_a_human",
+        "test_m12_e2e.py::test_hybrid_mode_management_on_the_api_work_on_the_cli_and_task_two_sees_task_ones_file",
+    }
+)
+
+
+@pytest.fixture(autouse=True)
+def _one_shot_runs_for_legacy_tests(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    node = request.node.nodeid.split("tests/", 1)[-1].split("[", 1)[0]
+    if node in ONE_SHOT_TESTS:
+        from app.engine.graph import runner
+
+        monkeypatch.setattr(runner, "graph_mode_for", lambda limits, task: False)
+
+
 @pytest.fixture(autouse=True)
 def _close_browsers() -> Iterator[None]:
     from tests import accounts_helpers
@@ -144,6 +177,8 @@ def app(
     )
     # Coding CLIs on the developer's machine must never matter to a test: only dirs a test adds.
     application.state.cli_env.use_system_path = False
+    # No test may ever download (and so run) a vendor installer: the default transport answers 404.
+    application.state.installer_transport = httpx.MockTransport(lambda request: httpx.Response(404))
     return application
 
 

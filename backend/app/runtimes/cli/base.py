@@ -45,6 +45,7 @@ from app.models.artifact import Artifact
 from app.models.company import Company
 from app.models.enums import CostKind, TaskStatus
 from app.models.provider import ModelProvider
+from app.models.run import TaskRun
 from app.models.work import Project, Task, TaskDependency
 from app.runtimes.base import (
     ArtifactRef,
@@ -69,6 +70,7 @@ from app.runtimes.cli import store, workspace
 from app.runtimes.cli.catalog import CliSpec, assert_safe_argv
 from app.runtimes.cli.env import CliEnvironment, base_env
 from app.services import agent_roles, agent_toolkit, credentials, routing, standards, task_briefs
+from app.services import meetings as meetings_service
 from app.services import memory as memory_service
 from app.storage.local import LocalFileStorage
 
@@ -88,6 +90,9 @@ CLI_MCP_TOOLS = (
     "request_help",
     "find_colleagues",
     "request_purchase",
+    "record_decision",  # M18 decide-don't-ask
+    "ask_founder",  # M18
+    "request_human_work",  # M22
 )
 SUBSCRIPTION_NOTE = "subscription"
 LOCAL_COST_NOTE = "Local model: no provider charge, recorded as $0 (verified)."
@@ -141,6 +146,11 @@ class RunPrep:
     # real home); Cursor: ``home`` itself is that isolated directory.
     config_dir: Path | None = None
     ai_connection_id: str | None = None
+    # M18 Part B: "verify" = the work graph's tool-less self-check call (``mode`` is "test": no tools,
+    # no company MCP); ``session_mode``/``session_id``: a persistent conversation (Claude Code).
+    purpose: str = "work"
+    session_mode: str | None = None  # "new" | "resume"
+    session_id: str | None = None
 
     @property
     def local_model(self) -> bool:
@@ -200,6 +210,7 @@ def redact(text: str, secrets: list[str]) -> str:
 class CliAdapter(RuntimeAdapter):
     kind = "agent_runtime"
     supports_execution = True
+    supports_verify = True  # M18 Part B: a tool-less call (the "test" mode of every CLI)
     spec: CliSpec
     parser_class: type[StreamParser]
     tool_prefix = ""
@@ -415,6 +426,7 @@ class CliAdapter(RuntimeAdapter):
                     task_description=description,
                     acceptance_criteria=request.task.acceptance_criteria,
                     review_note=request.task.review_note,
+                    carry_over=request.task.carry_over,
                     standards=standard_lines,
                     memory=memory_lines,
                     tool_prefix=self.tool_prefix,
@@ -422,6 +434,7 @@ class CliAdapter(RuntimeAdapter):
                     project_name=project_name,
                     workspace_files=list(request.workspace_files),
                     dependencies=dependencies,
+                    meeting_brief=meetings_service.turn_brief(db, task),
                 )
             )
             budget = request.limits.budget_micros
@@ -430,6 +443,8 @@ class CliAdapter(RuntimeAdapter):
                 prompt = prompt_builder.with_role_brief(
                     prompt, role_brief, mcp_tools, self.tool_prefix
                 )
+            if request.session is not None and request.session.mode == "resume":
+                prompt = f"{prompt_builder.RESUME_HEADER}\n\n{prompt}"
         run_dir = (
             settings.resolved_data_dir / "agents" / request.agent.id / "cli-run" / request.run_id
         )
@@ -466,6 +481,69 @@ class CliAdapter(RuntimeAdapter):
             role_brief=role_brief,
             config_dir=self._config_dir(state),
             ai_connection_id=state.get("connection_id"),
+            session_mode=request.session.mode if request.session else None,
+            session_id=request.session.id if request.session else None,
+        )
+
+    def _prepare_verify(self, request: ExecutionRequest) -> RunPrep:
+        """M18 Part B: the work graph's self-check. Same sign-in as the work run (the routed AI
+        connection), but a tool-less read-only call: ``mode`` "test" gives every CLI no tools, no
+        company MCP and no token file; the prompt is the verification prompt alone."""
+        binary = self.cli_env.find_binary(self.spec)
+        if binary is None:
+            raise RuntimeAdapterError(
+                RuntimeErrorKind.UNAVAILABLE, f"{self.spec.display_name} is not installed"
+            )
+        settings = self._settings
+        with self._session_factory() as db:
+            agent = db.get(Agent, request.agent.id)
+            company = db.get(Company, request.company.id)
+            if agent is None or company is None or agent.company_id != company.id:
+                raise RuntimeAdapterError(RuntimeErrorKind.REJECTED, "Agent or company not found")
+            state = self._state_for(db, company.id, request)
+            auth_mode, secret, provider, home, isolated = self._prep_common(
+                db, state, company.id, agent.id, request.run_id
+            )
+            model = (
+                (agent.runtime_config or {}).get("model")
+                or (provider.model if provider else None)
+                or state.get("model")
+            )
+        run_dir = (
+            settings.resolved_data_dir
+            / "agents"
+            / request.agent.id
+            / "cli-run"
+            / f"{request.run_id}-verify"
+        )
+        run_dir.mkdir(parents=True, exist_ok=True)
+        os.chmod(run_dir, 0o700)
+        budget = request.limits.budget_micros
+        return RunPrep(
+            cli=self.spec,
+            mode="test",
+            binary=binary,
+            auth_mode=auth_mode,
+            secret=secret,
+            home=home,
+            isolated_home=isolated,
+            run_dir=run_dir,
+            workspace=Path(request.workspace_dir),
+            prompt=request.task.description or "",
+            model=model,
+            budget_usd=(budget / 1_000_000) if budget else None,
+            max_run_seconds=request.limits.max_run_seconds,
+            provider=provider,
+            run_id=request.run_id,
+            task_id=request.task.id,
+            task_kind=request.task.kind,
+            workspace_kind="review",  # read-only copy semantics: nothing it does is kept
+            secrets=[
+                s for s in (secret, request.run_token, provider.api_key if provider else None) if s
+            ],
+            config_dir=self._config_dir(state),
+            ai_connection_id=state.get("connection_id"),
+            purpose="verify",
         )
 
     def _state_for(self, db: Session, company_id: str, request: ExecutionRequest) -> dict[str, Any]:
@@ -500,7 +578,11 @@ class CliAdapter(RuntimeAdapter):
         tools = agent_toolkit.run_company_tools(db, agent, task, runtime_config)
         names = agent_toolkit.mcp_names(tools)
         role = agent_roles.role_of(db, agent)
-        if role == agent_roles.SPECIALIST and "decide_peer_review" not in names:
+        if (
+            role == agent_roles.SPECIALIST
+            and "decide_peer_review" not in names
+            and task.kind != "meeting"  # M21: a meeting turn offers its own tools
+        ):
             # A specialist's CLI keeps today's fixed worker list (it creates no tasks and proposes no
             # memory); only the tools its task kind adds (pull request / subscription review) come on top.
             base = set(
@@ -619,7 +701,9 @@ class CliAdapter(RuntimeAdapter):
     def execute(
         self, request: ExecutionRequest, sink: EventSink, cancel: CancelToken
     ) -> ExecutionResult:
-        prep = self._prepare(request)
+        prep = (
+            self._prepare_verify(request) if request.purpose == "verify" else self._prepare(request)
+        )
         try:
             return self._execute(prep, sink, cancel)
         finally:
@@ -833,6 +917,13 @@ class CliAdapter(RuntimeAdapter):
             cost_kind=CostKind(bill["cost_kind"]),
         )
 
+    def _run_proposed(self, run_id: str) -> bool:
+        """M18 Part B: in a work-graph run ``complete_task`` only *proposes* a result (the task stays
+        in progress until the graph's finish node), which counts as the CLI having completed."""
+        with self._session_factory() as db:
+            row = db.get(TaskRun, run_id)
+            return row is not None and row.proposed_result is not None
+
     def _task_open(self, task_id: str) -> bool:
         with self._session_factory() as db:
             task = db.get(Task, task_id)
@@ -869,7 +960,22 @@ class CliAdapter(RuntimeAdapter):
                 error=ExecutionError(RuntimeErrorKind.CANCELLED, "Cancelled"),
                 usage=usage,
             )
-        completed = not self._task_open(prep.task_id)
+        if prep.purpose == "verify":
+            text = parsed.final_text.strip()
+            if parsed.error or code not in (0, None) or not text:
+                message = redact(
+                    self.classify_failure(parsed) if parsed.error else "The self-check failed",
+                    prep.secrets,
+                )[:300]
+                emit("run.failed", {"summary": message, "error": message})
+                return ExecutionResult(
+                    status="failed",
+                    error=ExecutionError(RuntimeErrorKind.FAILED, message, retryable=True),
+                    usage=usage,
+                )
+            emit("run.completed", {"summary": clip(text, 300)})
+            return ExecutionResult(status="succeeded", summary=text[:4000], usage=usage)
+        completed = not self._task_open(prep.task_id) or self._run_proposed(prep.run_id)
         if completed:
             summary = clip(parsed.final_text, 1000) or None
             emit(

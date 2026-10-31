@@ -149,7 +149,10 @@ def _repository_row(binding: ProjectRepository | None) -> StateRepository | None
 
 
 def _status_counts(db: Session, company_id: str, scope) -> dict[str, int]:
-    stmt = select(Task.status, func.count(Task.id)).where(Task.company_id == company_id)
+    stmt = select(Task.status, func.count(Task.id)).where(
+        Task.company_id == company_id,
+        Task.kind != TaskKind.MEETING,  # M21: not work
+    )
     if scope is not None:
         stmt = stmt.where(scope)
     counts = dict.fromkeys((s.value for s in TaskStatus), 0)
@@ -301,7 +304,7 @@ def build_state(db: Session, rc: AgentRunContext) -> AgentState:
         )
 
     # ---- tasks
-    base = select(Task).where(Task.company_id == company_id)
+    base = select(Task).where(Task.company_id == company_id, Task.kind != TaskKind.MEETING)
     if scope is not None:
         base = base.where(scope)
     visible_kinds = base.where(

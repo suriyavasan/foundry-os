@@ -46,6 +46,11 @@ def on_transition(
         _wake_for_blocked(db, task, principal, now)
     if target not in TERMINAL_TASK_STATUSES:
         return
+    if task.kind == TaskKind.MEETING:  # M21: a finished turn; the meeting sweep resumes its graph
+        from app.services import meetings
+
+        meetings.on_turn_task_terminal(db, task, target)
+        return
     if target == S.DONE:  # M16 radar: an accepted idea is done when its task is
         from app.radar import ideas as radar_ideas
 
@@ -93,9 +98,11 @@ def _wake_for_blocked(db: Session, task: Task, principal: Principal, now: dateti
     reason = (task.error or {}).get("message") or "no reason given"
     if reason.startswith("Escalated:"):
         return  # the escalation itself wakes the Co-founder with the full reason
+    condition = (task.error or {}).get("unblock_condition")
     text = (
         f"Task '{task.title}' [id {task.id}] was blocked by {principal.label}: {reason}. "
-        "Unblock it if the cause is gone, reassign it, or escalate."
+        + (f"It unblocks when: {condition}. " if condition else "")
+        + "Unblock it if the cause is gone, reassign it, or escalate."
     )
 
     def usable(agent_id: str | None) -> Agent | None:

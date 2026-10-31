@@ -37,11 +37,12 @@ async function renderCc(over: Record<string, unknown> = {}, route = '/c/c1') {
 }
 
 describe('Command Center widget: states', () => {
-  it('has an input with a prompt glyph, an empty state and example commands that fill the box', async () => {
+  it('opens with a hello from the AI Co-founder and three suggestions that fill the composer', async () => {
     await renderCc()
-    expect(await within(widget()).findByText('Nothing sent yet')).toBeInTheDocument()
-    expect(within(widget()).getByText('❯', { selector: 'span' })).toBeInTheDocument()
-    await userEvent.click(within(widget()).getByRole('button', { name: '/status' }))
+    expect(await within(widget()).findByText(/I'm your AI Co-founder/)).toBeInTheDocument()
+    const suggestions = within(widget()).getByRole('list', { name: 'Things to try' })
+    expect(within(suggestions).getAllByRole('button').map((b) => b.textContent)).toEqual(["What's the plan this week?", '/status', 'Hire a designer'])
+    await userEvent.click(within(suggestions).getByRole('button', { name: '/status' }))
     expect(input()).toHaveValue('/status')
     expect(input()).toHaveFocus()
   })
@@ -54,26 +55,28 @@ describe('Command Center widget: states', () => {
       makeExchange({ id: 'e4', input: '/status', output: { kind: 'text', title: 'Status', text: 'All **12** agents are idle.' }, created_at: minutesAgo(4) }),
     ]
     await renderCc({ '/companies/c1/command-center/feed': feed(items) })
-    const cards = await within(widget()).findAllByTestId('exchange')
-    expect(cards).toHaveLength(4)
+    // oldest first: the newest is at the bottom
+    const [text, error, list, table] = await within(widget()).findAllByTestId('exchange')
+    expect(within(widget()).getAllByTestId('exchange')).toHaveLength(4)
     // table
-    expect(within(cards[0]!).getByText('/tasks blocked')).toBeInTheDocument()
-    expect(within(cards[0]!).getByRole('columnheader', { name: 'Task' })).toBeInTheDocument()
-    expect(within(cards[0]!).getByRole('cell', { name: 'Write copy' })).toBeInTheDocument()
-    expect(within(cards[0]!).getByText('Done')).toBeInTheDocument()
-    await userEvent.click(within(cards[0]!).getByRole('button', { name: /Open tasks/ }))
+    expect(within(table!).getByText('/tasks blocked')).toBeInTheDocument()
+    expect(within(table!).getByRole('columnheader', { name: 'Task' })).toBeInTheDocument()
+    expect(within(table!).getByRole('cell', { name: 'Write copy' })).toBeInTheDocument()
+    // no status badge per message: a command that ran says nothing under it
+    expect(within(widget()).queryByText('Done')).not.toBeInTheDocument()
+    await userEvent.click(within(table!).getByRole('button', { name: /Open tasks/ }))
     await waitFor(() => expect(loc()).toBe('?panel=tasks'))
     // list
-    expect(within(cards[1]!).getByText('Launch v1')).toBeInTheDocument()
-    expect(within(cards[1]!).getByText(/active/)).toBeInTheDocument()
+    expect(within(list!).getByText('Launch v1')).toBeInTheDocument()
+    expect(within(list!).getByText(/active/)).toBeInTheDocument()
     // error
-    expect(within(cards[2]!).getByText('Unknown command')).toBeInTheDocument()
-    expect(within(cards[2]!).getByText('There is no /zap. Try /help.')).toBeInTheDocument()
+    expect(within(error!).getByText('Unknown command')).toBeInTheDocument()
+    expect(within(error!).getByText('There is no /zap. Try /help.')).toBeInTheDocument()
     // text (markdown, safely)
-    expect(within(cards[3]!).getByText('12', { selector: 'strong' })).toBeInTheDocument()
+    expect(within(text!).getByText('12', { selector: 'strong' })).toBeInTheDocument()
   })
 
-  it('a free-text exchange moves from waiting to working (with live progress from its run) to answered with a reply and action chips', async () => {
+  it('a free-text exchange moves from waiting to a typing indicator with the latest step (steps on request) to a reply with what it changed', async () => {
     const items = [
       makeExchange({ id: 'w1', input: 'Think about pricing', input_kind: 'note', status: 'pending', output: null, created_at: minutesAgo(1) }),
       makeExchange({ id: 'w2', input: 'Plan the launch', input_kind: 'note', status: 'processing', output: null, run_id: 'r1', created_at: minutesAgo(2) }),
@@ -97,19 +100,28 @@ describe('Command Center widget: states', () => {
       ] as unknown as CommandExchange[]),
       '/companies/c1/tasks': page([makeTask({ id: 't1', title: 'Review pricing' })]),
     })
-    const [waiting, working, answered] = await within(widget()).findAllByTestId('exchange')
-    expect(within(waiting!).getByText('Waiting')).toBeInTheDocument()
-    expect(within(waiting!).getByRole('status')).toHaveTextContent(/AI Co-founder will pick this up/)
+    // oldest first
+    const [answered, working, waiting] = await within(widget()).findAllByTestId('exchange')
+    expect(within(waiting!).getByRole('status')).toHaveTextContent('Waiting for the AI Co-founder')
+    expect(within(waiting!).queryByRole('button')).not.toBeInTheDocument()
 
-    expect(within(working!).getByText('Working')).toBeInTheDocument()
+    // working: one latest line, the steps behind "Show steps"
     expect(within(working!).getByText(/AI Co-founder is working on it/)).toBeInTheDocument()
-    const progress = await within(working!).findByRole('list', { name: 'Live progress' })
-    await waitFor(() => expect(within(progress).getByText('Creating a goal')).toBeInTheDocument())
+    await waitFor(() => expect(within(working!).getByText('Creating a goal')).toBeInTheDocument())
+    expect(within(working!).queryByRole('list', { name: 'Live progress' })).not.toBeInTheDocument()
+    expect(within(working!).queryByText('Reading the notes')).not.toBeInTheDocument()
+    await userEvent.click(within(working!).getByRole('button', { name: 'Show steps' }))
+    const progress = within(working!).getByRole('list', { name: 'Live progress' })
     expect(within(progress).getByText('Reading the notes')).toBeInTheDocument()
+    expect(within(progress).getByText('Creating a goal')).toBeInTheDocument()
     expect(within(progress).queryByText('tokens: 100')).not.toBeInTheDocument() // usage noise is not progress
+    expect(within(working!).getByRole('button', { name: 'Hide steps' })).toHaveAttribute('aria-expanded', 'true')
 
-    expect(within(answered!).getByText('Answered')).toBeInTheDocument()
+    // answered: the reply, no status badge, the changes collapsed to one line
     expect(within(answered!).getByText('I created a goal and a review task.')).toBeInTheDocument()
+    expect(within(answered!).queryByText('Answered')).not.toBeInTheDocument()
+    expect(within(answered!).queryByRole('list', { name: 'Changed while answering' })).not.toBeInTheDocument()
+    await userEvent.click(within(answered!).getByRole('button', { name: 'Changed 2 things' }))
     const chips = within(answered!).getByRole('list', { name: 'Changed while answering' })
     expect(within(chips).getByRole('button', { name: 'Open goal: Pricing review' })).toBeInTheDocument()
     await userEvent.click(within(chips).getByRole('button', { name: /Open task/ }))
@@ -122,8 +134,10 @@ describe('Command Center widget: states', () => {
       makeExchange({ id: 'f2', input: 'Another', input_kind: 'note', status: 'failed', output: null, created_at: minutesAgo(31) }),
     ]
     const api = await renderCc({ '/companies/c1/command-center/feed': feed(items), 'POST /companies/c1/command-center/f1/retry': makeExchange({ id: 'f1', status: 'pending', output: null }) })
-    const [first, second] = await within(widget()).findAllByTestId('exchange')
-    expect(within(first!).getByText('Failed')).toBeInTheDocument()
+    // oldest first: f2, then f1
+    const [second, first] = await within(widget()).findAllByTestId('exchange')
+    // one inline line under the message: "Failed · Retry"; the reason sits in the reply
+    expect(within(first!).getByRole('status')).toHaveTextContent(/^Failed\s*·\s*Retry$/)
     expect(within(first!).getByText('Could not answer')).toBeInTheDocument()
     expect(within(first!).getByText('The model timed out after 15 minutes.')).toBeInTheDocument()
     expect(within(second!).getByRole('alert')).toHaveTextContent(/did not get an answer/)
@@ -131,19 +145,23 @@ describe('Command Center widget: states', () => {
     await waitFor(() => expect(api.calls.some((c) => c.method === 'POST' && c.path === '/companies/c1/command-center/f1/retry')).toBe(true))
   })
 
-  it('one that has waited longer than the system waits says so and offers a retry', async () => {
+  it('one that has waited longer than the system waits says so, in one line, and offers a retry', async () => {
     const stale = makeExchange({ id: 's1', input: 'Still waiting', input_kind: 'note', status: 'processing', output: null, run_id: null, created_at: minutesAgo(20) })
     const fresh = makeExchange({ id: 's2', input: 'Just now', input_kind: 'note', status: 'processing', output: null, run_id: null, created_at: minutesAgo(1) })
     await renderCc({ '/companies/c1/command-center/feed': feed([fresh, stale]) })
-    const [freshCard, staleCard] = await within(widget()).findAllByTestId('exchange')
-    expect(within(staleCard!).getByText(/taking longer than usual/)).toBeInTheDocument()
+    const [staleCard, freshCard] = await within(widget()).findAllByTestId('exchange')
+    expect(within(staleCard!).getByRole('alert')).toHaveTextContent(/Taking longer than usual/)
     expect(within(staleCard!).getByRole('button', { name: 'Retry now' })).toBeInTheDocument()
     expect(within(freshCard!).queryByRole('button', { name: /Retry/ })).not.toBeInTheDocument()
   })
 
-  it('links an answered note to its thread', async () => {
+  it('keeps "Open the note" and "Copy text" in a small menu on the reply', async () => {
     await renderCc({ '/companies/c1/command-center/feed': feed([makeExchange({ id: 'a1', input: 'x', input_kind: 'note', status: 'answered', note_id: 'n7', output: { kind: 'text', title: null, text: 'Noted.' } })]) })
-    await userEvent.click(await within(widget()).findByRole('button', { name: 'Open the note' }))
+    const card = await within(widget()).findByTestId('exchange')
+    expect(within(card).queryByText('Open the note')).not.toBeInTheDocument()
+    await userEvent.click(within(card).getByRole('button', { name: 'Message options' }))
+    expect(await screen.findByRole('menuitem', { name: 'Copy text' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Open the note' }))
     await waitFor(() => expect(loc()).toBe('?panel=note:n7'))
   })
 
@@ -166,6 +184,7 @@ describe('Command Center widget: states', () => {
     await within(widget()).findAllByTestId('exchange')
     expect(within(widget()).queryByRole('combobox')).not.toBeInTheDocument()
     expect(within(widget()).getByText(/Viewers cannot send commands/)).toBeInTheDocument()
+    expect(within(widget()).queryByRole('list', { name: 'Things to try' })).toBeNull()
   })
 })
 
@@ -185,7 +204,7 @@ describe('sending', () => {
     gate.resolve(jsonResponse(live.record(makeExchange({ id: 'real', input: 'Think about pricing', input_kind: 'note', status: 'pending', output: null })), 201))
     await waitFor(() => expect(within(widget()).queryByText('Sending…')).not.toBeInTheDocument())
     expect(within(widget()).getAllByTestId('exchange')).toHaveLength(1)
-    expect(within(widget()).getByText('Waiting')).toBeInTheDocument()
+    expect(within(widget()).getByText('Waiting for the AI Co-founder')).toBeInTheDocument()
   })
 
   it('plain Enter runs a one-line command, with its output right under it', async () => {
@@ -200,11 +219,16 @@ describe('sending', () => {
     expect(await within(widget()).findByText('Everything is running.')).toBeInTheDocument()
   })
 
-  it('plain Enter in free text only adds a line', async () => {
-    const api = await renderCc()
-    await userEvent.type(input(), 'one{Enter}two')
+  it('Enter sends free text; Shift+Enter only adds a line', async () => {
+    const live = liveFeed()
+    const api = await renderCc({ '/companies/c1/command-center/feed': live.feedRoute, 'POST /companies/c1/command': () => jsonResponse(live.record(makeExchange({ id: 'n', input: 'two', input_kind: 'note', status: 'pending', output: null })), 201) })
+    const user = userEvent.setup()
+    await user.type(input(), 'one{Shift>}{Enter}{/Shift}two')
     expect(input()).toHaveValue('one\ntwo')
     expect(api.calls.some((c) => c.method === 'POST')).toBe(false)
+    await user.keyboard('{Enter}')
+    await waitFor(() => expect(api.calls.find((c) => c.method === 'POST')?.body).toEqual({ input: 'one\ntwo' }))
+    expect(input()).toHaveValue('')
   })
 
   it('refuses an empty input with a reason and sends nothing', async () => {
@@ -229,9 +253,8 @@ describe('sending', () => {
     const user = userEvent.setup()
     await user.type(input(), '/status{Enter}')
     const card = await within(widget()).findByTestId('exchange')
-    await waitFor(() => expect(within(card).getByText('Failed')).toBeInTheDocument())
+    await waitFor(() => expect(within(card).getByRole('status')).toHaveTextContent(/Failed, it did not reach the server\s*·\s*Retry/))
     expect(within(card).getByText('Connect a working AI model first')).toBeInTheDocument()
-    expect(within(card).getByText(/did not reach the server/)).toBeInTheDocument()
     await user.click(within(card).getByRole('button', { name: 'Retry' }))
     await waitFor(() => expect(api.calls.filter((c) => c.method === 'POST' && c.path === '/companies/c1/command')).toHaveLength(2))
     expect(await within(widget()).findByText('Everything is running.')).toBeInTheDocument()
@@ -346,10 +369,10 @@ describe('Command Center panel', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Command Center' })
     await within(dialog).findAllByTestId('exchange')
     expect(within(dialog).queryByText('/goals', { selector: 'p' })).not.toBeInTheDocument()
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Load older' }))
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Load older messages' }))
     await waitFor(() => expect(within(dialog).getByText('Two goals.')).toBeInTheDocument())
     expect(cursors).toContain('c2')
-    expect(within(dialog).queryByRole('button', { name: 'Load older' })).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: 'Load older messages' })).not.toBeInTheDocument()
     // the reference list
     expect(within(dialog).getByText('/task <title> [@agent]')).toBeInTheDocument()
     expect(within(dialog).getByText('Create a goal · changes things')).toBeInTheDocument()

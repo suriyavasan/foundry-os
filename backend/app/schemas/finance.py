@@ -128,7 +128,7 @@ class ExternalExpense(ApiModel):
     created_at: Timestamp
     # M15: where the amount comes from (``human`` entry, ``card`` transaction, ``provider_action``)
     # and how sure it is (``verified`` for a real charge; a card or confirmed amount always is).
-    source: Literal["human", "card", "provider_action"] = "human"
+    source: Literal["human", "card", "provider_action", "outsourcing"] = "human"
     cost_kind: Literal["verified", "estimated", "unknown"] = "verified"
     purchase_request_id: str | None = None
 

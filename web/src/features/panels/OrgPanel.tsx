@@ -1,16 +1,17 @@
-import { FolderPlus, LayoutList, Network, Pencil, UserPlus } from 'lucide-react'
+import { FolderPlus, GitFork, LayoutList, Network, Pencil, UserPlus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useAgents, useDepartments, useMe, useMemberDirectory } from '@/api'
 import type { Agent, AgentStatus, Department } from '@/api/types'
-import { Button, EmptyState, ErrorState, LoadingState, Select, agentStatusLabel } from '@/components/ui'
+import { Button, EmptyState, ErrorState, LoadingState, Segmented, Select, agentStatusLabel } from '@/components/ui'
 import { useCanvas } from '@/features/canvas/CanvasContext'
+import { OrgMap, useOrgRoots } from '@/features/canvas/OrgMap'
 import { OrgTree } from '@/features/canvas/OrgTree'
 import { AgentsTable } from '@/features/organization/AgentsTable'
 import { buildOrgTree, flattenOrgTree } from '@/lib/orgTree'
 import { PanelFrame } from '@/features/canvas/PanelFrame'
 import { DepartmentDialog } from '@/features/organization/DepartmentDialog'
 
-type View = 'chart' | 'table'
+type View = 'map' | 'chart' | 'table'
 type StatusFilter = 'current' | 'all' | AgentStatus
 
 const STATUSES: AgentStatus[] = ['active', 'proposed', 'paused', 'retiring', 'retired', 'rejected']
@@ -39,6 +40,8 @@ export function OrgPanel() {
   const filtered = useMemo(() => (agents.data ?? []).filter(matches), [agents.data, matches])
   const tableRows = useMemo(() => flattenOrgTree(buildOrgTree(agents.data ?? [])).map((n) => n.agent).filter(matches), [agents.data, matches])
   const ready = !!agents.data && !!departments.data
+  const members = directory.available ? directory.members : undefined
+  const mapRoots = useOrgRoots(agents.data ?? [], members, me.data?.user.id)
 
   return (
     <PanelFrame
@@ -93,25 +96,16 @@ export function OrgPanel() {
             </option>
           ))}
         </Select>
-        <div role="group" aria-label="View" className="flex rounded-md border border-line-strong p-0.5">
-          {(
-            [
-              ['chart', 'Chart', Network],
-              ['table', 'Table', LayoutList],
-            ] as const
-          ).map(([v, label, Icon]) => (
-            <button
-              key={v}
-              type="button"
-              aria-pressed={view === v}
-              onClick={() => setView(v)}
-              className={'inline-flex h-6 items-center gap-1.5 rounded-sm px-2 text-[12.5px] font-medium ' + (view === v ? 'bg-active text-fg' : 'text-fg-3 hover:text-fg')}
-            >
-              <Icon className="size-3.5" aria-hidden />
-              {label}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          label="View"
+          value={view}
+          onChange={setView}
+          options={[
+            { value: 'map', label: 'Map', icon: <Network className="size-3.5" aria-hidden /> },
+            { value: 'chart', label: 'Tree', icon: <GitFork className="size-3.5" aria-hidden /> },
+            { value: 'table', label: 'Table', icon: <LayoutList className="size-3.5" aria-hidden /> },
+          ]}
+        />
         {ready && (
           <span className="text-[12px] text-fg-3">
             {filtered.length} of {agents.data.length} shown
@@ -133,6 +127,18 @@ export function OrgPanel() {
           />
         ) : agents.data.length === 0 ? (
           <EmptyState title="No agents yet" description="Propose a hire to add the first employee." />
+        ) : view === 'map' ? (
+          <div className="h-[min(640px,70vh)]">
+            <OrgMap
+              roots={mapRoots}
+              agents={agents.data}
+              members={members}
+              ownerName={me.data?.user.display_name}
+              selfUserId={me.data?.user.id}
+              onOpenAgent={(id) => openPanel({ kind: 'agent', id })}
+              onOpenMember={() => openPanel({ kind: 'team' })}
+            />
+          </div>
         ) : view === 'chart' ? (
           <div className="h-[min(640px,70vh)]">
             <OrgTree

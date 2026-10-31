@@ -22,11 +22,11 @@ import { WalletWidget } from './widgets/WalletWidget'
 import { WorkWidget } from './widgets/WorkWidget'
 
 /**
- * The company canvas: eleven widgets in one grid, all in the same Widget frame. Twelve columns on wide
- * screens, two on tablets, one on phones. Row one is tall: the organization (six columns), Reflections (three)
- * and the Command Center (three). Below 1440 px the organization takes the full width and Reflections and the
- * Command Center sit side by side under it; on phones everything stacks. Live activity and the goals & plan share
- * the next tall row (eight and four); the rest are three equal columns.
+ * The company canvas: eleven widgets in one grid, all in the same Widget frame. Twelve columns on wide screens, two on tablets,
+ * one on phones. The first fold is the conversation: the Command Center chat (eight columns) beside a compact Organization map
+ * (four), both at the same height (about 70% of the window, at most 640 px). On tablets the chat takes the full width with the
+ * organization full width below it; on phones they stack. Live activity (eight) and the goals & plan (four) share the next row;
+ * the rest are three equal columns, with CLI usage (eight) last.
  */
 export function CanvasPage() {
   const { companyId } = useCanvas()
@@ -60,11 +60,11 @@ export function CanvasPage() {
         <ErrorState error={company.error} onRetry={() => void company.refetch()} retrying={company.isFetching} />
       ) : (
         <div className="grid grid-cols-1 gap-(--widget-gap) md:grid-cols-2 xl:grid-cols-12">
-          <OrgWidget className="md:col-span-2 xl:col-span-12 min-[1440px]:col-span-6" />
-          <ReflectionsWidget className="xl:col-span-6 min-[1440px]:col-span-3" />
-          <CommandCenterWidget className="xl:col-span-6 min-[1440px]:col-span-3" />
+          <CommandCenterWidget className="md:col-span-2 xl:col-span-8" />
+          <OrgWidget className="md:col-span-2 xl:col-span-4" />
           <LiveActivityWidget className="md:col-span-2 xl:col-span-8" />
           <GoalsWidget className="md:col-span-2 xl:col-span-4" />
+          <ReflectionsWidget className="xl:col-span-4" />
           <WorkWidget className="xl:col-span-4" />
           <ApprovalsWidget className="xl:col-span-4" />
           <SpendWidget className="xl:col-span-4" />

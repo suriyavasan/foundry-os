@@ -34,6 +34,12 @@ COMPANY_TOOL_NAMES = (
     "company_get_context", "company_create_task", "company_update_task", "company_complete_task",
     "company_review_task", "company_submit_artifact", "company_report_progress", "company_record_decision",
     "company_request_approval", "company_decide_approval",
+    # M18: ask the Founder a question (with the default you will use)
+    "company_ask_founder",
+    # M22: ask a person for something only a person can do; HR drafts freelance jobs (a person approves)
+    "company_request_human_work", "company_draft_outsource_job",
+    # M21: agent meetings (company_meeting_say exists only inside a meeting-turn run)
+    "company_schedule_meeting", "company_meeting_say", "company_cancel_meeting",
     # M4: colleagues + hiring (server-enforced roles; HR tools are HR-only on the API side).
     "company_find_colleagues", "company_request_hire",
     "company_search_skills", "company_install_skill", "company_author_skill", "company_assign_skills",
@@ -108,6 +114,9 @@ class RunSpec:
     # {"kind": "project_repo" | "review" | "run_dir", "project_name": str, "files": [relative paths]}.
     # None = a plain per-run directory (or a control plane older than M12).
     workspace: Optional[dict[str, Any]] = None
+    # M18 Part B: "verify" = the work graph's self-check: one tool-less question, the model's final
+    # answer is the result (``task.description`` is the whole prompt). "work" = a normal run.
+    mode: str = "work"
 
     @property
     def secrets(self) -> list[str]:
@@ -271,6 +280,11 @@ def parse_spec(raw: Any) -> RunSpec:
                 if workspace_info.get(key) is not None and not isinstance(workspace_info.get(key), str):
                     problems.append(f"workspace.{key} must be a string")
 
+    mode = raw.get("mode", "work")
+    if mode not in ("work", "verify"):
+        problems.append("mode must be 'work' or 'verify'")
+        mode = "work"
+
     limits = raw.get("limits")
     if not isinstance(limits, dict):
         problems.append("limits is required and must be an object")
@@ -333,6 +347,7 @@ def parse_spec(raw: Any) -> RunSpec:
         company_tools=list(dict.fromkeys(company_tools)) if company_tools is not None else None,
         guardrails=guardrails if isinstance(guardrails, dict) else None,
         workspace=workspace_info if isinstance(workspace_info, dict) else None,
+        mode=mode,
     )
 
 

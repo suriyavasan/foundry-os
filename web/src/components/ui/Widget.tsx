@@ -14,6 +14,7 @@ export function Widget({
   onExpand,
   expandLabel,
   tall = false,
+  chat = false,
   className,
   bodyClassName,
   children,
@@ -25,6 +26,8 @@ export function Widget({
   onExpand?: () => void
   expandLabel?: string
   tall?: boolean
+  /** The first-fold height of the canvas: the Command Center and the organization share it (about 70% of the window, at most 640 px). */
+  chat?: boolean
   className?: string
   bodyClassName?: string
   children: ReactNode
@@ -35,7 +38,7 @@ export function Widget({
       aria-labelledby={titleId}
       className={clsx(
         'flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border border-line bg-surface',
-        tall ? 'h-[460px] md:h-(--widget-h-tall)' : 'h-(--widget-h)',
+        chat ? 'h-[max(440px,min(640px,70vh))]' : tall ? 'h-[460px] md:h-(--widget-h-tall)' : 'h-(--widget-h)',
         className,
       )}
     >

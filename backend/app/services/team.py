@@ -207,6 +207,9 @@ def remove_member(db: Session, ctx: CompanyContext, member_id: str, auth: AuthSe
     release_work(db, member, ctx.principal, reason="member removed")
     member.status = MemberStatus.REMOVED.value
     member.removed_at = now
+    from app.services.channels import service as chat_channels  # M19
+
+    chat_channels.revoke_links_for_member(db, ctx.company_id, member.user_id, ctx.principal)
     # Their credentials die with their last membership; a person who still belongs to another
     # company keeps their sessions there (the company context check already shuts this one out).
     others = db.scalar(

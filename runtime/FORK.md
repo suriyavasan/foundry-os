@@ -219,3 +219,60 @@ providers (no keys), the HR/hiring tools against a real model (they are covered 
 * Tests: `test_company_tools.py` (request shape, money handling, validation, card-number refusal, server errors, review path
   quoting, tool gating), `test_policy.py` (purchasing paragraph per role), `test_guard_registry.py` (both tools classified).
 * Not verified: nothing here was exercised against the real backend or a live model; the tests use the stub agent API.
+
+## Milestone 18 additions, Part A (company layer only, no upstream file touched)
+
+* `tools/company_tools.py`: `company_ask_founder` (`POST /questions`; 48 company tools at that time): a question only the Founder can
+  answer, always with the default the agent will use, `options` (<= 6), `blocking` (default false) and `deadline_hours` (1-24, server
+  clamps). A blocking question marks the task "blocked" for this run (the run ends like a block; the control plane parks the task and
+  resumes it with the answer in its context); a refused one (`question_limit`, 429) does not. `company_update_task action=block` now
+  requires `unblock_condition` (checked before any HTTP call) and `action=retry` takes `new_instructions` ("retry with a new approach",
+  once per task on the server).
+* `company_agent/spec.py`: the tool name (also in `backend/app/guardrails/tools.json`, action `question.ask`). `company_agent/runner.py`:
+  `company_ask_founder` ends the run when it set a disposition (blocking ask). `company_agent/mcp_server.py`: `ask_founder` is in the
+  default tool list. `company_agent/prompts.py`: `DECISION_RULES` replace "never ask a human for input" and "anything that spends money,
+  deploys or contacts outside people needs company_request_approval first" (guardrails gate those in code): decide what you can undo and
+  record it, ask the Founder only for preferences only they know, keep going with the default; the manager playbook no longer says
+  "company_request_approval first"; playbooks tell an employee to give `unblock_condition` when blocking.
+* Tests: `test_company_tools.py` (ask, blocking, refused, unblock_condition), `test_m6_runtime.py` (the doctrine in every role's prompt),
+  `test_mcp_server.py`, `stub_agent_api.py` (`/questions`).
+* Not verified: nothing here was exercised against a live model; the tests use the stub agent API and the backend's own tests cover the server.
+
+
+## Milestone 18 additions, Part B (company layer only, no upstream file touched)
+
+* `company_agent/spec.py`: optional `mode` (`work`, the default, or `verify`). `company_agent/prompts.py`: in `verify` mode the system
+  prompt is a short independent-verifier prompt and the first user turn is `task.description` (the control plane's verification
+  prompt). `company_agent/runner.py`: in `verify` mode there is no task to complete: the model's final answer is the run's result
+  (`run.completed` summary, <= 4000 chars). This is the work graph's self-check; the control plane sends `toolsets: ["todo"]` (an
+  in-memory list; the spec needs one) and `company_tools: []`, so the call has no way to write anything.
+* No change to `company_complete_task`: the control plane answers `{ok: true, status: "proposed"}` inside a graph run, which is neither an
+  error nor a pending approval, so the existing hard-stop on completion applies unchanged.
+* Tests: `company_agent/tests/test_verify_mode.py` (spec validation, a real launcher run with no company tools whose answer is the result).
+* Not verified: nothing here was exercised against a live model; an empty model answer is replaced by Hermes with a placeholder text,
+  which the control plane's verdict parser treats as inconclusive.
+
+## Milestone 21 additions (agent meetings; company layer only, no upstream file touched)
+
+* `tools/company_tools.py`: `company_schedule_meeting` (`POST /meetings`), `company_meeting_say` (`POST /meetings/{id}/say`; success sets the
+  task disposition "completed", so the run ends: the turn is over) and `company_cancel_meeting` (51 company tools in total). A refused
+  say (wrong turn, validation) does not end the run.
+* `company_agent/runner.py`: `company_meeting_say` hard-stops the run like `company_complete_task` (the summary is the message).
+  `company_agent/prompts.py`: a `meeting` task renders the control plane's meeting section (`spec.task.meeting`) plus `MEETING_RULES`
+  (they replace the role playbook for the turn), its own kickoff and completion nudge, and `cli_brief` returns just the rules for CLIs.
+  `company_agent/spec.py`: the three tool names (also in `backend/app/guardrails/tools.json`, actions `meeting.schedule|say|cancel`).
+* Verified: stub agent API and scripted model tests only (`test_company_tools.py`, `test_policy.py`, `test_run_loop.py`); never run with a live model.
+
+## Milestone 22 additions (human work and outsourcing; company layer only, no upstream file touched)
+
+* `tools/company_tools.py`: `company_request_human_work` (`POST /human-work`; with `blocks_my_task` (default) a success sets the task
+  disposition "blocked", so the run ends and the task waits for the person; a refused request, e.g. `human_work_limit`, does not end the
+  run) and `company_draft_outsource_job` (`POST /outsource-jobs`, HR only on the server; it only drafts: a person approves, posts and
+  pays). 53 company tools in total. `company_agent/runner.py`: `company_request_human_work` hard-stops the run like
+  `company_ask_founder`. `company_agent/spec.py`: both tool names (also in `backend/app/guardrails/tools.json`, actions
+  `human_work.request` and `outsource.draft`). `company_agent/prompts.py`: one decision rule (ask a person for what only a person can
+  do) and an HR playbook step (draft a freelance job; never post, message or pay).
+* Tests: `test_company_tools.py` (both tools, argument checks, refusals do not end the run), `stub_agent_api.py` (`/human-work`,
+  `/outsource-jobs`).
+* Verified: stub agent API only; never run with a live model or a marketplace.
+

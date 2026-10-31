@@ -1,20 +1,20 @@
 /**
  * The onboarding step machine (docs/specs/m10 §6). Pure, so the rules are tested without a DOM.
  *
- *   setup  (first run): welcome -> account -> company -> ai -> repo -> team
+ *   setup  (first run): welcome -> account -> company -> ai -> repo -> channels -> team
  *   gate   (an existing company whose AI is not ready): ai
  *
  * Back never goes behind something that already happened: once the account exists there is no way back to the account
  * form, once the company exists there is no way back to the company form, and once the repository step is done (a
  * repository chosen, or "no GitHub") there is no way back to it: it would run the idea's first note and the repository
- * again. Moving forward is always an explicit
+ * again. The chat apps step after it is skippable ("Skip for now" is the same `next` as Continue). Moving forward is always an explicit
  * event from the step that finished its job (`account_created`, `company_created`, `next`).
  */
 
-export type StepId = 'welcome' | 'account' | 'company' | 'ai' | 'repo' | 'team'
+export type StepId = 'welcome' | 'account' | 'company' | 'ai' | 'repo' | 'channels' | 'team'
 export type FlowMode = 'setup' | 'gate'
 
-export const SETUP_STEPS: readonly StepId[] = ['welcome', 'account', 'company', 'ai', 'repo', 'team']
+export const SETUP_STEPS: readonly StepId[] = ['welcome', 'account', 'company', 'ai', 'repo', 'channels', 'team']
 export const GATE_STEPS: readonly StepId[] = ['ai']
 
 export const STEP_LABEL: Record<StepId, string> = {
@@ -23,6 +23,7 @@ export const STEP_LABEL: Record<StepId, string> = {
   company: 'Your company',
   ai: 'Connect your AI',
   repo: 'Your code',
+  channels: 'Chat apps',
   team: 'Meet your team',
 }
 
@@ -97,13 +98,13 @@ export function flowReducer(state: FlowState, ev: FlowEvent): FlowState {
     case 'company_created':
       return state.step === 'company' ? { ...state, companyId: ev.companyId, idea: ev.idea, step: 'ai' } : state
     case 'repo_done':
-      return state.step === 'repo' ? { ...state, repoDone: true, step: 'team' } : state
+      return state.step === 'repo' ? { ...state, repoDone: true, step: 'channels' } : state
     case 'finish':
       return { ...state, done: true }
   }
 }
 
-/** The "Step 2 of 6" line. */
+/** The "Step 2 of 7" line. */
 export function progressText(state: Pick<FlowState, 'mode' | 'step'>): string {
   const steps = stepsFor(state.mode)
   return `Step ${stepIndex(state) + 1} of ${steps.length} · ${STEP_LABEL[state.step]}`

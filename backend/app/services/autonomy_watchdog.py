@@ -63,8 +63,8 @@ INTERVAL_SECONDS = 60
 HIRE_STALL_KEY = "waiting_for_hire"  # hiring.WAITING_FOR_HIRE (kept literal: no import cycle)
 
 REVIEW_AFTER = timedelta(minutes=5)
-BLOCKED_AFTER = timedelta(hours=2)
-BLOCKED_ALERT_AFTER = timedelta(hours=24)
+BLOCKED_AFTER = timedelta(minutes=30)  # M18: was 2 h -- the Co-founder is asked
+BLOCKED_ALERT_AFTER = timedelta(hours=8)  # M18: was 24 h -- a person is told
 HIRE_AFTER = timedelta(minutes=10)
 PROJECT_NO_WORK_AFTER = timedelta(minutes=10)
 PROJECT_QUIET = timedelta(minutes=10)
@@ -430,8 +430,8 @@ def _blocked_by_agent(db: Session, task: Task) -> bool:
 
 
 def detect_blocked(db: Session, company_id: str, now: datetime) -> int:
-    """D2: blocked by an agent. The hook already woke the lead / manager at once; after 2 hours the
-    Co-founder is asked, after 24 hours a person is told."""
+    """D2: blocked by an agent. The hook already woke the lead / manager at once; after 30 minutes
+    the Co-founder is asked, after 8 hours a person is told (M18; was 2 h and 24 h)."""
     blocked = [
         t
         for t in db.scalars(
@@ -455,7 +455,7 @@ def detect_blocked(db: Session, company_id: str, now: datetime) -> int:
             "blocked_task",
             "task",
             task.id,
-            label=f"'{task.title}' has been blocked for over 2 hours",
+            label=f"'{task.title}' has been blocked for over 30 minutes",
             spacing=BLOCKED_ALERT_AFTER - BLOCKED_AFTER,
             max_steps=1,
             now=now,
@@ -469,7 +469,7 @@ def detect_blocked(db: Session, company_id: str, now: datetime) -> int:
                     company_id,
                     founder.id,
                     "stall",
-                    f"Task '{task.title}' [id {task.id}] has been blocked for over 2 hours "
+                    f"Task '{task.title}' [id {task.id}] has been blocked for over 30 minutes "
                     f"({reason}). Unblock it, reassign it or cancel it.",
                     now,
                     "task",
@@ -937,6 +937,7 @@ def detect_unowned(db: Session, company_id: str, now: datetime) -> int:
                 ),
                 Task.assignee_agent_id.is_(None),
                 Task.assignee_member_id.is_(None),
+                Task.requires_human.is_(False),  # M22: the human pool is not unowned work
             )
         )
         # a person's own to-do list is theirs; skill gaps are D3's; only organised work is chased

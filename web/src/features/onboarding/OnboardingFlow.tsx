@@ -11,12 +11,13 @@ import { AccountStep } from './steps/AccountStep'
 import { PasskeyStep } from './steps/PasskeyStep'
 import { AiStep } from './steps/AiSteps'
 import { CompanyStep } from './steps/CompanyStep'
+import { ChannelsStep } from './steps/ChannelsStep'
 import { RepoStep } from './steps/RepoStep'
 import { TeamStep } from './steps/TeamStep'
 import { WelcomeStep } from './steps/WelcomeStep'
 
 /**
- * The onboarding: six full-screen steps for a first run (`setup`), or the one AI step as a gate for a company that is not
+ * The onboarding: seven full-screen steps for a first run (`setup`), or the one AI step as a gate for a company that is not
  * AI-ready (`gate`). The step order and what is allowed is lib/onboarding (tested on its own); this component only renders
  * the current step and performs the one side effect that has to wait for a working AI and for the repository choice: posting the one-line idea as the
  * first Founder's note (the server refuses notes until the AI is ready, and the Co-founder's triage should see the project with
@@ -115,6 +116,12 @@ export function OnboardingFlow({
       return (
         <StepFrame flow={flow} step="repo" wide onBack={back} fx="spotlight">
           {companyId && <RepoStep companyId={companyId} companyName={company.data?.name ?? ''} idea={flow.idea} onDone={() => void afterRepo()} />}
+        </StepFrame>
+      )
+    case 'channels':
+      return (
+        <StepFrame flow={flow} step="channels" wide onBack={back} fx="spotlight">
+          {companyId && <ChannelsStep companyId={companyId} onDone={() => dispatch({ type: 'next' })} />}
         </StepFrame>
       )
     case 'team':

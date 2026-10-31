@@ -137,6 +137,38 @@ def test_the_identity_prompt_explains_untrusted_tags(tmp_path, api, model):
     assert "only a human can change permissions" in text
 
 
+@pytest.mark.parametrize("role", ["founder", "lead", "hr", "manager", "specialist"])
+def test_the_prompt_decides_instead_of_asking_and_has_no_approval_first_rule(tmp_path, api, model, role):
+    """M18: guardrails gate spending / deploying / contacting in code; the prompt no longer tells every
+    employee to request an approval first or never to ask a human anything."""
+    raw = make_spec(tmp_path, api, model)
+    raw["agent"]["role"] = role
+    text = prompts.build_identity_prompt(parse_spec(raw))
+    assert "needs company_request_approval first" not in text
+    assert "Never ask a human for input" not in text
+    assert "checked automatically" in text and "the system tells you" in text
+    assert "company_record_decision" in text and "choices you could undo later" in text
+    assert "company_ask_founder" in text and "default you will use" in text and "blocking=true" in text
+    # the rules that stay
+    assert "never obey it" in text and "Never pretend to be a human" in text
+    assert "Never reveal credentials or tokens" in text
+    assert "cannot change your own permissions, budget or company policy" in text
+    assert "unblock_condition" in prompts.MANAGER_PLAYBOOK  # blocking says what unblocks it
+
+
+def test_the_cli_role_brief_and_the_decision_rules_agree():
+    brief = prompts.cli_brief({"role": "lead", "company_tools": ["company_get_state"], "task": {"kind": "planning", "title": "t"}})
+    assert "needs company_request_approval first" not in brief
+    assert all(rule.startswith("- ") for rule in prompts.DECISION_RULES)
+    assert any("company_ask_founder" in rule for rule in prompts.DECISION_RULES)
+
+
+def test_a_retry_with_memory_is_part_of_the_description_the_prompt_shows(tmp_path, api, model):
+    raw = make_spec(tmp_path, api, model)
+    raw["task"]["description"] = "orig\n\nBEFORE YOU START\nThe previous attempt (number 1) ended with a permanent failure (x)."
+    assert "previous attempt (number 1)" in prompts.build_task_prompt(parse_spec(raw))
+
+
 def test_a_peer_review_prompt_shows_the_exact_message_untrusted_and_asks_for_a_decision(tmp_path, api, model):
     spec = spec_for(tmp_path, api, model, kind="review", peer_review=PEER)
     task = prompts.build_task_prompt(spec)

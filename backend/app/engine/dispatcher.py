@@ -229,6 +229,8 @@ def _dispatch_one(
                 Task.status == TaskStatus.READY,
                 # M7: a person's task is never dispatched to a runtime (they are notified instead)
                 Task.assignee_member_id.is_(None),
+                # M22: human work (a signature, a call ...) is never dispatched, pool or assigned
+                Task.requires_human.is_(False),
                 # waiting for a retry backoff (a 429, a failed attempt): not before it is due
                 or_(Task.next_attempt_at.is_(None), Task.next_attempt_at <= now),
                 Task.id.notin_(skipped) if skipped else True,

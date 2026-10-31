@@ -15,33 +15,29 @@ afterEach(() => vi.unstubAllGlobals())
 const m5 = { ...baseRoutes, '/companies/c1/notes': page([makeNote({ id: 'n1', body: 'Hello' })]) }
 
 describe('canvas layout', () => {
-  it('puts Reflections and the Command Center next to the organization (6 + 3 + 3 columns, same tall height); below 1440 px the organization is full width', async () => {
+  it('puts the conversation first: the Command Center chat (8 columns) beside a compact organization (4), both at the chat height; tablets and phones stack them', async () => {
     vi.stubGlobal('fetch', mockApi(m5).impl)
     renderCanvas()
     await screen.findByRole('region', { name: 'Command Center' })
     const main = screen.getByRole('main')
     const sections = [...main.querySelectorAll(':scope > div > section')]
     const names = sections.map((s) => within(s as HTMLElement).getAllByRole('heading', { level: 2 })[0]!.textContent)
-    expect(names.slice(0, 4)).toEqual(['Organization', 'Reflections', 'Command Center', 'Live activity'])
+    expect(names).toEqual(['Command Center', 'Organization', 'Live activity', 'Goals & plan', 'Reflections', 'Work', 'Approvals', 'Spend', 'Agent cards', 'Artifacts', 'Routines', 'Skills', 'Coding CLIs'])
 
-    const [org, reflections, cc, live] = sections as HTMLElement[]
-    // >= 1440 px: 6 + 3 + 3 fill the twelve columns on one row.
-    expect(org!.className).toContain('min-[1440px]:col-span-6')
-    expect(reflections!.className).toContain('min-[1440px]:col-span-3')
-    expect(cc!.className).toContain('min-[1440px]:col-span-3')
-    // 1280-1439 px: organization alone on a row, Reflections and Command Center side by side under it.
-    expect(org!.className).toContain('xl:col-span-12')
-    expect(reflections!.className).toContain('xl:col-span-6')
-    expect(cc!.className).toContain('xl:col-span-6')
-    // tablet: organization spans both columns, the other two share a row; phone: one column (no span set).
+    const [cc, org, live, goals, reflections] = sections as HTMLElement[]
+    // >= xl: 8 + 4 on one row
+    expect(cc!.className).toContain('xl:col-span-8')
+    expect(org!.className).toContain('xl:col-span-4')
+    // tablet: each takes the full width, chat first; phone: one column (no span set below md)
+    expect(cc!.className).toContain('md:col-span-2')
     expect(org!.className).toContain('md:col-span-2')
-    expect(reflections!.className).not.toContain('md:col-span-2')
-    expect(cc!.className).not.toContain('md:col-span-2')
-    // Live activity does not share row one.
+    // the same height, about 70% of the window and at most 640 px
+    for (const el of [cc, org]) expect(el!.className).toContain('min(640px,70vh)')
+    // second row: live activity and the goals & plan; then three equal columns
     expect(live!.className).toContain('xl:col-span-8')
-    // all three are the tall widget
-    const tall = (el: HTMLElement) => el.className.includes('--widget-h-tall')
-    expect([org, reflections, cc].every((el) => tall(el!))).toBe(true)
+    expect(goals!.className).toContain('xl:col-span-4')
+    expect(reflections!.className).toContain('xl:col-span-4')
+    expect(reflections!.className).not.toContain('min(640px,70vh)')
   })
 
   it('no longer has the Founder’s-notes widget on the canvas (the Notes panel is unchanged)', async () => {
@@ -56,7 +52,7 @@ describe('canvas layout', () => {
     renderCanvas()
     await screen.findByRole('region', { name: 'Command Center' })
     const titles = within(screen.getByRole('main')).getAllByRole('heading', { level: 2 }).map((h) => h.textContent)
-    for (const t of ['Organization', 'Reflections', 'Command Center', 'Live activity', 'Goals & plan', 'Work', 'Approvals', 'Spend', 'Artifacts', 'Routines', 'Skills']) expect(titles).toContain(t)
+    for (const t of ['Command Center', 'Organization', 'Reflections', 'Live activity', 'Goals & plan', 'Work', 'Approvals', 'Spend', 'Artifacts', 'Routines', 'Skills']) expect(titles).toContain(t)
   })
 })
 
@@ -69,14 +65,11 @@ describe('terminology on the canvas', () => {
   it('names the human "You · Founder" and the AI agent "AI Co-founder"; never a co-founder for the human', async () => {
     vi.stubGlobal('fetch', mockApi(m5).impl)
     renderCanvas()
-    const tree = await screen.findByRole('tree', { name: 'Organization chart' })
-    const items = within(tree).getAllByRole('treeitem')
-    const human = items.find((i) => i.textContent?.includes('You'))!
-    expect(human).toHaveTextContent('You · Founder')
-    expect(human.textContent!.toLowerCase()).not.toContain('co-founder')
-    const ai = items.find((i) => i.textContent?.includes('Atlas'))!
-    expect(ai).toHaveTextContent('AI Co-founder')
-    expect(within(ai).getByRole('button', { name: /Atlas, AI Co-founder/ })).toBeInTheDocument()
+    const map = await screen.findByRole('group', { name: 'Organization map' })
+    const human = within(map).getByRole('img', { name: /You · Founder/ })
+    expect(human.getAttribute('aria-label')!.toLowerCase()).not.toContain('co-founder')
+    expect(within(map).getByRole('button', { name: /Atlas, AI Co-founder/ })).toBeInTheDocument()
+    expect(within(map).getByText('Atlas')).toBeInTheDocument()
     // no "AI Founder" / "human co-founder" anywhere on the canvas
     expect(document.body.textContent).not.toMatch(/AI Founder|human co-founder/i)
   })

@@ -13,10 +13,12 @@ from app.models.autonomy import (
     NoteReply,
     WakeRequest,
 )
+from app.models.chat import ChatChannel, ChatLink, ChatLinkCode, ChatMessage
 from app.models.commands import CommandExchange
 from app.models.company import Company, CompanyMember
 from app.models.department import Department
 from app.models.governance import Approval, Decision
+from app.models.graph import GraphCheckpoint, GraphWrite
 from app.models.guardrails import (
     BudgetAlertMark,
     ExternalExpense,
@@ -26,6 +28,8 @@ from app.models.guardrails import (
     SystemState,
 )
 from app.models.ledger import BudgetReservation, UsageRecord
+from app.models.meetings import Meeting, MeetingMessage, MeetingParticipant
+from app.models.outsourcing import OutsourceJob
 from app.models.policy import CompanyPolicy
 from app.models.provider import Credential, ModelProvider
 from app.models.purchasing import (
@@ -35,6 +39,7 @@ from app.models.purchasing import (
     PurchaseRequest,
     Subscription,
 )
+from app.models.questions import FounderQuestion
 from app.models.radar import (
     RadarBrief,
     RadarHostState,
@@ -83,6 +88,10 @@ __all__ = [
     "CardAccount",
     "CardTransaction",
     "Company",
+    "ChatChannel",
+    "ChatLink",
+    "ChatLinkCode",
+    "ChatMessage",
     "CommandExchange",
     "CompanyStandard",
     "Reflection",
@@ -102,13 +111,20 @@ __all__ = [
     "ExternalExpense",
     "Department",
     "FounderNote",
+    "FounderQuestion",
     "Goal",
+    "GraphCheckpoint",
+    "GraphWrite",
     "GuardrailEvent",
     "GuardrailRule",
     "Job",
+    "Meeting",
+    "MeetingMessage",
+    "MeetingParticipant",
     "MemoryEntry",
     "ModelProvider",
     "NoteReply",
+    "OutsourceJob",
     "Project",
     "ProjectRepository",
     "PurchaseRequest",

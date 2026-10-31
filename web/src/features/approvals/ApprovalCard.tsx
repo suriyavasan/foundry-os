@@ -1,3 +1,4 @@
+import { Clock } from 'lucide-react'
 import { useState } from 'react'
 import { errorMessage, useDecideApproval } from '@/api'
 import type { Agent, Approval, ApprovalDecision } from '@/api/types'
@@ -6,6 +7,9 @@ import { TierBadge } from '@/features/guardrails/DecisionChip'
 import { AgentChip } from '@/features/shared/AgentChip'
 import { ApprovalStatusBadge } from '@/features/shared/badges'
 import { PurchaseApprovalDetails } from '@/features/wallet/PurchaseApprovalDetails'
+import { OutsourceApprovalLink } from '@/features/people/OutsourceApprovalLink'
+import { useTick } from '@/features/canvas/hooks'
+import { expiryText } from '@/lib/approvalExpiry'
 import { formatRelative, titleCase } from '@/lib/format'
 import { formatUsd } from '@/lib/money'
 import { OutboundReview } from './OutboundReview'
@@ -26,6 +30,8 @@ export function isActionable(a: Pick<Approval, 'approver' | 'status'>): boolean 
 export function ApprovalCard({ approval, agents, companyId, dense = false, showTier = true }: { approval: Approval; agents: Map<string, Agent>; companyId: string; dense?: boolean; showTier?: boolean }) {
   const [deciding, setDeciding] = useState<ApprovalDecision | null>(null)
   const actionable = isActionable(approval)
+  const now = useTick(60_000)
+  const expiry = expiryText(approval, now)
   const riskTone = approval.risk === 'high' ? 'danger' : approval.risk === 'medium' ? 'warning' : 'neutral'
 
   return (
@@ -53,9 +59,17 @@ export function ApprovalCard({ approval, agents, companyId, dense = false, showT
       <OutboundReview approval={approval} dense={dense} />
       <ScopeReview approval={approval} dense={dense} />
       <PurchaseApprovalDetails approval={approval} companyId={companyId} dense={dense} />
+      <OutsourceApprovalLink approval={approval} />
       {approval.decision_note && (
         <p className="mt-1.5 text-[12px] text-fg-3">
           Decision note: <span className="text-fg-2">{approval.decision_note}</span>
+        </p>
+      )}
+
+      {expiry && (
+        <p data-testid="approval-expiry" className="mt-1.5 flex items-center gap-1 text-[12px] text-fg-3">
+          <Clock className="size-3 shrink-0" aria-hidden />
+          {expiry}
         </p>
       )}
 
@@ -114,7 +128,13 @@ function DecisionDialog({ approval, decision, companyId, onClose }: { approval: 
       onOpenChange={(o) => !o && !mutate.isPending && onClose()}
       size="sm"
       title={`${DECISION_LABEL[decision]}: ${approval.title}`}
-      description={approval.amount_micros !== null ? `This commits ${formatUsd(approval.amount_micros)}. The approval authorises exactly this one action.` : 'The approval authorises exactly this one action.'}
+      description={
+        approval.kind === 'outsource_job'
+          ? 'Approving lets a person post this job on the marketplace themselves. Foundry posts, hires and pays nothing.'
+          : approval.amount_micros !== null
+            ? `This commits ${formatUsd(approval.amount_micros)}. The approval authorises exactly this one action.`
+            : 'The approval authorises exactly this one action.'
+      }
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={mutate.isPending}>

@@ -144,6 +144,11 @@ def compute_live(db: Session, company_id: str, agents: list[Agent]) -> dict[str,
                 summary=None,
                 since=last_finished.get(agent.id) or agent.status_changed_at,
             )
+    from app.services import meetings  # M21: local import (meetings -> tasks -> ...)
+
+    for agent_id, meeting_id in meetings.running_for_agents(db, company_id, ids).items():
+        if agent_id in result:
+            result[agent_id].meeting_id = meeting_id
     return result
 
 

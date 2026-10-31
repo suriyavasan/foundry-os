@@ -12,6 +12,8 @@ class AgentTaskPatch(RequestModel):
 
     status: Literal["blocked", "unblocked"] | None = None
     reason: str | None = Field(default=None, max_length=1000)
+    # M18: blocking requires it -- what would unblock the task (checked in the service).
+    unblock_condition: str | None = Field(default=None, max_length=300)
     assignee_agent_id: str | None = None
     assignee_ref: str | None = Field(default=None, max_length=48)  # M7: agent:<id> | member:<id>
 
@@ -31,6 +33,15 @@ class AgentMember(BaseModel):
 class AgentTaskComplete(RequestModel):
     result_summary: str = Field(min_length=1, max_length=20_000)
     output_refs: list[str] = Field(default_factory=list, max_length=100)
+
+
+class ProposedCompletion(BaseModel):
+    """M18 Part B: answer of ``complete`` inside a work-graph run -- the result is only *proposed*;
+    the graph verifies it and completes the task."""
+
+    ok: bool = True
+    status: str = "proposed"
+    task_id: str
 
 
 class ProgressBody(RequestModel):

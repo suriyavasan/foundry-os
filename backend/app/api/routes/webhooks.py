@@ -3,13 +3,15 @@ card-provider events (M15; both only trigger a sync)."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, BackgroundTasks, Request
+from fastapi.responses import PlainTextResponse
 from starlette.concurrency import run_in_threadpool
 
 from app.api.deps import DbSession
 from app.core.errors import PayloadTooLarge
 from app.schemas.repository import WebhookAccepted
 from app.services import card_reconcile, email_identity, repositories
+from app.services.channels import whatsapp_webhook
 
 router = APIRouter(tags=["webhooks"])
 
@@ -79,3 +81,40 @@ async def card_events(company_id: str, provider: str, request: Request, db: DbSe
         dict(request.headers),
         body,
     )
+
+
+@router.get("/webhooks/whatsapp/{channel_id}", response_class=PlainTextResponse)
+async def whatsapp_handshake(channel_id: str, request: Request, db: DbSession):
+    """Meta's subscription handshake (M19): echoes ``hub.challenge`` as plain text when the mode is
+    ``subscribe`` and ``hub.verify_token`` matches the channel's token (constant-time). Else 403."""
+    challenge = await run_in_threadpool(
+        whatsapp_webhook.handshake,
+        db,
+        request.app.state.channels,
+        channel_id,
+        dict(request.query_params),
+    )
+    return PlainTextResponse(challenge)
+
+
+@router.post("/webhooks/whatsapp/{channel_id}")
+async def whatsapp_events(
+    channel_id: str, request: Request, background: BackgroundTasks, db: DbSession
+):
+    """WhatsApp Cloud API deliveries (M19). ``X-Hub-Signature-256`` is checked over the raw body
+    with the channel's app secret before anything is parsed (403 otherwise). Answers 200 at once;
+    the messages are handled after the response."""
+    settings = request.app.state.settings
+    body = await _read_capped(request, settings.webhook_max_bytes)
+    inbound = await run_in_threadpool(
+        whatsapp_webhook.receive,
+        db,
+        request.app.state.channels,
+        channel_id,
+        dict(request.headers),
+        body,
+    )
+    router_ = request.app.state.channel_router
+    for event in inbound:
+        background.add_task(router_.process, event)
+    return {"accepted": True}

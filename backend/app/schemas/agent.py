@@ -51,6 +51,7 @@ class AgentLive(ApiModel):
     current_run: LiveRun | None
     summary: str | None
     since: Timestamp | None
+    meeting_id: str | None = None  # M21: the running meeting the agent is in
 
 
 class Agent(ApiModel):

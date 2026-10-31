@@ -4,12 +4,12 @@ import { GATE_STEPS, SETUP_STEPS, canContinue, canGoBack, flowReducer, initialFl
 const run = (s: FlowState, ...events: FlowEvent[]) => events.reduce(flowReducer, s)
 
 describe('onboarding step machine: first run', () => {
-  it('has six steps in order', () => {
-    expect(SETUP_STEPS).toEqual(['welcome', 'account', 'company', 'ai', 'repo', 'team'])
+  it('has seven steps in order, the chat apps step between the repository and the team', () => {
+    expect(SETUP_STEPS).toEqual(['welcome', 'account', 'company', 'ai', 'repo', 'channels', 'team'])
     expect(stepsFor('setup')).toBe(SETUP_STEPS)
   })
 
-  it('walks welcome -> account -> company -> ai -> repo -> team', () => {
+  it('walks welcome -> account -> company -> ai -> repo -> channels -> team', () => {
     let s = initialFlow('setup')
     expect(s.step).toBe('welcome')
     s = run(s, { type: 'next' })
@@ -22,7 +22,10 @@ describe('onboarding step machine: first run', () => {
     expect(s.step).toBe('repo')
     expect(run(s, { type: 'next' }).step).toBe('repo') // the repo step leaves only through repo_done
     s = run(s, { type: 'repo_done' })
-    expect(s).toMatchObject({ step: 'team', repoDone: true })
+    expect(s).toMatchObject({ step: 'channels', repoDone: true })
+    expect(isLastStep(s)).toBe(false)
+    s = run(s, { type: 'next' }) // the chat apps step is skippable: Skip for now and Continue are both `next`
+    expect(s.step).toBe('team')
     expect(isLastStep(s)).toBe(true)
     expect(run(s, { type: 'next' }).step).toBe('team')
   })
@@ -49,14 +52,20 @@ describe('onboarding step machine: first run', () => {
     expect(canGoBack(s)).toBe(true) // repo -> ai is fine
     expect(run(s, { type: 'back' }).step).toBe('ai')
     s = run(s, { type: 'next' }, { type: 'repo_done' })
-    expect(canGoBack(s)).toBe(false) // team -> repo would run the repository and the first note again
-    expect(run(s, { type: 'back' }).step).toBe('team')
+    expect(s.step).toBe('channels')
+    expect(canGoBack(s)).toBe(false) // channels -> repo would run the repository and the first note again
+    expect(run(s, { type: 'back' }).step).toBe('channels')
+    s = run(s, { type: 'next' })
+    expect(canGoBack(s)).toBe(true) // team -> channels is harmless
+    expect(run(s, { type: 'back' }).step).toBe('channels')
   })
 
-  it('shows "Step n of 6"', () => {
-    expect(progressText(initialFlow('setup'))).toBe('Step 1 of 6 · Welcome')
-    expect(progressText({ mode: 'setup', step: 'ai' })).toBe('Step 4 of 6 · Connect your AI')
-    expect(progressText({ mode: 'setup', step: 'repo' })).toBe('Step 5 of 6 · Your code')
+  it('shows "Step n of 7"', () => {
+    expect(progressText(initialFlow('setup'))).toBe('Step 1 of 7 · Welcome')
+    expect(progressText({ mode: 'setup', step: 'ai' })).toBe('Step 4 of 7 · Connect your AI')
+    expect(progressText({ mode: 'setup', step: 'repo' })).toBe('Step 5 of 7 · Your code')
+    expect(progressText({ mode: 'setup', step: 'channels' })).toBe('Step 6 of 7 · Chat apps')
+    expect(progressText({ mode: 'setup', step: 'team' })).toBe('Step 7 of 7 · Meet your team')
   })
 })
 

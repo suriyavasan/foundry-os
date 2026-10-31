@@ -4,6 +4,7 @@ import type {
   AiSetupStatus,
   CliAuthMode,
   CliInstallLog,
+  CliInstallMethodInfo,
   CliLastTest,
   CliRuntimeStatus,
   ClaudeLoginStatus,
@@ -388,6 +389,13 @@ export function cliBrief(cli: CliRuntimeStatus): string {
 }
 
 /** Defensive read of one `CliRuntimeStatus`. */
+function normalizeInstallMethod(raw: unknown): CliInstallMethodInfo | null {
+  const m = obj(raw)
+  const command = m && str(m.command)
+  if (!m || !command || (m.method !== 'npm' && m.method !== 'script')) return null
+  return { method: m.method, command, url: str(m.url), available: m.available === true, reason: str(m.reason) }
+}
+
 export function normalizeCli(raw: unknown): CliRuntimeStatus | null {
   const o = obj(raw)
   const id = o && str(o.id)
@@ -415,8 +423,11 @@ export function normalizeCli(raw: unknown): CliRuntimeStatus | null {
     sandbox: { available: s.available === true, kind, detail: str(s.detail) },
     install: {
       available: inst.available === true,
+      methods: Array.isArray(inst.methods) ? inst.methods.map(normalizeInstallMethod).filter((m): m is CliInstallMethodInfo => m !== null) : [],
+      default_method: inst.default_method === 'npm' || inst.default_method === 'script' ? inst.default_method : null,
       command: str(inst.command),
       requires: Array.isArray(inst.requires) ? inst.requires.filter((r): r is string => typeof r === 'string') : [],
+      manual: str(inst.manual),
     },
     login_hint: str(o.login_hint),
     login: obj(o.login)
@@ -460,6 +471,8 @@ export function normalizeInstallLog(raw: unknown): CliInstallLog {
     state,
     lines: lines.filter((l, i, a) => l !== '' || i < a.length - 1),
     exit_code: exit,
+    method: o.method === 'npm' || o.method === 'script' ? o.method : null,
+    sha256: str(o.sha256),
   }
 }
 

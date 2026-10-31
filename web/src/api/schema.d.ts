@@ -1059,6 +1059,24 @@ export interface paths {
         patch: operations["update_policy_api_companies__company_id__policy_patch"];
         trace?: never;
     };
+    "/api/companies/{company_id}/intensity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Intensity */
+        get: operations["get_intensity_api_companies__company_id__intensity_get"];
+        /** Set Intensity */
+        put: operations["set_intensity_api_companies__company_id__intensity_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/companies/{company_id}/credentials": {
         parameters: {
             query?: never;
@@ -1390,8 +1408,9 @@ export interface paths {
         put?: never;
         /**
          * Install
-         * @description Run the install command shown in ``install.command`` (npm global install). Never without
-         *     ``confirm: true``, never with sudo. Poll ``GET .../install-log``.
+         * @description Install with one of ``install.methods`` (``npm`` or the vendor's ``script``; default per
+         *     ``install.default_method``). Never without ``confirm: true``, never with sudo. Poll
+         *     ``GET .../install-log``.
          */
         post: operations["install_api_cli_runtimes__cli_id__install_post"];
         delete?: never;
@@ -2110,6 +2129,427 @@ export interface paths {
         get: operations["list_decisions_api_companies__company_id__decisions_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Channels */
+        get: operations["list_channels_api_companies__company_id__channels_get"];
+        put?: never;
+        /**
+         * Connect Channel
+         * @description Validates the credentials against the platform, stores them (write-only) and creates the
+         *     channel. For WhatsApp the response carries the webhook URL and the verify token ONCE.
+         */
+        post: operations["connect_channel_api_companies__company_id__channels_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/channels/{channel_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Channel */
+        delete: operations["delete_channel_api_companies__company_id__channels__channel_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Channel */
+        patch: operations["patch_channel_api_companies__company_id__channels__channel_id__patch"];
+        trace?: never;
+    };
+    "/api/companies/{company_id}/channels/{channel_id}/link-code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Link Code
+         * @description A one-time code (10 minutes) for the calling person to send to the bot. Shown once.
+         */
+        post: operations["link_code_api_companies__company_id__channels__channel_id__link_code_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/channel-links/{link_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Link */
+        delete: operations["delete_link_api_companies__company_id__channel_links__link_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Link */
+        patch: operations["patch_link_api_companies__company_id__channel_links__link_id__patch"];
+        trace?: never;
+    };
+    "/api/companies/{company_id}/questions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Questions */
+        get: operations["list_questions_api_companies__company_id__questions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/questions/{question_id}/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Answer Question */
+        post: operations["answer_question_api_companies__company_id__questions__question_id__answer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/questions/{question_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Question */
+        post: operations["cancel_question_api_companies__company_id__questions__question_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/meetings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Meetings */
+        get: operations["list_meetings_api_companies__company_id__meetings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/meetings/{meeting_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Meeting */
+        get: operations["get_meeting_api_companies__company_id__meetings__meeting_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/meetings/{meeting_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Meeting */
+        post: operations["cancel_meeting_api_companies__company_id__meetings__meeting_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/human-work": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Human Work */
+        get: operations["list_human_work_api_companies__company_id__human_work_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/human-work/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Human Work */
+        get: operations["get_human_work_api_companies__company_id__human_work__task_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/human-work/{task_id}/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Claim Human Work
+         * @description Take a task from the human pool (a second claim is a 409). Complete it afterwards with
+         *     ``POST /tasks/{id}/complete`` (comment and artifacts).
+         */
+        post: operations["claim_human_work_api_companies__company_id__human_work__task_id__claim_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/human-work/{task_id}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decline Human Work
+         * @description Owners/admins: a person will not do this. The AI employee that asked is woken with the
+         *     reason and its blocked task returns to the queue.
+         */
+        post: operations["decline_human_work_api_companies__company_id__human_work__task_id__decline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/outsource-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Outsource Jobs */
+        get: operations["list_outsource_jobs_api_companies__company_id__outsource_jobs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/outsource-jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Outsource Job */
+        get: operations["get_outsource_job_api_companies__company_id__outsource_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/outsource-jobs/{job_id}/posted": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Job Posted
+         * @description Record that you posted the job on the marketplace's own site (the link must be on it).
+         */
+        post: operations["job_posted_api_companies__company_id__outsource_jobs__job_id__posted_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/outsource-jobs/{job_id}/hired": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Job Hired
+         * @description Record who you hired and the agreed price (never above the approved budget).
+         */
+        post: operations["job_hired_api_companies__company_id__outsource_jobs__job_id__hired_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/outsource-jobs/{job_id}/delivered": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Job Delivered */
+        post: operations["job_delivered_api_companies__company_id__outsource_jobs__job_id__delivered_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/outsource-jobs/{job_id}/paid": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Job Paid
+         * @description Record a payment YOU made on the marketplace as a verified expense (Foundry moves none).
+         */
+        post: operations["job_paid_api_companies__company_id__outsource_jobs__job_id__paid_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/outsource-jobs/{job_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Job Close */
+        post: operations["job_close_api_companies__company_id__outsource_jobs__job_id__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/outsource-jobs/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Job Cancel */
+        post: operations["job_cancel_api_companies__company_id__outsource_jobs__job_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}/outsource-jobs/{job_id}/raise-budget": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Job Raise Budget
+         * @description Ask for a higher budget: a NEW approval decides it (the job keeps its budget until then).
+         */
+        post: operations["job_raise_budget_api_companies__company_id__outsource_jobs__job_id__raise_budget_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3428,6 +3868,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/webhooks/whatsapp/{channel_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whatsapp Handshake
+         * @description Meta's subscription handshake (M19): echoes ``hub.challenge`` as plain text when the mode is
+         *     ``subscribe`` and ``hub.verify_token`` matches the channel's token (constant-time). Else 403.
+         */
+        get: operations["whatsapp_handshake_api_webhooks_whatsapp__channel_id__get"];
+        put?: never;
+        /**
+         * Whatsapp Events
+         * @description WhatsApp Cloud API deliveries (M19). ``X-Hub-Signature-256`` is checked over the raw body
+         *     with the channel's app secret before anything is parsed (403 otherwise). Answers 200 at once;
+         *     the messages are handled after the response.
+         */
+        post: operations["whatsapp_events_api_webhooks_whatsapp__channel_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/companies/{company_id}/wallet": {
         parameters: {
             query?: never;
@@ -4020,6 +4487,133 @@ export interface paths {
         put?: never;
         /** Record Decision */
         post: operations["record_decision_api_agent_v1_decisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/v1/questions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask Founder
+         * @description Ask the Founder a question, with the default you will use (M18). Limits: 5 open per company,
+         *     2 per agent per 24 h (429 ``question_limit``).
+         */
+        post: operations["ask_founder_api_agent_v1_questions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/v1/human-work": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request Human Work
+         * @description Ask a person to do something only a person can do (M22): sign, call, KYC, an errand. It
+         *     becomes a task for a member or the human pool; with ``blocks_my_task`` your task waits for it.
+         *     Limits: 3 open per agent, 20 per company (429 ``human_work_limit``).
+         */
+        post: operations["request_human_work_api_agent_v1_human_work_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/v1/outsource-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Draft Outsource Job
+         * @description HR only (M22): prepare a freelance job. It commits nothing and posts nothing: a person must
+         *     approve it (always a human decision), post it on the marketplace's own site and record the
+         *     result. Limits: 5 open jobs, the per-job ceiling and the company's monthly budget.
+         */
+        post: operations["draft_outsource_job_api_agent_v1_outsource_jobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/v1/meetings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Schedule Meeting
+         * @description Call a meeting with 1-3 colleagues (M21). Limits: daily caps, one running meeting as
+         *     organizer
+         *     (429 ``meeting_limit``).
+         */
+        post: operations["schedule_meeting_api_agent_v1_meetings_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/v1/meetings/{meeting_id}/say": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Meeting Say
+         * @description Speak in your own meeting turn; this call ends the turn (M21).
+         */
+        post: operations["meeting_say_api_agent_v1_meetings__meeting_id__say_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/v1/meetings/{meeting_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Meeting
+         * @description The organizer cancels its meeting (M21).
+         */
+        post: operations["cancel_meeting_api_agent_v1_meetings__meeting_id__cancel_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5210,6 +5804,18 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ActionItemProposal */
+        ActionItemProposal: {
+            /** Title */
+            title: string;
+            /**
+             * Description
+             * @default
+             */
+            description?: string;
+            /** Owner Agent Id */
+            owner_agent_id: string;
+        };
         /** Agent */
         Agent: {
             /** Id */
@@ -5715,6 +6321,8 @@ export interface components {
             summary: string | null;
             /** Since */
             since: string | null;
+            /** Meeting Id */
+            meeting_id: string | null;
         };
         /**
          * AgentMember
@@ -6066,6 +6674,8 @@ export interface components {
             reason?: string | null;
             /** Assignee Agent Id */
             assignee_agent_id?: string | null;
+            /** New Instructions */
+            new_instructions?: string | null;
         };
         /** AgentTaskComplete */
         AgentTaskComplete: {
@@ -6083,6 +6693,8 @@ export interface components {
             status?: ("blocked" | "unblocked") | null;
             /** Reason */
             reason?: string | null;
+            /** Unblock Condition */
+            unblock_condition?: string | null;
             /** Assignee Agent Id */
             assignee_agent_id?: string | null;
             /** Assignee Ref */
@@ -6479,7 +7091,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "external_purchase" | "budget_increase" | "external_communication" | "production_deploy" | "sensitive_action" | "hire" | "other";
+            kind: "external_purchase" | "budget_increase" | "external_communication" | "production_deploy" | "sensitive_action" | "hire" | "outsource_job" | "other";
             /**
              * Status
              * @enum {string}
@@ -6544,6 +7156,8 @@ export interface components {
             outbound: components["schemas"]["ApprovalOutbound"] | null;
             /** Dlp Findings */
             dlp_findings: components["schemas"]["DlpFinding"][] | null;
+            /** Expires At */
+            expires_at: string | null;
             /** Created At */
             created_at: string;
             /** Updated At */
@@ -6555,7 +7169,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "external_purchase" | "budget_increase" | "external_communication" | "production_deploy" | "sensitive_action" | "hire" | "other";
+            kind: "external_purchase" | "budget_increase" | "external_communication" | "production_deploy" | "sensitive_action" | "hire" | "outsource_job" | "other";
             /** Title */
             title: string;
             /** Reason */
@@ -6841,6 +7455,22 @@ export interface components {
              * @default false
              */
             two_factor_enabled: boolean;
+        };
+        /** AvailableKind */
+        AvailableKind: {
+            /** Kind */
+            kind: string;
+            /** Label */
+            label: string;
+            /** Available */
+            available: boolean;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Needs Public Url
+             * @default false
+             */
+            needs_public_url: boolean;
         };
         /** BriefTheme */
         BriefTheme: {
@@ -7146,6 +7776,70 @@ export interface components {
             /** Stars */
             stars: number | null;
         };
+        /** ChannelCreate */
+        ChannelCreate: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "telegram" | "discord" | "whatsapp";
+            /** Name */
+            name?: string | null;
+            /** Token */
+            token?: string | null;
+            whatsapp?: components["schemas"]["WhatsAppCredentials"] | null;
+        };
+        /** ChannelList */
+        ChannelList: {
+            /** Items */
+            items: components["schemas"]["ChannelOut"][];
+            /** Available */
+            available: components["schemas"]["AvailableKind"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** ChannelOut */
+        ChannelOut: {
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "telegram" | "discord" | "whatsapp";
+            /** Name */
+            name: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "connecting" | "active" | "error" | "disabled";
+            /** Config */
+            config: {
+                [key: string]: string | null;
+            };
+            /** Last Error */
+            last_error: string | null;
+            /** Last Event At */
+            last_event_at: string | null;
+            /** Created At */
+            created_at: string;
+            /** Links */
+            links: components["schemas"]["LinkOut"][];
+            /** Webhook Url */
+            webhook_url: string | null;
+            /** Verify Token */
+            verify_token: string | null;
+            /** Invite Url */
+            invite_url: string | null;
+        };
+        /** ChannelPatch */
+        ChannelPatch: {
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Name */
+            name?: string | null;
+        };
         /**
          * Checklist
          * @description Added: the Founder's one-time steps, computed by the server.
@@ -7295,6 +7989,13 @@ export interface components {
         CliInstall: {
             /** Available */
             available: boolean;
+            /**
+             * Methods
+             * @default []
+             */
+            methods: components["schemas"]["CliInstallMethod"][];
+            /** Default Method */
+            default_method: ("npm" | "script") | null;
             /** Command */
             command: string | null;
             /** Requires */
@@ -7325,6 +8026,12 @@ export interface components {
             status: "none" | "running" | "succeeded" | "failed";
             /** Command */
             command: string | null;
+            /** Method */
+            method: ("npm" | "script") | null;
+            /** Url */
+            url: string | null;
+            /** Sha256 */
+            sha256: string | null;
             /** Started At */
             started_at: string | null;
             /** Finished At */
@@ -7337,6 +8044,22 @@ export interface components {
              */
             lines: string[];
         };
+        /** CliInstallMethod */
+        CliInstallMethod: {
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "npm" | "script";
+            /** Command */
+            command: string;
+            /** Url */
+            url: string | null;
+            /** Available */
+            available: boolean;
+            /** Reason */
+            reason: string | null;
+        };
         /** CliInstallRequest */
         CliInstallRequest: {
             /**
@@ -7344,6 +8067,8 @@ export interface components {
              * @default false
              */
             confirm?: boolean;
+            /** Method */
+            method?: ("npm" | "script") | null;
         };
         /** CliLastTest */
         CliLastTest: {
@@ -8906,7 +9631,7 @@ export interface components {
              * @default human
              * @enum {string}
              */
-            source: "human" | "card" | "provider_action";
+            source: "human" | "card" | "provider_action" | "outsourcing";
             /**
              * Cost Kind
              * @default verified
@@ -8937,6 +9662,33 @@ export interface components {
              * Format: date
              */
             incurred_on: string;
+        };
+        /** FinalActionItem */
+        FinalActionItem: {
+            /** Id */
+            id?: string | null;
+            /**
+             * Title
+             * @default
+             */
+            title?: string;
+            /**
+             * Description
+             * @default
+             */
+            description?: string;
+            /** Owner Agent Id */
+            owner_agent_id?: string | null;
+        };
+        /** FinalDecision */
+        FinalDecision: {
+            /** Title */
+            title: string;
+            /**
+             * Rationale
+             * @default
+             */
+            rationale?: string;
         };
         /** FinanceBreakdown */
         FinanceBreakdown: {
@@ -9539,6 +10291,102 @@ export interface components {
             /** Approval Id */
             approval_id: string | null;
         };
+        /** HumanWorkDecline */
+        HumanWorkDecline: {
+            /** Reason */
+            reason: string;
+        };
+        /** HumanWorkItem */
+        HumanWorkItem: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string;
+            /** Title */
+            title: string;
+            /** Description */
+            description: string | null;
+            /** Instructions */
+            instructions: string | null;
+            /** Category */
+            category: ("signature" | "call" | "identity" | "payment" | "physical" | "account" | "legal" | "other") | null;
+            /** Status */
+            status: string;
+            /** Priority */
+            priority: string;
+            /** Due At */
+            due_at: string | null;
+            /** Overdue */
+            overdue: boolean;
+            /** Assignee Ref */
+            assignee_ref: string | null;
+            /** Assignee Name */
+            assignee_name: string | null;
+            /** Pool */
+            pool: boolean;
+            /** Requested By Agent Id */
+            requested_by_agent_id: string | null;
+            /** Requested By Agent Name */
+            requested_by_agent_name: string | null;
+            /** Project Id */
+            project_id: string | null;
+            /** Blocking Task Ids */
+            blocking_task_ids: string[];
+            /** Result Summary */
+            result_summary: string | null;
+            /** Output Refs */
+            output_refs: string[];
+            /** Created At */
+            created_at: string;
+            /** Completed At */
+            completed_at: string | null;
+        };
+        /**
+         * HumanWorkRequest
+         * @description ``POST /agent/v1/human-work`` (``company_request_human_work``).
+         */
+        HumanWorkRequest: {
+            /** Title */
+            title: string;
+            /** Instructions */
+            instructions: string;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "signature" | "call" | "identity" | "payment" | "physical" | "account" | "legal" | "other";
+            /** Why Human */
+            why_human: string;
+            /**
+             * Due In Hours
+             * @default 48
+             */
+            due_in_hours?: number;
+            /** Assignee Member Id */
+            assignee_member_id?: string | null;
+            /**
+             * Blocks My Task
+             * @default true
+             */
+            blocks_my_task?: boolean;
+        };
+        /** HumanWorkRequested */
+        HumanWorkRequested: {
+            /** Task Id */
+            task_id: string;
+            /** Status */
+            status: string;
+            /** Assignee Ref */
+            assignee_ref: string | null;
+            /** Pool */
+            pool: boolean;
+            /** Blocks My Task */
+            blocks_my_task: boolean;
+            /** Due At */
+            due_at: string;
+            /** Next */
+            next: string;
+        };
         /** IdeaEvidence */
         IdeaEvidence: {
             /** Item Ids */
@@ -9566,6 +10414,37 @@ export interface components {
              * @enum {string}
              */
             to: "remote_work_branch" | "default_branch";
+            /**
+             * Confirm
+             * @default false
+             */
+            confirm?: boolean;
+        };
+        /** Intensity */
+        Intensity: {
+            /** Level */
+            level: number;
+            /** Name */
+            name: string;
+            /** Custom */
+            custom: boolean;
+            /** Preset */
+            preset: {
+                [key: string]: unknown;
+            };
+            /** Effective */
+            effective: {
+                [key: string]: unknown;
+            };
+            /** Plan Only */
+            plan_only: boolean;
+            /** Warning */
+            warning?: string | null;
+        };
+        /** IntensityUpdate */
+        IntensityUpdate: {
+            /** Level */
+            level: number;
             /**
              * Confirm
              * @default false
@@ -9738,6 +10617,44 @@ export interface components {
             /** Reason */
             reason?: string | null;
         };
+        /** LinkCodeOut */
+        LinkCodeOut: {
+            /** Code */
+            code: string;
+            /** Expires At */
+            expires_at: string;
+            /** Deep Link */
+            deep_link: string | null;
+            /** Instructions */
+            instructions: string;
+        };
+        /** LinkOut */
+        LinkOut: {
+            /** Id */
+            id: string;
+            /** Channel Id */
+            channel_id: string;
+            /** User Id */
+            user_id: string;
+            /** User Name */
+            user_name: string | null;
+            /** Display Name */
+            display_name: string | null;
+            /** Notify */
+            notify: {
+                [key: string]: boolean;
+            };
+            /** Linked At */
+            linked_at: string;
+            /** Last Inbound At */
+            last_inbound_at: string | null;
+            /** Window Open */
+            window_open: boolean | null;
+        };
+        /** LinkPatch */
+        LinkPatch: {
+            notify: components["schemas"]["NotifyPrefs"];
+        };
         /** LiveRun */
         LiveRun: {
             /** Id */
@@ -9840,6 +10757,228 @@ export interface components {
              * @default
              */
             username?: string;
+        };
+        /** MeetingCancel */
+        MeetingCancel: {
+            /**
+             * Reason
+             * @default
+             */
+            reason?: string;
+        };
+        /** MeetingDetail */
+        MeetingDetail: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string;
+            /** Organizer Agent Id */
+            organizer_agent_id: string;
+            /** Title */
+            title: string;
+            /** Agenda */
+            agenda: string;
+            /** Expected Outcome */
+            expected_outcome: string;
+            /** Project Id */
+            project_id: string | null;
+            /** Task Id */
+            task_id: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "scheduled" | "running" | "concluded" | "cancelled" | "failed";
+            /** Start At */
+            start_at: string;
+            /** Started At */
+            started_at: string | null;
+            /** Ended At */
+            ended_at: string | null;
+            /** Round */
+            round: number;
+            /** Max Rounds */
+            max_rounds: number;
+            /** Summary */
+            summary: string | null;
+            /** Cancel Reason */
+            cancel_reason: string | null;
+            /** Participants */
+            participants: components["schemas"]["MeetingParticipantOut"][];
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+            /** Outcome */
+            outcome: {
+                [key: string]: unknown;
+            };
+            /** Messages */
+            messages: components["schemas"]["MeetingMessageOut"][];
+        };
+        /** MeetingMessageOut */
+        MeetingMessageOut: {
+            /** Id */
+            id: string;
+            /** Agent Id */
+            agent_id: string;
+            /** Agent Name */
+            agent_name: string;
+            /** Round */
+            round: number;
+            /** Kind */
+            kind: string;
+            /** Body */
+            body: string;
+            /** Proposals */
+            proposals: {
+                [key: string]: unknown;
+            };
+            /** Created At */
+            created_at: string;
+        };
+        /** MeetingOut */
+        MeetingOut: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string;
+            /** Organizer Agent Id */
+            organizer_agent_id: string;
+            /** Title */
+            title: string;
+            /** Agenda */
+            agenda: string;
+            /** Expected Outcome */
+            expected_outcome: string;
+            /** Project Id */
+            project_id: string | null;
+            /** Task Id */
+            task_id: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "scheduled" | "running" | "concluded" | "cancelled" | "failed";
+            /** Start At */
+            start_at: string;
+            /** Started At */
+            started_at: string | null;
+            /** Ended At */
+            ended_at: string | null;
+            /** Round */
+            round: number;
+            /** Max Rounds */
+            max_rounds: number;
+            /** Summary */
+            summary: string | null;
+            /** Cancel Reason */
+            cancel_reason: string | null;
+            /** Participants */
+            participants: components["schemas"]["MeetingParticipantOut"][];
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /** MeetingParticipantOut */
+        MeetingParticipantOut: {
+            /** Agent Id */
+            agent_id: string;
+            /** Name */
+            name: string;
+            /** Role Title */
+            role_title: string | null;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "organizer" | "participant";
+            /** Position */
+            position: number;
+            /** Joined */
+            joined: boolean;
+            /** Passes */
+            passes: number;
+        };
+        /** MeetingSaid */
+        MeetingSaid: {
+            /** Message Id */
+            message_id: string;
+            /** Meeting Id */
+            meeting_id: string;
+            /** Round */
+            round: number;
+            /** Next */
+            next: string;
+        };
+        /**
+         * MeetingSay
+         * @description ``POST /agent/v1/meetings/{id}/say``: the one contribution of this turn.
+         */
+        MeetingSay: {
+            /**
+             * Message
+             * @default
+             */
+            message?: string;
+            /** Propose */
+            propose?: components["schemas"]["ActionItemProposal"][];
+            /** Accept */
+            accept?: string[];
+            /** Decline */
+            decline?: string[];
+            /**
+             * Pass Turn
+             * @default false
+             */
+            pass_turn?: boolean;
+            /**
+             * Final
+             * @default false
+             */
+            final?: boolean;
+            /** Summary */
+            summary?: string | null;
+            /** Decisions */
+            decisions?: components["schemas"]["FinalDecision"][];
+            /** Action Items */
+            action_items?: components["schemas"]["FinalActionItem"][];
+        };
+        /**
+         * MeetingSchedule
+         * @description ``POST /agent/v1/meetings``.
+         */
+        MeetingSchedule: {
+            /** Title */
+            title: string;
+            /** Agenda */
+            agenda: string;
+            /** Expected Outcome */
+            expected_outcome: string;
+            /** Participant Agent Ids */
+            participant_agent_ids: string[];
+            /**
+             * Start In Minutes
+             * @default 0
+             */
+            start_in_minutes?: number;
+            /** Project Id */
+            project_id?: string | null;
+            /** Task Id */
+            task_id?: string | null;
+        };
+        /** MeetingScheduled */
+        MeetingScheduled: {
+            /** Meeting Id */
+            meeting_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "scheduled" | "running" | "concluded" | "cancelled" | "failed";
+            /** Start At */
+            start_at: string;
         };
         /** Member */
         Member: {
@@ -10261,6 +11400,19 @@ export interface components {
             /** Unread Count */
             unread_count: number;
         };
+        /** NotifyPrefs */
+        NotifyPrefs: {
+            /** Replies */
+            replies?: boolean | null;
+            /** Questions */
+            questions?: boolean | null;
+            /** Approvals */
+            approvals?: boolean | null;
+            /** Alerts */
+            alerts?: boolean | null;
+            /** Digest */
+            digest?: boolean | null;
+        };
         /** OAuthStart */
         OAuthStart: {
             /** Authorize Url */
@@ -10270,6 +11422,142 @@ export interface components {
         OAuthStartRequest: {
             /** Provider */
             provider: string;
+        };
+        /** OutsourceDelivered */
+        OutsourceDelivered: {
+            /** Artifact Ids */
+            artifact_ids?: string[];
+            /** Notes */
+            notes?: string | null;
+        };
+        /**
+         * OutsourceDraft
+         * @description ``POST /agent/v1/outsource-jobs`` (``company_draft_outsource_job``, HR only).
+         */
+        OutsourceDraft: {
+            /** Title */
+            title: string;
+            /** Brief */
+            brief: string;
+            /** Skills */
+            skills?: string[];
+            /**
+             * Marketplace
+             * @enum {string}
+             */
+            marketplace: "fiverr" | "upwork" | "other";
+            /** Budget Usd */
+            budget_usd: number;
+            /** Task Id */
+            task_id?: string | null;
+        };
+        /** OutsourceDrafted */
+        OutsourceDrafted: {
+            /** Job Id */
+            job_id: string;
+            /**
+             * Job Status
+             * @enum {string}
+             */
+            job_status: "draft" | "pending_approval" | "approved" | "posted" | "hired" | "delivered" | "closed" | "cancelled" | "declined";
+            /** Approval Id */
+            approval_id: string | null;
+            /** Budget Micros */
+            budget_micros: number;
+            /** Next */
+            next: string;
+        };
+        /** OutsourceHired */
+        OutsourceHired: {
+            /** Freelancer Name */
+            freelancer_name: string;
+            /** Freelancer Profile Url */
+            freelancer_profile_url?: string | null;
+            /** Agreed Price Usd */
+            agreed_price_usd: number;
+        };
+        /** OutsourceJobOut */
+        OutsourceJobOut: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string;
+            /** Created By Agent Id */
+            created_by_agent_id: string | null;
+            /** Created By Agent Name */
+            created_by_agent_name: string | null;
+            /** Task Id */
+            task_id: string | null;
+            /** Task Title */
+            task_title: string | null;
+            /** Title */
+            title: string;
+            /** Brief */
+            brief: string;
+            /** Skills */
+            skills: string[];
+            /**
+             * Marketplace
+             * @enum {string}
+             */
+            marketplace: "fiverr" | "upwork" | "other";
+            /** Budget Micros */
+            budget_micros: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "pending_approval" | "approved" | "posted" | "hired" | "delivered" | "closed" | "cancelled" | "declined";
+            /** Approval Id */
+            approval_id: string | null;
+            /** Approval Status */
+            approval_status: string | null;
+            /** Listing Url */
+            listing_url: string | null;
+            /** Freelancer Name */
+            freelancer_name: string | null;
+            /** Freelancer Profile Url */
+            freelancer_profile_url: string | null;
+            /** Agreed Price Micros */
+            agreed_price_micros: number | null;
+            /** Paid Micros */
+            paid_micros: number | null;
+            /** Cost Kind */
+            cost_kind: "verified" | null;
+            /** Ledger Entry Id */
+            ledger_entry_id: string | null;
+            /** Delivered Artifact Ids */
+            delivered_artifact_ids: string[];
+            /** Notes */
+            notes: string | null;
+            /** Open Url */
+            open_url: string | null;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /** OutsourcePaid */
+        OutsourcePaid: {
+            /** Amount Usd */
+            amount_usd: number;
+        };
+        /** OutsourcePosted */
+        OutsourcePosted: {
+            /** Listing Url */
+            listing_url: string;
+        };
+        /** OutsourceRaiseBudget */
+        OutsourceRaiseBudget: {
+            /** New Budget Usd */
+            new_budget_usd: number;
+            /** Reason */
+            reason?: string | null;
+        };
+        /** OutsourceReason */
+        OutsourceReason: {
+            /** Reason */
+            reason?: string | null;
         };
         /** Overview */
         Overview: {
@@ -10509,6 +11797,13 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /** Page[HumanWorkItem] */
+        Page_HumanWorkItem_: {
+            /** Items */
+            items: components["schemas"]["HumanWorkItem"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
         /** Page[Invitation] */
         Page_Invitation_: {
             /** Items */
@@ -10520,6 +11815,13 @@ export interface components {
         Page_Mailbox_: {
             /** Items */
             items: components["schemas"]["Mailbox"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** Page[MeetingOut] */
+        Page_MeetingOut_: {
+            /** Items */
+            items: components["schemas"]["MeetingOut"][];
             /** Next Cursor */
             next_cursor: string | null;
         };
@@ -10541,6 +11843,13 @@ export interface components {
         Page_ModelProvider_: {
             /** Items */
             items: components["schemas"]["ModelProvider"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** Page[OutsourceJobOut] */
+        Page_OutsourceJobOut_: {
+            /** Items */
+            items: components["schemas"]["OutsourceJobOut"][];
             /** Next Cursor */
             next_cursor: string | null;
         };
@@ -10569,6 +11878,13 @@ export interface components {
         Page_PurchaseRequestOut_: {
             /** Items */
             items: components["schemas"]["PurchaseRequestOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** Page[QuestionOut] */
+        Page_QuestionOut_: {
+            /** Items */
+            items: components["schemas"]["QuestionOut"][];
             /** Next Cursor */
             next_cursor: string | null;
         };
@@ -10847,7 +12163,7 @@ export interface components {
              */
             autonomy_mode: "autonomous" | "supervised";
             /** Human Approval Required For */
-            human_approval_required_for: ("external_purchase" | "budget_increase" | "external_communication" | "production_deploy" | "sensitive_action" | "hire" | "other")[];
+            human_approval_required_for: ("external_purchase" | "budget_increase" | "external_communication" | "production_deploy" | "sensitive_action" | "hire" | "outsource_job" | "other")[];
             /** Daily Budget Micros */
             daily_budget_micros: number | null;
             /** Monthly Budget Micros */
@@ -11077,6 +12393,56 @@ export interface components {
             self_critique_enabled: boolean;
             /** Radar Contact Email */
             radar_contact_email: string | null;
+            /**
+             * Meetings Enabled
+             * @default true
+             */
+            meetings_enabled: boolean;
+            /**
+             * Max Meetings Per Agent Per Day
+             * @default 3
+             */
+            max_meetings_per_agent_per_day: number;
+            /**
+             * Max Meetings Per Company Per Day
+             * @default 12
+             */
+            max_meetings_per_company_per_day: number;
+            /**
+             * Approval Timeout Seconds
+             * @default 86400
+             */
+            approval_timeout_seconds: number;
+            /**
+             * Agent Approval Timeout Seconds
+             * @default 1800
+             */
+            agent_approval_timeout_seconds: number;
+            /**
+             * Self Check Enabled
+             * @default true
+             */
+            self_check_enabled: boolean;
+            /**
+             * Work Graph Enabled
+             * @default true
+             */
+            work_graph_enabled: boolean;
+            /**
+             * Outsource Max Job Micros
+             * @default 200000000
+             */
+            outsource_max_job_micros: number;
+            /**
+             * Intensity
+             * @default 3
+             */
+            intensity: number;
+            /**
+             * Intensity Custom
+             * @default false
+             */
+            intensity_custom: boolean;
             /** Created At */
             created_at: string;
             /** Updated At */
@@ -11113,7 +12479,7 @@ export interface components {
             /** Autonomy Mode */
             autonomy_mode?: ("autonomous" | "supervised") | null;
             /** Human Approval Required For */
-            human_approval_required_for?: ("external_purchase" | "budget_increase" | "external_communication" | "production_deploy" | "sensitive_action" | "hire" | "other")[] | null;
+            human_approval_required_for?: ("external_purchase" | "budget_increase" | "external_communication" | "production_deploy" | "sensitive_action" | "hire" | "outsource_job" | "other")[] | null;
             /** Daily Budget Micros */
             daily_budget_micros?: number | null;
             /** Monthly Budget Micros */
@@ -11222,6 +12588,22 @@ export interface components {
             self_critique_enabled?: boolean | null;
             /** Radar Contact Email */
             radar_contact_email?: string | null;
+            /** Meetings Enabled */
+            meetings_enabled?: boolean | null;
+            /** Max Meetings Per Agent Per Day */
+            max_meetings_per_agent_per_day?: number | null;
+            /** Max Meetings Per Company Per Day */
+            max_meetings_per_company_per_day?: number | null;
+            /** Approval Timeout Seconds */
+            approval_timeout_seconds?: number | null;
+            /** Agent Approval Timeout Seconds */
+            agent_approval_timeout_seconds?: number | null;
+            /** Self Check Enabled */
+            self_check_enabled?: boolean | null;
+            /** Work Graph Enabled */
+            work_graph_enabled?: boolean | null;
+            /** Outsource Max Job Micros */
+            outsource_max_job_micros?: number | null;
         };
         /** ProgressBody */
         ProgressBody: {
@@ -11416,6 +12798,25 @@ export interface components {
             lead_agent_id?: string | null;
             /** Budget Micros */
             budget_micros?: number | null;
+        };
+        /**
+         * ProposedCompletion
+         * @description M18 Part B: answer of ``complete`` inside a work-graph run -- the result is only *proposed*;
+         *     the graph verifies it and completes the task.
+         */
+        ProposedCompletion: {
+            /**
+             * Ok
+             * @default true
+             */
+            ok?: boolean;
+            /**
+             * Status
+             * @default proposed
+             */
+            status?: string;
+            /** Task Id */
+            task_id: string;
         };
         /** ProviderActionRequest */
         ProviderActionRequest: {
@@ -11896,6 +13297,77 @@ export interface components {
             checkout_packet: components["schemas"]["CheckoutPacket"] | null;
             /** Expires At */
             expires_at: string | null;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /** QuestionAnswer */
+        QuestionAnswer: {
+            /** Answer */
+            answer: string;
+        };
+        /**
+         * QuestionAsk
+         * @description What an agent sends (``POST /agent/v1/questions``). ``deadline_hours`` is clamped to 1-24.
+         */
+        QuestionAsk: {
+            /** Question */
+            question: string;
+            /** Default Answer */
+            default_answer: string;
+            /** Options */
+            options?: string[];
+            /**
+             * Blocking
+             * @default false
+             */
+            blocking?: boolean;
+            /**
+             * Deadline Hours
+             * @default 4
+             */
+            deadline_hours?: number;
+        };
+        /**
+         * QuestionOut
+         * @description The question text, options and default are written by an AI employee: show them as such
+         *     (plain text, never as HTML or markdown links).
+         */
+        QuestionOut: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string;
+            /** Agent Id */
+            agent_id: string;
+            /** Task Id */
+            task_id: string | null;
+            /** Run Id */
+            run_id: string | null;
+            /** Question */
+            question: string;
+            /** Options */
+            options: string[];
+            /** Default Answer */
+            default_answer: string;
+            /** Blocking */
+            blocking: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "answered" | "defaulted" | "cancelled";
+            /** Answer */
+            answer: string | null;
+            /** Answered By User Id */
+            answered_by_user_id: string | null;
+            /** Answered Via */
+            answered_via: ("web" | "telegram" | "discord" | "whatsapp" | "slack" | "api") | null;
+            /** Deadline */
+            deadline: string;
+            /** Answered At */
+            answered_at: string | null;
             /** Created At */
             created_at: string;
             /** Updated At */
@@ -14037,7 +15509,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "work" | "review" | "planning" | "hiring" | "routine";
+            kind: "work" | "review" | "planning" | "hiring" | "routine" | "meeting";
             /**
              * Status
              * @enum {string}
@@ -14083,6 +15555,19 @@ export interface components {
             review_note: string | null;
             /** Blocked Reason */
             blocked_reason: string | null;
+            /** Meeting Id */
+            meeting_id: string | null;
+            /**
+             * Requires Human
+             * @default false
+             */
+            requires_human: boolean;
+            /** Human Category */
+            human_category: string | null;
+            /** Human Instructions */
+            human_instructions: string | null;
+            /** Requested By Agent Id */
+            requested_by_agent_id: string | null;
             /**
              * Created By Type
              * @enum {string}
@@ -14688,6 +16173,23 @@ export interface components {
         WebhookUpdate: {
             /** Enabled */
             enabled: boolean;
+        };
+        /** WhatsAppCredentials */
+        WhatsAppCredentials: {
+            /** Phone Number Id */
+            phone_number_id: string;
+            /**
+             * Access Token
+             * Format: password
+             */
+            access_token: string;
+            /**
+             * App Secret
+             * Format: password
+             */
+            app_secret: string;
+            /** Waba Id */
+            waba_id?: string | null;
         };
     };
     responses: never;
@@ -16910,6 +18412,72 @@ export interface operations {
             };
         };
     };
+    get_intensity_api_companies__company_id__intensity_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Intensity"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_intensity_api_companies__company_id__intensity_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IntensityUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Intensity"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_credentials_api_companies__company_id__credentials_get: {
         parameters: {
             query?: {
@@ -18559,7 +20127,7 @@ export interface operations {
                 assignee_agent_id?: string | null;
                 assignee_ref?: string | null;
                 parent_task_id?: string | null;
-                kind?: ("work" | "review" | "planning" | "hiring" | "routine") | null;
+                kind?: ("work" | "review" | "planning" | "hiring" | "routine" | "meeting") | null;
                 limit?: number;
                 cursor?: string | null;
             };
@@ -19516,6 +21084,894 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Page_Decision_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_channels_api_companies__company_id__channels_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    connect_channel_api_companies__company_id__channels_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChannelCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_channel_api_companies__company_id__channels__channel_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_channel_api_companies__company_id__channels__channel_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChannelPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    link_code_api_companies__company_id__channels__channel_id__link_code_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkCodeOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_link_api_companies__company_id__channel_links__link_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                link_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_link_api_companies__company_id__channel_links__link_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                link_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_questions_api_companies__company_id__questions_get: {
+        parameters: {
+            query?: {
+                status?: ("open" | "answered" | "defaulted" | "cancelled") | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_QuestionOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    answer_question_api_companies__company_id__questions__question_id__answer_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                question_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuestionAnswer"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuestionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_question_api_companies__company_id__questions__question_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                question_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuestionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_meetings_api_companies__company_id__meetings_get: {
+        parameters: {
+            query?: {
+                status?: ("scheduled" | "running" | "concluded" | "cancelled" | "failed") | null;
+                agent_id?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_MeetingOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_meeting_api_companies__company_id__meetings__meeting_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_meeting_api_companies__company_id__meetings__meeting_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["MeetingCancel"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_human_work_api_companies__company_id__human_work_get: {
+        parameters: {
+            query?: {
+                status?: "open" | "done";
+                mine?: boolean;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_HumanWorkItem_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_human_work_api_companies__company_id__human_work__task_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HumanWorkItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    claim_human_work_api_companies__company_id__human_work__task_id__claim_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HumanWorkItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decline_human_work_api_companies__company_id__human_work__task_id__decline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HumanWorkDecline"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HumanWorkItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_outsource_jobs_api_companies__company_id__outsource_jobs_get: {
+        parameters: {
+            query?: {
+                status?: ("draft" | "pending_approval" | "approved" | "posted" | "hired" | "delivered" | "closed" | "cancelled" | "declined") | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_OutsourceJobOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_outsource_job_api_companies__company_id__outsource_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutsourceJobOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    job_posted_api_companies__company_id__outsource_jobs__job_id__posted_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutsourcePosted"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutsourceJobOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    job_hired_api_companies__company_id__outsource_jobs__job_id__hired_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutsourceHired"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutsourceJobOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    job_delivered_api_companies__company_id__outsource_jobs__job_id__delivered_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutsourceDelivered"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutsourceJobOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    job_paid_api_companies__company_id__outsource_jobs__job_id__paid_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutsourcePaid"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutsourceJobOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    job_close_api_companies__company_id__outsource_jobs__job_id__close_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutsourceJobOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    job_cancel_api_companies__company_id__outsource_jobs__job_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutsourceReason"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutsourceJobOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    job_raise_budget_api_companies__company_id__outsource_jobs__job_id__raise_budget_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutsourceRaiseBudget"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutsourceJobOut"];
                 };
             };
             /** @description Validation Error */
@@ -22411,6 +24867,68 @@ export interface operations {
             };
         };
     };
+    whatsapp_handshake_api_webhooks_whatsapp__channel_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    whatsapp_events_api_webhooks_whatsapp__channel_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_overview_api_companies__company_id__wallet_get: {
         parameters: {
             query?: never;
@@ -23412,7 +25930,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Task"];
+                    "application/json": components["schemas"]["Task"] | components["schemas"]["ProposedCompletion"];
                 };
             };
             /** @description Validation Error */
@@ -23534,6 +26052,208 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Decision"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ask_founder_api_agent_v1_questions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuestionAsk"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuestionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_human_work_api_agent_v1_human_work_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HumanWorkRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HumanWorkRequested"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    draft_outsource_job_api_agent_v1_outsource_jobs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutsourceDraft"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutsourceDrafted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    schedule_meeting_api_agent_v1_meetings_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeetingSchedule"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingScheduled"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    meeting_say_api_agent_v1_meetings__meeting_id__say_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeetingSay"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingSaid"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_meeting_api_agent_v1_meetings__meeting_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeetingCancel"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingOut"];
                 };
             };
             /** @description Validation Error */

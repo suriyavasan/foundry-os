@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { normalizeAiSetup, normalizeCli, normalizeInstallLog, normalizeModelList, normalizeProviderTest, type ModelOption } from '@/lib/aiSetup'
 import { apiFetch } from './client'
 import { qk } from './keys'
-import type { AiSetupStatus, CliInstallLog, CliRuntimeStatus, ProviderTest } from './types'
+import type { AiSetupStatus, CliInstallLog, CliInstallMethodKind, CliRuntimeStatus, ProviderTest } from './types'
 import { isNotDeployed } from './work'
 
 const co = (cid: string | undefined) => `/companies/${cid}`
@@ -68,7 +68,7 @@ export function useCliRuntimes(enabled = true) {
 
 const idPath = (id: string) => `/cli-runtimes/${encodeURIComponent(id)}`
 
-function useCliInvalidate(cid?: string) {
+export function useCliInvalidate(cid?: string) {
   const qc = useQueryClient()
   return () => {
     void qc.invalidateQueries({ queryKey: qk.cliRuntimes })
@@ -79,15 +79,17 @@ function useCliInvalidate(cid?: string) {
   }
 }
 
-/** Runs the exact install command the person confirmed. `confirm: true` is sent only from the confirm dialog. */
+/** Runs the install method the person confirmed. `confirm: true` is sent only from the confirm dialog. */
 export function useInstallCli(cid?: string) {
   const invalidate = useCliInvalidate(cid)
   return useMutation({
-    mutationFn: (id: string) =>
-      apiFetch<unknown>(`${idPath(id)}/install`, {
+    mutationFn: (v: string | { id: string; method?: CliInstallMethodKind | null }) => {
+      const { id, method } = typeof v === 'string' ? { id: v, method: null } : v
+      return apiFetch<unknown>(`${idPath(id)}/install`, {
         method: 'POST',
-        body: { confirm: true },
-      }),
+        body: method ? { confirm: true, method } : { confirm: true },
+      })
+    },
     onSettled: invalidate,
   })
 }

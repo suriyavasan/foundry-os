@@ -41,6 +41,7 @@ __all__ = [
     "RuntimeAdapterError",
     "RuntimeErrorKind",
     "RuntimeHealth",
+    "SessionSpec",
     "TaskSpec",
     "UsageReport",
 ]
@@ -109,6 +110,8 @@ class TaskSpec:
     priority: str
     input_refs: list[str] = field(default_factory=list)
     review_note: str | None = None  # feedback to address on a revision
+    # M18: how the previous attempt ended + the Founder's answers about this task (data, redacted)
+    carry_over: str | None = None
 
 
 @dataclass(frozen=True)
@@ -139,6 +142,16 @@ class Limits:
 
 
 @dataclass(frozen=True)
+class SessionSpec:
+    """M18 Part B: a persistent CLI conversation the work graph continues across its acts. ``mode``
+    ``new`` starts it under ``id`` (Claude Code: ``--session-id``), ``resume`` continues it
+    (``--resume``). A session belongs to exactly one AI connection and is never shared."""
+
+    mode: str  # "new" | "resume"
+    id: str
+
+
+@dataclass(frozen=True)
 class ExecutionRequest:
     run_id: str
     attempt_number: int
@@ -157,6 +170,12 @@ class ExecutionRequest:
     # M17: the AI connection this run was routed to (``ai_connections.id``). CLI adapters take their
     # sign-in (plan home, key, OpenCode provider) from it instead of the installation-level setting.
     ai_connection_id: str | None = None
+    # M18 Part B. ``purpose`` "verify": a tool-less, read-only call whose final message is the
+    # answer (the work graph's self-check): ``task.description`` is the whole prompt and nothing
+    # may be written. Only adapters with ``supports_verify`` are ever asked. ``session``: see
+    # SessionSpec; only adapters with ``supports_sessions`` receive one.
+    purpose: str = "work"
+    session: SessionSpec | None = None
 
     def __repr__(self) -> str:  # the token must never reach logs
         return f"ExecutionRequest(run_id={self.run_id!r}, task_id={self.task.id!r})"
@@ -242,6 +261,9 @@ class RuntimeAdapter(abc.ABC):
     # False for adapters that can report health but cannot run tasks yet; the dispatcher
     # leaves tasks assigned to such runtimes "waiting for runtime".
     supports_execution: bool = True
+    # M18 Part B capabilities of the work graph (see ExecutionRequest.purpose / .session).
+    supports_verify: bool = False
+    supports_sessions: bool = False
 
     @property
     @abc.abstractmethod

@@ -240,24 +240,55 @@
   --ring: var(--accent);
 }
 
-/* human members (M7): initials, a double ring, a small human badge */
+/* illustrated faces (M20): a locally generated face on a token-coloured circle. The live-state ring is drawn above the
+ * picture; the employee-type glyph sits in a small badge at the bottom-right. */
+.cos-avatar[data-face] {
+  overflow: visible;
+  background: var(--face-bg, var(--avatar-bg-1));
+  box-shadow: none;
+}
+.cos-avatar[data-face]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1.5px var(--ring);
+  pointer-events: none;
+}
+.cos-avatar[data-face][data-dashed='true']::before {
+  box-shadow: none;
+  border: 1.5px dashed var(--ring);
+}
+.cos-avatar-face {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+  user-select: none;
+}
+.cos-avatar-role {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  color: var(--av);
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--line-strong);
+}
+
+/* human members (M7): an illustrated face, a double ring, a small human badge */
 .cos-avatar[data-family='member'] {
   --av: var(--av-human);
   --ring: var(--av-human);
   outline: 1.5px solid var(--accent-subtle);
   outline-offset: 2px;
-}
-.cos-avatar-badge {
-  position: absolute;
-  right: -2px;
-  bottom: -2px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 9999px;
-  color: var(--av-human);
-  background: var(--surface);
-  box-shadow: 0 0 0 1px var(--line-strong);
 }
 
 /* org tree edges follow the theme */
@@ -269,6 +300,35 @@
 
 .cos-live-dot[data-live='true'] {
   animation: cos-pulse 1.8s ease-in-out infinite;
+}
+/* chat: a new message eases in; a collaboration line between two working agents drifts */
+@keyframes cos-msg-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes cos-dash {
+  to {
+    stroke-dashoffset: -14;
+  }
+}
+.cos-msg-in {
+  animation: cos-msg-in 160ms ease-out;
+}
+.cos-collab {
+  fill: none;
+  stroke: var(--accent-fg);
+  stroke-width: 1.25;
+  stroke-dasharray: 3 4;
+  opacity: 0.7;
+}
+.cos-collab[data-live='true'] {
+  animation: cos-dash 1.4s linear infinite;
 }
 .cos-feed-item {
   animation: cos-feed-in 150ms ease-out;
@@ -284,10 +344,21 @@
     transform: scale(1.1);
   }
   .cos-live-dot[data-live='true'],
+  .cos-collab[data-live='true'],
+  .cos-msg-in,
   .cos-feed-item {
     animation: none;
   }
   .cos-avatar {
     transition: none;
   }
+}
+.cos-collab[data-kind='meeting'] {
+  opacity: 1;
+  stroke-width: 1.75;
+}
+li[data-highlight='true'] {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 14px;
 }

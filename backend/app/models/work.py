@@ -2,7 +2,18 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import BigInteger, Date, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Date,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    false,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
 
@@ -65,6 +76,8 @@ class Task(TimestampMixin, Base):
         Index("ix_tasks_project_id", "project_id"),
         Index("ix_tasks_parent_task_id", "parent_task_id"),
         Index("ix_tasks_company_status_next_attempt", "company_id", "status", "next_attempt_at"),
+        Index("ix_tasks_meeting_id", "meeting_id"),
+        Index("ix_tasks_company_requires_human", "company_id", "requires_human"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
@@ -113,6 +126,23 @@ class Task(TimestampMixin, Base):
     agent_retry_count: Mapped[int] = mapped_column(
         Integer, default=0, server_default="0", nullable=False
     )
+    # M18 A5: what the previous attempt ended with ({run_id, attempt, failure_class, code, message,
+    # last_progress, branch, at}); the next attempt's context carries it. ``replans``: how often
+    # the failure analysis reset the attempts with a new approach (max 1).
+    last_attempt: Mapped[dict | None] = mapped_column(JSON)
+    replans: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    # M21: the meeting this task is a speaking turn of (kind "meeting"). Such tasks are not work:
+    # boards and work lists hide them unless asked for.
+    meeting_id: Mapped[str | None] = mapped_column(ForeignKey("meetings.id"))
+    # M22: something only a person can do (sign, call, KYC, an errand ...). Assigned to a member or
+    # left in the human pool (no assignee); never dispatched to a runtime. ``requested_by_agent_id``
+    # is the AI employee that asked for it (woken if a person declines).
+    requires_human: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )
+    human_category: Mapped[str | None] = mapped_column(String(16))
+    human_instructions: Mapped[str | None] = mapped_column(Text)
+    requested_by_agent_id: Mapped[str | None] = mapped_column(ForeignKey("agents.id"))
 
     @property
     def assignee_ref(self) -> str | None:

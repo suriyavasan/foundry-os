@@ -23,6 +23,7 @@ from app.api.routes import (
     approvals,
     artifacts,
     auth,
+    channels,  # M19
     cli_runtimes,
     cofounder,
     commands,
@@ -32,13 +33,17 @@ from app.api.routes import (
     finance,
     goals,
     guardrails,
+    human_work,  # M22
     identity,
+    intensity,  # M23
+    meetings,  # M21
     memory,
     notes,
     notifications,
     policy,
     projects,
     providers,
+    questions,  # M18
     radar,  # M16 radar
     reachability,
     reflections,
@@ -70,6 +75,9 @@ from app.runtimes.cli.env import CliEnvironment
 from app.runtimes.registry import RuntimeRegistry, build_default_registry
 from app.services import reachability as reachability_service
 from app.services.auth import AuthService
+from app.services.channels import service as channel_service
+from app.services.channels.hub import ChannelHub
+from app.services.channels.router import ChannelRouter
 from app.services.mail_dispatch import EmailDispatcher
 from app.services.users import ensure_local_owner
 from app.skills.env import SkillsEnv, build_skills_env
@@ -232,6 +240,14 @@ def create_app(
     register_all(app.state.provider_executors, app.state.integrations)
     app.state.email_dispatcher = EmailDispatcher(session_factory, lambda: app.state.integrations)
     app.state.integrations.emails = app.state.email_dispatcher
+    # M19 chat channels: adapters + the router for the public WhatsApp webhook (the engine process
+    # builds its own hub for polling and delivery)
+    app.state.channels = ChannelHub(app.state.cipher)
+    app.state.channel_router = ChannelRouter(
+        session_factory,
+        app.state.channels,
+        base_url_getter=lambda: channel_service.public_base(app.state.integrations),
+    )
 
     # Generic per-IP rate limit + SSE cap (docs/security.md). Added before CORS so it sits inside
     # it: a 429 still carries the CORS headers a cross-origin UI needs to read it.
@@ -285,6 +301,7 @@ def create_app(
         activity.router,
         runtimes.router,
         policy.router,
+        intensity.router,  # M23
         providers.router,
         ai_setup.router,
         ai_stack.router,
@@ -296,6 +313,10 @@ def create_app(
         tasks.router,
         artifacts.router,
         approvals.router,
+        channels.router,  # M19
+        questions.router,  # M18
+        meetings.router,  # M21
+        human_work.router,  # M22
         schedules.router,
         control.router,
         notes.router,

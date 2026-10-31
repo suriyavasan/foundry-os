@@ -39,7 +39,15 @@ from app.runtimes.cli import store
 from app.runtimes.cli.catalog import CLIS
 from app.runtimes.cli.env import CliEnvironment
 from app.schemas.ai_stack import AiConnectionCreate, AiConnectionPatch
-from app.services import audit, credentials, events, model_providers, plan_login, policy
+from app.services import (
+    audit,
+    credentials,
+    events,
+    intensity,
+    model_providers,
+    plan_login,
+    policy,
+)
 
 logger = logging.getLogger("company_os.ai_stack")
 
@@ -840,6 +848,7 @@ def add(
         row = adopted
         row.label, row.use_for, row.share = fields["label"], data.use_for, data.share
         _audit(db, ctx, ctx.company_id, "ai_connection.updated", row, f"Set up AI: {row.label}")
+        intensity.apply_plan_only_default(db, ctx.company_id, ctx.principal)  # M23
         _commit(db, ctx.company_id)
         return get_view(db, ctx, row.id, cli_env)
     if len(existing) >= MAX_CONNECTIONS:
@@ -850,6 +859,7 @@ def add(
         _audit(
             db, ctx, ctx.company_id, "ai_connection.updated", adopted, f"Set up AI: {adopted.label}"
         )
+        intensity.apply_plan_only_default(db, ctx.company_id, ctx.principal)  # M23
         _commit(db, ctx.company_id)
         return get_view(db, ctx, adopted.id, cli_env)
     row = AiConnection(
@@ -890,6 +900,7 @@ def add(
         has_credential=bool(row.credential_id),
         position=row.position,
     )
+    intensity.apply_plan_only_default(db, ctx.company_id, ctx.principal)  # M23
     _commit(db, ctx.company_id)
     return get_view(db, ctx, row.id, cli_env)
 

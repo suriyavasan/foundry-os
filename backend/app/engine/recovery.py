@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
 
 from app.engine.context import EngineContext
+from app.engine.graph.retention import purge_finished_threads
 from app.models.company import Company
 from app.models.enums import CompanyStatus, JobStatus, RunStatus
 from app.models.run import Job, TaskRun
 from app.services import jobs, runs, safety, tasks
+
+logger = logging.getLogger("company_os.recovery")
 
 STALE_HEARTBEAT_SECONDS = 30
 RECOVERY_INTERVAL_SECONDS = 30
@@ -24,6 +28,7 @@ class RecoveryReport:
     requeued_jobs: int = 0
     budget_released_tasks: int = 0
     auto_resumed_company_ids: list[str] = field(default_factory=list)
+    purged_graph_threads: int = 0  # M18 Part B: work-graph threads of tasks ended 30+ days ago
 
 
 def recover(ctx: EngineContext, now: datetime | None = None) -> RecoveryReport:
@@ -81,6 +86,12 @@ def recover(ctx: EngineContext, now: datetime | None = None) -> RecoveryReport:
                 db, company_id, None, due_before=now
             )
         db.commit()
+
+    # M18 Part B: the checkpoints of tasks that ended 30+ days ago are no longer needed.
+    try:
+        report.purged_graph_threads = purge_finished_threads(ctx, now)
+    except Exception:  # retention is housekeeping: never break recovery
+        logger.warning("work-graph retention sweep failed", exc_info=True)
 
     # Companies the circuit breaker paused come back after their cooldown (never a human's pause).
     with ctx.session_factory() as db:

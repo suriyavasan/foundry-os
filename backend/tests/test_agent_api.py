@@ -378,7 +378,14 @@ def test_agent_block_unblock_and_assign_permissions(app, client, world):
     mine = sess.post("/tasks", json={"title": "mine", "assignee_agent_id": helper["id"]}).json()
     outsider_task = new_task(client, cid, title="not mine", assignee_agent_id=helper["id"])
     # block / unblock a task the agent created
-    r = sess.patch(f"/tasks/{mine['id']}", json={"status": "blocked", "reason": "needs input"})
+    r = sess.patch(
+        f"/tasks/{mine['id']}",
+        json={
+            "status": "blocked",
+            "reason": "needs input",
+            "unblock_condition": "when it is fixed",
+        },
+    )
     assert r.status_code == 200 and r.json()["status"] == "blocked"
     assert r.json()["error"]["message"] == "needs input"
     r = sess.patch(f"/tasks/{mine['id']}", json={"status": "unblocked"})
@@ -393,11 +400,20 @@ def test_agent_block_unblock_and_assign_permissions(app, client, world):
     # ...unless the agent manages the assignee
     client.patch(api(cid, f"/agents/{helper['id']}"), json={"manager_agent_id": agent["id"]})
     assert (
-        sess.patch(f"/tasks/{outsider_task['id']}", json={"status": "blocked"}).status_code == 200
+        sess.patch(
+            f"/tasks/{outsider_task['id']}",
+            json={"status": "blocked", "unblock_condition": "when it is fixed"},
+        ).status_code
+        == 200
     )
     # an agent can always block its own current task (it keeps running until it exits)
     r = sess.patch(
-        f"/tasks/{sess.task_id}", json={"status": "blocked", "reason": "waiting for approval"}
+        f"/tasks/{sess.task_id}",
+        json={
+            "status": "blocked",
+            "reason": "waiting for approval",
+            "unblock_condition": "when it is fixed",
+        },
     )
     assert r.status_code == 200 and r.json()["status"] == "blocked"
     with app.state.session_factory() as db:

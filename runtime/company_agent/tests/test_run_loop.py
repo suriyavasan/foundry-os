@@ -91,7 +91,7 @@ def test_model_request_carries_role_prompt_tools_and_key(tmp_path, api, model, l
     assert not names & {"terminal", "execute_code", "delegate_task", "memory", "browser_exec", "cronjob_manage",
                         "tool_search", "tool_call"}
     assert first["_authorization"] == "Bearer sk-test-model-key-0123456789"
-    assert len(system) < 4000  # lean company prompt, not the stock 6K+ Hermes prompt
+    assert len(system) < 4300  # lean company prompt (4000 + the M18 decision rules), not the stock 6K+ Hermes prompt
 
 
 def test_home_is_isolated_and_generated(tmp_path, api, model, launch):
@@ -158,6 +158,24 @@ def test_run_ends_as_soon_as_the_task_is_completed(tmp_path, api, model, launch)
     assert api.calls("POST", "/progress") == []
 
 
+def test_a_meeting_turn_ends_the_run_as_soon_as_the_agent_has_spoken(tmp_path, api, model, launch):
+    """M21: company_meeting_say is the end of a meeting turn, like company_complete_task."""
+    model.script = [
+        {"tool_calls": [tool("company_meeting_say", meeting_id="m-1", message="My view: ship it")]},
+        {"tool_calls": [tool("company_report_progress", message="I will keep going anyway")]},
+        {"content": "never reached"},
+    ]
+    spec = make_spec(tmp_path, api, model)
+    code, events, _ = launch(spec).finish()
+    assert code == 0
+    assert [e["payload"]["name"] for e in events if e["type"] == "tool.started"] == ["company_meeting_say"]
+    assert events[-1]["type"] == "run.completed"
+    assert events[-1]["payload"]["summary"] == "My view: ship it"
+    assert events[-1]["payload"]["task_disposition"] == "completed"
+    assert api.calls("POST", "/meetings/m-1/say")[0].body["message"] == "My view: ship it"
+    assert api.calls("POST", "/progress") == []
+
+
 def test_company_tools_subset_limits_what_the_model_sees(tmp_path, api, model, launch):
     model.script = list(HAPPY)
     subset = ["company_report_progress", "company_submit_artifact", "company_complete_task", "company_update_task"]
@@ -168,12 +186,14 @@ def test_company_tools_subset_limits_what_the_model_sees(tmp_path, api, model, l
 
 
 def test_agent_blocking_its_task_counts_as_a_clean_run(tmp_path, api, model, launch):
-    model.script = [{"tool_calls": [tool("company_update_task", action="block", reason="Need data I cannot get")]},
+    model.script = [{"tool_calls": [tool("company_update_task", action="block", reason="Need data I cannot get",
+                                           unblock_condition="The data is provided")]},
                     {"content": "Blocked, see reason."}]
     code, events, _ = launch(make_spec(tmp_path, api, model)).finish()
     assert code == 0
     assert events[-1]["type"] == "run.completed" and events[-1]["payload"]["task_disposition"] == "blocked"
-    assert api.calls("PATCH", "/tasks/task-1")[0].body == {"status": "blocked", "reason": "Need data I cannot get"}
+    assert api.calls("PATCH", "/tasks/task-1")[0].body == {
+        "status": "blocked", "reason": "Need data I cannot get", "unblock_condition": "The data is provided"}
 
 
 def test_agent_that_stops_early_is_reminded_then_completes(tmp_path, api, model, launch):

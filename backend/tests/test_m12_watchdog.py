@@ -120,7 +120,10 @@ def stuck_in_review(app, client, w, clock) -> dict:
 
 def blocked_by_agent(app, client, w, clock) -> dict:
     sess = start_run(app, client, w.cid, w.specialist["id"], task_title="Needs a key", kind="work")
-    r = sess.patch(f"/tasks/{sess.task_id}", json={"status": "blocked", "reason": "no API key"})
+    r = sess.patch(
+        f"/tasks/{sess.task_id}",
+        json={"status": "blocked", "reason": "no API key", "unblock_condition": "when it is fixed"},
+    )
     assert r.status_code == 200, r.text
     clear_wakes(app)  # the hook's immediate wake to the lead is tested in test_m12_closure
     return {"task_id": sess.task_id, "minutes": 125}
@@ -326,18 +329,18 @@ def test_a_review_task_that_fails_enters_the_ladder_at_once(app, client, w, cloc
 # ------------------------------------------------------------------ D2 blocked by an agent
 
 
-def test_d2_wakes_the_cofounder_after_two_hours_and_alerts_after_a_day(app, client, w, clock):
+def test_d2_wakes_the_cofounder_after_30_minutes_and_alerts_after_8_hours(app, client, w, clock):
     cid = w.cid
     info = blocked_by_agent(app, client, w, clock)
-    assert run(app, cid, clock, 60)["blocked_task"] == 0  # one hour: too early
-    assert run(app, cid, clock, 61)["blocked_task"] == 1  # over 2 h
+    assert run(app, cid, clock, 20)["blocked_task"] == 0  # 20 minutes: too early (M18: 30)
+    assert run(app, cid, clock, 11)["blocked_task"] == 1  # over 30 minutes
     [reason] = wake_reasons(app, w.founder["id"])
-    assert reason["trigger"] == "stall" and "blocked for over 2 hours" in reason["text"]
+    assert reason["trigger"] == "stall" and "blocked for over 30 minutes" in reason["text"]
     assert "no API key" in reason["text"]
     clear_wakes(app)
-    assert run(app, cid, clock, 600)["blocked_task"] == 0  # spacing: nothing before 24 h
+    assert run(app, cid, clock, 300)["blocked_task"] == 0  # spacing: nothing before 8 h
     assert stall_alerts(app, cid) == []
-    run(app, cid, clock, 740)
+    run(app, cid, clock, 160)  # now about 8 h after the block
     [alert] = stall_alerts(app, cid)
     assert alert.dedupe_key == f"stall:blocked_task:{info['task_id']}"
     run(app, cid, clock, 600)

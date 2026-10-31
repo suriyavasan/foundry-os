@@ -42,13 +42,12 @@ def test_status_of_clis_installed_or_not(client, company, bin_dir):
     assert set(s) == {"claude_code", "codex", "opencode", "antigravity", "cursor"}
     codex = s["codex"]
     assert codex["installed"] is False and codex["binary_path"] is None and codex["version"] is None
-    assert codex["install"] == {
-        "available": False,  # npm is not there either
-        "command": "npm install -g @openai/codex",
-        "requires": ["npm"],
-        "status": "none",
-        "manual": None,
-    }
+    inst = codex["install"]
+    assert inst["requires"] == ["npm"] and inst["status"] == "none" and inst["manual"] is None
+    by_method = {m["method"]: m for m in inst["methods"]}
+    assert by_method["npm"]["available"] is False and "npm" in by_method["npm"]["reason"]
+    assert by_method["npm"]["command"] == "npm install -g @openai/codex"
+    assert by_method["script"]["url"] == "https://chatgpt.com/codex/install.sh"
     assert codex["auth_modes"] == ["own_login", "api_key"]
     assert codex["auth"]["configured"] is False and codex["auth"]["mode"] is None
     assert codex["login_hint"] == "Run `codex login` in a terminal"
@@ -214,7 +213,7 @@ def test_a_failing_install_is_reported_and_leaves_nothing_behind(client, company
 
 
 def test_install_without_npm_is_a_clear_conflict(client, company, bin_dir):
-    r = client.post("/api/cli-runtimes/codex/install", json={"confirm": True})
+    r = client.post("/api/cli-runtimes/codex/install", json={"confirm": True, "method": "npm"})
     assert r.status_code == 409 and "npm" in r.json()["error"]["message"]
 
 
@@ -222,7 +221,9 @@ def test_the_install_argv_never_contains_sudo(client, company, bin_dir):
     from app.runtimes.cli.catalog import CLIS
 
     for spec in CLIS.values():
-        if spec.install_command is None:  # Antigravity: a curl | bash installer we never run
+        if (
+            spec.install_command is None
+        ):  # Antigravity / Cursor: script-only (see test_cli_install_methods)
             assert spec.id in ("antigravity", "cursor") and spec.npm_package is None
             continue
         assert spec.install_command[:3] == ["npm", "install", "-g"]

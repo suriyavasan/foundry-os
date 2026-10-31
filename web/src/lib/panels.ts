@@ -31,10 +31,12 @@ export const SIMPLE_PANELS = [
   'wallet',
   // M16 radar
   'radar',
+  // M22 human work and freelancers
+  'people-ops',
 ] as const
 export type SimplePanel = (typeof SIMPLE_PANELS)[number]
 
-export const ID_PANELS = ['agent', 'task', 'artifact', 'skill', 'note', 'reflection', 'repo'] as const
+export const ID_PANELS = ['agent', 'task', 'artifact', 'skill', 'note', 'reflection', 'repo', 'meeting', 'outsource'] as const
 export type IdPanel = (typeof ID_PANELS)[number]
 
 export type Panel =
@@ -46,6 +48,8 @@ export type Panel =
   | { kind: 'note'; id: string }
   | { kind: 'reflection'; id: string }
   | { kind: 'repo'; id: string }
+  | { kind: 'meeting'; id: string }
+  | { kind: 'outsource'; id: string }
 
 export const ID_RE = /^[A-Za-z0-9_-]{1,64}$/
 
@@ -71,7 +75,7 @@ export function parsePanel(search: string | URLSearchParams): Panel | null {
     const run = params.get(RUN_PARAM)
     return run && ID_RE.test(run) ? { kind: 'task', id, run } : { kind: 'task', id }
   }
-  return { kind: kind as 'agent' | 'artifact' | 'skill' | 'note' | 'reflection' | 'repo', id }
+  return { kind: kind as 'agent' | 'artifact' | 'skill' | 'note' | 'reflection' | 'repo' | 'meeting' | 'outsource', id }
 }
 
 /** Value of the `panel` query parameter. */
@@ -128,6 +132,7 @@ export const PANEL_TITLE: Record<SimplePanel, string> = {
   repos: 'Repositories',
   wallet: 'Agent cards',
   radar: 'Radar',
+  'people-ops': 'People ops',
 }
 
 const LEGACY_AREAS: Record<string, SimplePanel | null> = {

@@ -319,19 +319,17 @@ def test_sandbox_is_honestly_none():
     assert box["available"] is False and box["kind"] == "none" and "Shell(*)" in box["detail"]
 
 
-def test_status_lists_cursor_with_a_manual_install_and_no_automatic_one(world):
+def test_status_lists_cursor_with_a_script_install_method(world):
     items = {i["id"]: i for i in world.client.get("/api/cli-runtimes").json()["items"]}
     cur = items["cursor"]
     assert cur["display_name"] == "Cursor CLI" and cur["installed"] is False
     assert cur["auth_modes"] == ["api_key"]
-    assert cur["install"] == {
-        "available": False,
-        "command": None,
-        "requires": [],
-        "status": "none",
-        "manual": "curl https://cursor.com/install -fsS | bash",
-    }
-    assert any("never run" in w for w in cur["warnings"])
+    inst = cur["install"]
+    assert inst["manual"] == "curl https://cursor.com/install -fsS | bash"
+    assert inst["requires"] == [] and inst["status"] == "none"
+    assert [m["method"] for m in inst["methods"]] == ["script"]
+    assert inst["methods"][0]["url"] == "https://cursor.com/install"
+    assert any("never started" in w or "never run" in w for w in cur["warnings"])
     assert any("cursor.com/install" in w for w in cur["warnings"])
     install_fake_cli(world.bin_dir, BINARY, [])
     cur = world.client.get("/api/cli-runtimes/cursor").json()
@@ -339,13 +337,18 @@ def test_status_lists_cursor_with_a_manual_install_and_no_automatic_one(world):
     assert not any("cursor.com/install" in w for w in cur["warnings"])
 
 
-def test_the_install_endpoint_never_runs_the_curl_installer(world):
+def test_the_install_endpoint_never_pipes_the_installer_and_npm_is_not_used(world):
     from tests.m10_helpers import write_script
 
     write_script(world.bin_dir, "npm", "import sys\nsys.exit(0)\n")
+    # npm is not a Cursor install method
+    r = world.client.post(
+        "/api/cli-runtimes/cursor/install", json={"confirm": True, "method": "npm"}
+    )
+    assert r.status_code == 422
+    # the default test transport answers 404: nothing is downloaded, nothing runs
     r = world.client.post("/api/cli-runtimes/cursor/install", json={"confirm": True})
-    assert r.status_code == 409
-    assert "cursor.com/install" in r.json()["error"]["message"]
+    assert r.status_code == 409 and "installer" in r.json()["error"]["message"]
     assert world.client.get("/api/cli-runtimes/cursor").json()["install"]["status"] == "none"
 
 

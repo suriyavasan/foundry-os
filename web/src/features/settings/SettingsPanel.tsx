@@ -6,6 +6,7 @@ import { StringListEditor } from '@/components/forms/StringListEditor'
 import { useTheme } from '@/components/layout/ThemeProvider'
 import { PanelFrame } from '@/features/canvas/PanelFrame'
 import { useCanvas } from '@/features/canvas/CanvasContext'
+import { ChatAppsSection } from '@/features/channels/ChatAppsSection'
 import { PolicySection } from './PolicySection'
 import { AiLinkCard } from '@/features/ai/AiLinkCard'
 import { ReachabilityLinkCard } from '@/features/reachability/ReachabilityLinkCard'
@@ -52,6 +53,7 @@ export function SettingsPanel() {
         <div className="grid gap-4 lg:grid-cols-3">
           <div className="space-y-4 lg:col-span-2">
             <PolicySection companyId={companyId} />
+            <ChatAppsSection companyId={companyId} />
             <ProfileForm key={company.data.updated_at} company={company.data} />
           </div>
           <div className="space-y-4">

@@ -145,6 +145,24 @@ class StubApi:
             return 201, {"run_id": self.run_id, "seq": int(self._next_id("p").split("-")[1])}
         if m == "POST" and sub == "/decisions":
             return 201, {"id": self._next_id("dec"), "title": b.get("title")}
+        if m == "POST" and sub == "/questions":  # M18
+            return 201, {"id": self._next_id("q"), "status": "open", "blocking": bool(b.get("blocking")),
+                         "question": b.get("question"), "default_answer": b.get("default_answer")}
+        if m == "POST" and sub == "/human-work":  # M22
+            blocks = bool(b.get("blocks_my_task", True))
+            return 201, {"task_id": self._next_id("task"), "status": "backlog", "assignee_ref": None, "pool": True,
+                         "blocks_my_task": blocks, "due_at": "2026-01-03T00:00:00Z", "next": "Your task waits."}
+        if m == "POST" and sub == "/outsource-jobs":  # M22
+            return 201, {"job_id": self._next_id("job"), "job_status": "pending_approval",
+                         "approval_id": self._next_id("appr"), "budget_micros": int(round(b["budget_usd"] * 1_000_000)),
+                         "next": "A person decides this approval."}
+        if m == "POST" and sub == "/meetings":  # M21
+            return 201, {"meeting_id": self._next_id("mtg"), "status": "scheduled", "start_at": "2026-01-01T00:00:00Z"}
+        if m == "POST" and sub.startswith("/meetings/") and sub.endswith("/say"):
+            return 200, {"message_id": self._next_id("msg"), "meeting_id": sub.split("/")[2], "round": 1,
+                         "next": "Your turn is over."}
+        if m == "POST" and sub.startswith("/meetings/") and sub.endswith("/cancel"):
+            return 200, {"id": sub.split("/")[2], "status": "cancelled"}
         if m == "POST" and sub == "/approvals":
             return 201, {"id": self._next_id("appr"), "status": "pending", "approver": "founder"}
         if m == "POST" and sub.endswith("/decide"):

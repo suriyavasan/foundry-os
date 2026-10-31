@@ -4,6 +4,7 @@ import { useCanvas } from '@/features/canvas/CanvasContext'
 import { PanelFrame } from '@/features/canvas/PanelFrame'
 import { canEditPolicy, useCompanyRole } from '@/features/canvas/hooks'
 import { AiStack } from './AiStack'
+import { CodingTools } from './CodingTools'
 
 /** `?panel=ai`: add, order and tune the AIs the company uses, any time. */
 export function AiPanel() {
@@ -20,6 +21,7 @@ export function AiPanel() {
           </Button>
         </div>
         <AiStack companyId={companyId} canEdit={canEdit} />
+        <CodingTools canInstall={role === 'owner'} />
       </div>
     </PanelFrame>
   )

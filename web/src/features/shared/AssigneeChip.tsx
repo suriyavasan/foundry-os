@@ -40,7 +40,7 @@ export function AssigneeChip({
   if (!member) return <span className={clsx('text-fg-3', className)}>Unknown member</span>
   return (
     <span className={clsx('inline-flex min-w-0 items-center gap-1.5', className)}>
-      <MemberAvatar name={member.display_name} size={size} />
+      <MemberAvatar name={member.display_name} seed={member.id} size={size} />
       {!hideName && <span className={clsx('truncate', nameClassName)}>{member.display_name}</span>}
       {hideName && <span className="sr-only">{member.display_name}</span>}
     </span>

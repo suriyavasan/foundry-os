@@ -124,10 +124,11 @@ def test_human_only_kinds_cannot_be_decided_by_the_founder(app, client, world):
 
 def test_an_agent_can_never_decide_its_own_request(app, client, world):
     cid, founder, worker = world
-    # the founder asks for something founder-approvable and tries to approve it itself
+    # the founder asks for something founder-approvable: M18 routes it to a person (it could never
+    # decide its own request, which used to be a dead end) and it still cannot approve it itself
     founder_sess = start_run(app, client, cid, founder["id"])
     mine = _ask(founder_sess, "hire")
-    assert mine["approver"] == "founder"
+    assert mine["approver"] == "human"
     r = founder_sess.post(f"/approvals/{mine['id']}/decide", json={"decision": "approve"})
     assert r.status_code == 403 and "own request" in r.json()["error"]["message"]
     # a non-founder agent cannot decide anything

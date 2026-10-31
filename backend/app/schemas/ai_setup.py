@@ -35,9 +35,20 @@ class CliSandbox(ApiModel):
     detail: str
 
 
+class CliInstallMethod(ApiModel):
+    method: Literal["npm", "script"]
+    # exact and human-readable: "npm install -g ..." or "Download <url> and run it with bash"
+    command: str
+    url: str | None = None  # script methods: the vendor's installer URL
+    available: bool
+    reason: str | None = None  # why it cannot run here (or "Already installed")
+
+
 class CliInstall(ApiModel):
-    available: bool  # npm is here, the CLI has an npm package and is not installed yet
-    command: str | None = None  # None: no automatic install (see ``manual``)
+    available: bool  # some method can run here and the CLI is not installed yet
+    methods: list[CliInstallMethod] = []
+    default_method: Literal["npm", "script"] | None = None
+    command: str | None = None  # the default method's command (the first one when none can run)
     requires: list[str]
     status: Literal["none", "running", "succeeded", "failed"] = "none"
     # Run by the person themselves when there is no automatic install; never run by the server.
@@ -74,6 +85,7 @@ class CliRuntimeList(ApiModel):
 
 class CliInstallRequest(RequestModel):
     confirm: bool = False
+    method: Literal["npm", "script"] | None = None  # default: npm when it can run, else script
 
 
 class CliInstallLog(ApiModel):
@@ -82,6 +94,9 @@ class CliInstallLog(ApiModel):
     id: CliIdLiteral
     status: Literal["none", "running", "succeeded", "failed"]
     command: str | None = None
+    method: Literal["npm", "script"] | None = None
+    url: str | None = None
+    sha256: str | None = None  # script installs: SHA-256 of the downloaded installer
     started_at: Timestamp | None = None
     finished_at: Timestamp | None = None
     exit_code: int | None = None

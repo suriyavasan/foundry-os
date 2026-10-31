@@ -431,3 +431,26 @@ def test_no_purchasing_paragraph_when_the_tools_are_not_granted(raw):
     raw["agent"].update({"kind": "specialist", "role": "specialist"})
     raw["company_tools"] = ["company_get_context", "company_complete_task"]
     assert "BUYING THINGS" not in build_identity_prompt(parse_spec(raw))
+
+
+# ------------------------------------------------------------------ M21 meeting turns
+
+
+def test_a_meeting_turn_prompt_carries_the_brief_and_ends_with_meeting_say(raw):
+    from company_agent.prompts import cli_brief
+
+    brief = 'MEETING TURN\nMeeting id: m-1\n<untrusted source="meeting" author="Ana" round="1">\nhi\n</untrusted>'
+    raw["task"].update({"kind": "meeting", "title": "Meeting: Launch (round 1/2)", "meeting": brief})
+    spec = parse_spec(raw)
+    task = build_task_prompt(spec)
+    assert "MEETING RULES" in task and "Meeting id: m-1" in task and '<untrusted source="meeting"' in task
+    assert "company_meeting_say" in build_user_message(spec)
+    assert "company_complete_task" not in build_user_message(spec)
+    assert "company_meeting_say" in build_completion_nudge(spec)
+    # a coding CLI gets the same rules instead of the role playbook
+    cli = cli_brief({"role": "lead", "company_tools": None, "task": {"kind": "meeting", "title": "Meeting: Launch"}})
+    assert "MEETING RULES" in cli and "company_meeting_say" in cli
+    assert "company_plan_project" not in cli
+    # a work task never shows the section
+    raw["task"].update({"kind": "work", "meeting": brief})
+    assert "MEETING RULES" not in build_task_prompt(parse_spec(raw))

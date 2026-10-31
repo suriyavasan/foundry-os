@@ -97,6 +97,13 @@ export const KNOWN_EVENT_TYPES = [
   'standard.adopted',
   'standard.updated',
   'command.updated',
+  // M18 founder questions (an agent asks, the Command Center chat shows it)
+  'question.created',
+  'question.updated',
+  // M19 chat channels (status, links, last error)
+  'channel.updated',
+  // M21 agent meetings (status, round, outcome)
+  'meeting.updated',
   // M14 GitHub-backed projects (sync state, pull requests, intake)
   'repository.updated',
   // M16 market radar: briefs, items and idea decisions have their own events; fetches, sources and keywords
@@ -189,7 +196,7 @@ export function effectsForEvent(cid: string, ev: CompanyEvent): CacheEffect[] {
     case 'budget.changed':
     case 'policy.updated':
       // The AI setup (management model, work mode) lives in the policy: the gate re-reads it.
-      return [inv(qk.policy(cid)), inv(qk.usageAll(cid)), inv(qk.financeAll(cid)), inv(qk.tasksAll(cid)), inv(qk.aiSetup(cid))]
+      return [inv(qk.policy(cid)), inv(qk.intensity(cid)), inv(qk.usageAll(cid)), inv(qk.financeAll(cid)), inv(qk.tasksAll(cid)), inv(qk.aiSetup(cid))]
     case 'company.updated':
       return [inv(qk.companyDetail(cid)), inv(qk.companies)]
     case 'skill.installed':
@@ -269,6 +276,14 @@ export function effectsForEvent(cid: string, ev: CompanyEvent): CacheEffect[] {
       return [inv(qk.standardsAll(cid)), inv(qk.reflectionsAll(cid)), inv(qk.activityAll(cid))]
     case 'command.updated':
       return [inv(qk.commandFeed(cid)), inv(qk.notesAll(cid))]
+    case 'question.created':
+    case 'question.updated':
+      return [inv(qk.questions(cid)), inv(qk.tasksAll(cid)), inv(qk.activityAll(cid))]
+    case 'channel.updated':
+      return [inv(qk.channels(cid))]
+    case 'meeting.updated':
+      // A meeting concluding creates tasks and decisions and changes who is "in a meeting" on the org map.
+      return [inv(qk.meetingsAll(cid)), inv(qk.agents(cid)), inv(qk.tasksAll(cid)), inv(qk.activityAll(cid))]
     case 'repository.updated':
       return [inv(qk.reposAll(cid)), inv(qk.activityAll(cid))]
     // M16 market radar: briefs, items and idea decisions refresh the radar views; a brief also adds an artifact, and an

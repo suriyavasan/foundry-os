@@ -1,6 +1,7 @@
 """In-app notifications (docs/specs/m7 section 5).
 
-Kinds: ``task_assigned``, ``review_requested``, ``approval_needed``, ``note_replied``, ``alert``.
+Kinds: ``task_assigned``, ``review_requested``, ``approval_needed``, ``note_replied``, ``alert``,
+``founder_question`` (M18).
 A notification belongs to one person (``user_id``); the producing code adds rows to the caller's
 transaction (no commit). The company stream gets a ``notification.created`` event carrying only
 ids -- never the title or body, because every member of the company can read the stream.
@@ -25,6 +26,8 @@ REVIEW_REQUESTED = "review_requested"
 APPROVAL_NEEDED = "approval_needed"
 NOTE_REPLIED = "note_replied"
 ALERT = "alert"
+FOUNDER_QUESTION = "founder_question"  # M18: an agent asks the Founder something
+HUMAN_WORK = "human_work"  # M22: an AI employee needs a person to do something (or a reminder)
 
 
 def notify_user(
@@ -58,6 +61,10 @@ def notify_user(
         )
         # M8: sent after the commit, only to people who opted in, only with a working e-mail
         mail_dispatch.queue(db, user_id, company_id, kind, title, body)
+        # M19: questions, approvals and alerts also reach the person's linked chats (outbox row)
+        from app.services.channels import outbox
+
+        outbox.on_notification(db, note)
     return note
 
 

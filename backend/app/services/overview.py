@@ -48,7 +48,7 @@ def _tasks_block(db: Session, ctx: CompanyContext, registry: RuntimeRegistry | N
     by_status = dict.fromkeys((s.value for s in TaskStatus), 0)
     for status, count in db.execute(
         select(Task.status, func.count(Task.id))
-        .where(Task.company_id == ctx.company_id)
+        .where(Task.company_id == ctx.company_id, Task.kind != "meeting")  # M21: not work
         .group_by(Task.status)
     ):
         by_status[status] = count

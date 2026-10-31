@@ -39,6 +39,9 @@ from app.models.company import Company, CompanyMember
 from app.models.enums import (
     AWAITING_PLAN_APPROVAL,
     TERMINAL_TASK_STATUSES,
+    WAITING_FOR_APPROVAL,
+    WAITING_FOR_FOUNDER,
+    WAITING_FOR_HUMAN,
     WAITING_ON_SUBTASKS,
     AgentStatus,
     AutonomyMode,
@@ -53,6 +56,7 @@ from app.schemas.work import Task as TaskOut
 from app.schemas.work import TaskCreate, TaskUpdate
 from app.services import (
     agent_roles,
+    attempt_memory,
     audit,
     autonomy_hooks,
     events,
@@ -61,6 +65,7 @@ from app.services import (
     org,
     policy,
     retry_policy,
+    secrets_scan,
 )
 from app.services.common import (
     creator_of,
@@ -293,6 +298,8 @@ def recompute_readiness(
             )
             and unfinished.get(task.id, 0) == 0
             and task.blocked_reason != AWAITING_PLAN_APPROVAL
+            and task.blocked_reason != WAITING_FOR_FOUNDER
+            and task.blocked_reason != WAITING_FOR_APPROVAL
             and not (task.blocked_reason == WAITING_ON_SUBTASKS and open_children.get(task.id, 0))
         )
         current = TaskStatus(task.status)
@@ -398,8 +405,29 @@ def _qa_reviewer(db: Session, task: Task) -> str | None:
     )
 
 
-def needs_review(db: Session, task: Task) -> bool:
+def _has_code_deliverable(db: Session, task: Task) -> bool:
+    return (
+        db.scalar(
+            select(Artifact.id)
+            .where(
+                Artifact.company_id == task.company_id,
+                Artifact.task_id == task.id,
+                Artifact.kind == "code",
+            )
+            .limit(1)
+        )
+        is not None
+    )
+
+
+def needs_review(db: Session, task: Task, *, self_checked: bool = False) -> bool:
     if not (task.acceptance_criteria or "").strip():
+        return False
+    if self_checked and not (
+        task.reviewer_agent_id or task.reviewer_member_id or _has_code_deliverable(db, task)
+    ):
+        # M18 Part B: the work graph verified the result against the criteria; only an explicit
+        # reviewer or a code deliverable (pull request) keeps the review step.
         return False
     return resolve_reviewer(db, task) is not None or task.reviewer_member_id is not None
 
@@ -413,21 +441,47 @@ def finish_success(
     principal: Principal | None,
     run_id: str | None,
     now: datetime | None = None,
+    waiting: str | None = None,
+    self_checked: bool = False,
+    force_review: str | None = None,
 ) -> bool:
     """A run succeeded: in_progress -> in_review (if reviewable) else done. A task that still has
-    open subtasks waits for them first (``waiting_on_subtasks``). No commit."""
+    open subtasks waits for them first (``waiting_on_subtasks``). No commit.
+
+    M18 Part B (work graph): ``waiting`` ("founder" | "approval") = the graph interrupted, the task
+    is parked and nothing is completed; ``self_checked`` = the self-check passed (see
+    ``needs_review``); ``force_review`` = the self-check kept failing: in_review, with feedback."""
     if task.status != S.IN_PROGRESS:
         return False
     task.transient_failures = 0  # a success ends any run of transient failures
     task.next_attempt_at = None
-    if summary is not None:
-        task.result_summary = summary
+    task.last_attempt = None  # M18: nothing to carry over from a failure that was overcome
     if output_refs:
         task.output_refs = list(dict.fromkeys([*task.output_refs, *output_refs]))
+    if _park_for_founder(db, task, principal=principal, run_id=run_id, now=now):
+        return True  # waiting for the founder: this run's summary is not a result
+    if _park_for_human_work(db, task, principal=principal, run_id=run_id, now=now):
+        return True  # waiting for a person (M22): nothing is completed meanwhile
+    if waiting:
+        if waiting == "approval":
+            _park_for_approval(db, task, principal=principal, run_id=run_id, now=now)
+        else:  # the wait ended while the run was finishing: run again, nothing completes
+            _requeue_after_wait(db, task, principal=principal, run_id=run_id, now=now)
+        return True
+    if summary is not None:
+        task.result_summary = summary
     if _park_for_subtasks(db, task, principal=principal, run_id=run_id, now=now):
         return True
-    if needs_review(db, task):
-        transition(db, task, S.IN_REVIEW, principal=principal, now=now, extra={"run_id": run_id})
+    if force_review is not None or needs_review(db, task, self_checked=self_checked):
+        transition(
+            db,
+            task,
+            S.IN_REVIEW,
+            principal=principal,
+            now=now,
+            reason=f"self-check did not pass: {force_review}" if force_review else None,
+            extra={"run_id": run_id},
+        )
         from app.services import reviews
 
         reviews.ensure_review_task(db, task, principal, now=now)
@@ -441,6 +495,112 @@ def finish_success(
 
 MAX_RUNS_BEFORE_NO_MORE_WAITING = 6
 MAX_AGENT_RETRIES = 2  # an agent may retry a failed task this often; a human retry resets it
+MAX_REPLANS = 1  # M18: a failed task may be retried "with a new approach" once; then humans only
+MAX_UNBLOCK_CONDITION = 300
+MAX_NEW_INSTRUCTIONS = 2000
+
+
+def _park_for_founder(
+    db: Session, task: Task, *, principal: Principal | None, run_id: str | None, now
+) -> bool:
+    """M18: the run ended while a *blocking* question of this task is still open: the task goes back
+    to the queue as ``waiting_for_founder`` and runs again once the Founder answered (or the
+    question's deadline passed). The attempt itself did not fail, so it is refunded. Nothing is
+    completed or reviewed meanwhile."""
+    from app.services import questions
+
+    open_questions = questions.open_blocking_for_task(db, task)
+    if not open_questions:
+        return False
+    task.attempt_count = max(0, task.attempt_count - 1)
+    transition(
+        db,
+        task,
+        S.READY,
+        principal=principal,
+        now=now,
+        reason="waiting for the founder's answer",
+        extra={"run_id": run_id, "question_ids": [q.id for q in open_questions]},
+    )
+    task.blocked_reason = WAITING_FOR_FOUNDER
+    recompute_readiness(db, task.company_id, task_ids=[task.id], principal=principal, now=now)
+    return True
+
+
+def _park_for_human_work(
+    db: Session, task: Task, *, principal: Principal | None, run_id: str | None, now
+) -> bool:
+    """M22: the run ended while a human-work task this task depends on is not done (the agent asked
+    a person for something with ``blocks_my_task``). The plain dependency mechanism holds the task:
+    it goes back to ``ready`` (attempt refunded), readiness moves it to the backlog because the
+    dependency is unfinished, and it is ready again when the person completes it. Nothing is
+    completed or reviewed meanwhile (the same in plain and graph runs: both end here)."""
+    waiting = db.scalar(
+        select(func.count(TaskDependency.id))
+        .join(Task, Task.id == TaskDependency.depends_on_task_id)
+        .where(
+            TaskDependency.task_id == task.id,
+            TaskDependency.company_id == task.company_id,
+            Task.requires_human.is_(True),
+            Task.status != S.DONE,
+        )
+    )
+    if not waiting:
+        return False
+    task.attempt_count = max(0, task.attempt_count - 1)
+    transition(
+        db,
+        task,
+        S.READY,
+        principal=principal,
+        now=now,
+        reason="waiting for a person to finish human work",
+        extra={"run_id": run_id},
+    )
+    task.blocked_reason = WAITING_FOR_HUMAN
+    recompute_readiness(db, task.company_id, task_ids=[task.id], principal=principal, now=now)
+    return True
+
+
+def _requeue_after_wait(
+    db: Session, task: Task, *, principal: Principal | None, run_id: str | None, now
+) -> None:
+    task.attempt_count = max(0, task.attempt_count - 1)
+    transition(
+        db,
+        task,
+        S.READY,
+        principal=principal,
+        now=now,
+        reason="the wait ended before the run did",
+        extra={"run_id": run_id},
+    )
+    recompute_readiness(db, task.company_id, task_ids=[task.id], principal=principal, now=now)
+
+
+def _park_for_approval(
+    db: Session, task: Task, *, principal: Principal | None, run_id: str | None, now
+) -> None:
+    """M18 Part B: a graph run ended while approvals this task asked for are still pending: the task
+    waits as ``waiting_for_approval`` and runs again (resuming its graph thread) once they are
+    decided or expired. Refunds the attempt. If none is pending any more, it just runs again."""
+    from app.services import graph_waits
+
+    if not graph_waits.pending_approval_ids(db, task):
+        _requeue_after_wait(db, task, principal=principal, run_id=run_id, now=now)
+        return
+    task.attempt_count = max(0, task.attempt_count - 1)
+    transition(
+        db,
+        task,
+        S.READY,
+        principal=principal,
+        now=now,
+        reason="waiting for an approval",
+        extra={"run_id": run_id},
+    )
+    task.blocked_reason = WAITING_FOR_APPROVAL
+    recompute_readiness(db, task.company_id, task_ids=[task.id], principal=principal, now=now)
 
 
 def _park_for_subtasks(
@@ -501,7 +661,21 @@ def finish_failure(
     now = now or utcnow()
     limits = policy.load_policy(db, task.company_id)
     error = {"code": code, "message": message, "run_id": run_id}
+    if task.kind == TaskKind.MEETING:  # M21: a failed turn is a pass; it is never retried
+        transition(
+            db,
+            task,
+            S.FAILED,
+            principal=principal,
+            now=now,
+            error=error,
+            reason=f"meeting turn failed: {code}",
+        )
+        return True
     kind = retry_policy.classify(code, message)
+    attempt_memory.record_failure(
+        db, task, run_id=run_id, code=code, message=message, failure_class=kind, now=now
+    )
     if (
         kind == retry_policy.TRANSIENT
         and code not in retry_policy.ATTEMPT_CONSUMING_CODES
@@ -1387,8 +1561,8 @@ def list_tasks(
         stmt = stmt.where(Task.assignee_agent_id == assignee_agent_id)
     if parent_task_id:
         stmt = stmt.where(Task.parent_task_id == parent_task_id)
-    if kind:
-        stmt = stmt.where(Task.kind == kind)
+    # M21: a meeting turn is not work; ask for it with kind=meeting
+    stmt = stmt.where(Task.kind == kind if kind else Task.kind != TaskKind.MEETING)
     return paginate(db, stmt, Task, limit=limit, cursor=cursor, descending=True)
 
 
@@ -1444,6 +1618,11 @@ def update_task(db: Session, ctx: CompanyContext, task_id: str, data: TaskUpdate
     if new_assignee[1] and new_assignee[1] == new_reviewer[1]:
         raise ValidationFailed("Nobody reviews their own work: pick another reviewer")
     assignee_changed = new_assignee != (task.assignee_agent_id, task.assignee_member_id)
+    if task.requires_human and new_assignee[0]:
+        raise ValidationFailed(
+            "Human work is for a person: give it to a member, or leave it in the human pool",
+            details=[{"loc": ["body", "assignee_ref"], "msg": "human work cannot go to an agent"}],
+        )
     if task.status == S.IN_PROGRESS and assignee_changed:
         raise Conflict("Cannot reassign a task while it is running; block or cancel it first")
 
@@ -1544,9 +1723,11 @@ def agent_update_task(
     assignee_agent_id: str | None,
     assignee_given: bool,
     assignee_member_id: str | None = None,
+    unblock_condition: str | None = None,
 ) -> Task:
     """Limited agent edit: block/unblock and (re)assignment, only on tasks the agent created
-    or manages (or its own current task, for blocking). Only managers (founder, leads, anyone
+    or manages (or its own current task, for blocking). Blocking requires ``unblock_condition``:
+    what would unblock the task (M18). Only managers (founder, leads, anyone
     with reports) may assign work to someone else; a manager may also hand its *own running task*
     to a colleague (routing a task that landed in its queue)."""
     principal = ctx.principal
@@ -1557,7 +1738,27 @@ def agent_update_task(
         if status == "blocked":
             if not (may_manage or is_own_current):
                 raise Forbidden("You can only block your own task or tasks you created/manage")
-            _block(db, task, principal, reason, cancel_runs=not is_own_current)
+            condition = " ".join((unblock_condition or "").split())
+            if not condition:
+                raise ValidationFailed(
+                    "Say what would unblock the task (unblock_condition, at most 300 characters). "
+                    "If you only need an answer from the Founder, use company_ask_founder with "
+                    "blocking=true instead of blocking the task.",
+                    details=[{"loc": ["body", "unblock_condition"], "msg": "required to block"}],
+                )
+            if len(condition) > MAX_UNBLOCK_CONDITION:
+                raise ValidationFailed(
+                    f"unblock_condition is at most {MAX_UNBLOCK_CONDITION} characters",
+                    details=[{"loc": ["body", "unblock_condition"], "msg": "too long"}],
+                )
+            _block(
+                db,
+                task,
+                principal,
+                reason,
+                cancel_runs=not is_own_current,
+                unblock_condition=condition,
+            )
         elif status == "unblocked":
             if not may_manage:
                 raise Forbidden("Only the creator or a manager can unblock a task")
@@ -1619,9 +1820,18 @@ def agent_update_task(
 
 
 def retry_as_agent(
-    db: Session, ctx: CompanyContext, task_id: str, *, reason: str | None, assignee_id: str | None
+    db: Session,
+    ctx: CompanyContext,
+    task_id: str,
+    *,
+    reason: str | None,
+    assignee_id: str | None,
+    new_instructions: str | None = None,
 ) -> Task:
-    """A manager retries a failed task (optionally with another assignee)."""
+    """A manager retries a failed task (optionally with another assignee). M18: with
+    ``new_instructions`` ("retry with a new approach") the attempts are reset **once per task**
+    (``tasks.replans``) and the instructions are appended to the description under "Revised
+    approach"; a second re-plan is refused (a person decides)."""
     task = get_task_or_404(db, ctx.company_id, task_id)
     _, _, may_manage, _ = _agent_authority(db, ctx, task)
     if not may_manage:
@@ -1631,7 +1841,39 @@ def retry_as_agent(
             f"Only failed tasks can be retried (task is {task.status})",
             details={"from": task.status, "to": "backlog"},
         )
-    if task.agent_retry_count >= MAX_AGENT_RETRIES:
+    revised = " ".join((new_instructions or "").split()) if new_instructions else ""
+    if new_instructions is not None and not revised:
+        raise ValidationFailed(
+            "new_instructions must say what to do differently",
+            details=[{"loc": ["body", "new_instructions"], "msg": "empty"}],
+        )
+    if revised:
+        if len(new_instructions or "") > MAX_NEW_INSTRUCTIONS:
+            raise ValidationFailed(
+                f"new_instructions is at most {MAX_NEW_INSTRUCTIONS} characters",
+                details=[{"loc": ["body", "new_instructions"], "msg": "too long"}],
+            )
+        if task.replans >= MAX_REPLANS:
+            raise LimitExceeded(
+                "This task was already retried with a new approach once. A person has to decide "
+                "what happens next: escalate with company_escalate or record why you give up.",
+                details={"limit": "max_replans", "max": MAX_REPLANS, "replans": task.replans},
+            )
+        task.replans += 1
+        task.description = (
+            (task.description or "") + "\n\nRevised approach:\n" + (new_instructions or "").strip()
+        ).strip()
+        audit.record(
+            db,
+            company_id=ctx.company_id,
+            principal=ctx.principal,
+            action="task.replanned",
+            target_type="task",
+            target_id=task.id,
+            summary=f"Retrying '{task.title}' with a new approach",
+            data={"replans": task.replans},
+        )
+    elif task.agent_retry_count >= MAX_AGENT_RETRIES:
         raise LimitExceeded(
             f"Agents may retry a task at most {MAX_AGENT_RETRIES} times and this one was already "
             "retried that often. Do not retry it again: escalate to the Co-founder or a human "
@@ -1669,6 +1911,7 @@ def cancel_as_agent(db: Session, ctx: CompanyContext, task_id: str, reason: str 
         )
     transition(db, task, S.CANCELLED, principal=ctx.principal, reason=reason)
     run_service.request_cancel_for_task(db, task, "task_cancelled", ctx.principal)
+    _release_if_human_work(db, task, reason)
     db.commit()
     return task
 
@@ -1677,7 +1920,13 @@ def cancel_as_agent(db: Session, ctx: CompanyContext, task_id: str, reason: str 
 
 
 def _block(
-    db: Session, task: Task, principal: Principal | None, reason: str | None, *, cancel_runs: bool
+    db: Session,
+    task: Task,
+    principal: Principal | None,
+    reason: str | None,
+    *,
+    cancel_runs: bool,
+    unblock_condition: str | None = None,
 ) -> None:
     from app.services import runs as run_service
 
@@ -1693,7 +1942,12 @@ def _block(
         S.BLOCKED,
         principal=principal,
         reason=reason,
-        error={"code": "blocked", "message": reason or "Blocked", "run_id": None},
+        error={
+            "code": "blocked",
+            "message": reason or "Blocked",
+            "run_id": None,
+            **({"unblock_condition": unblock_condition} if unblock_condition else {}),
+        },
     )
     if cancel_runs and was_running:
         run_service.request_cancel_for_task(db, task, "task_blocked", principal)
@@ -1750,8 +2004,17 @@ def cancel_task(db: Session, ctx: CompanyContext, task_id: str, reason: str | No
         )
     transition(db, task, S.CANCELLED, principal=ctx.principal, reason=reason)
     run_service.request_cancel_for_task(db, task, "task_cancelled", ctx.principal)
+    _release_if_human_work(db, task, reason)
     db.commit()
     return task
+
+
+def _release_if_human_work(db: Session, task: Task, reason: str | None) -> None:
+    """A cancelled human-work task must not strand the task that waits for it (M22)."""
+    if task.requires_human:
+        from app.services import human_work  # local: human_work -> tasks
+
+        human_work.release_dependents(db, task, reason or "the request was cancelled")
 
 
 def retry_task(db: Session, ctx: CompanyContext, task_id: str) -> Task:
@@ -1764,6 +2027,7 @@ def retry_task(db: Session, ctx: CompanyContext, task_id: str) -> Task:
         )
     task.attempt_count = 0
     task.agent_retry_count = 0  # a human retry resets every counter
+    task.replans = 0
     task.transient_failures = 0
     task.next_attempt_at = None
     transition(db, task, S.BACKLOG, principal=ctx.principal, error=None, reason="manual retry")
@@ -1971,6 +2235,8 @@ def complete_task_as_agent(
     task = get_task_or_404(db, ctx.company_id, task_id)
     if task.id != run.task_id or task.assignee_agent_id != ctx.principal.id:
         raise Forbidden("Only the assignee can complete a task, during its own run")
+    if task.kind == TaskKind.MEETING:
+        raise Conflict("A meeting turn ends with company_meeting_say, not company_complete_task")
     if task.status == S.DONE and task.kind == TaskKind.REVIEW:
         return task  # recording the review already completed this review task: idempotent
     if task.status != S.IN_PROGRESS:
@@ -1990,6 +2256,15 @@ def complete_task_as_agent(
                 "request_revision, with a note); then complete this review task.",
                 details={"target_task_id": target.id, "target_status": target.status},
             )
+    if run.graph_thread_id:
+        # M18 Part B: in a work-graph run the agent only *proposes*; the graph's finish node
+        # completes the task (``apply_proposed_completion``).
+        run.proposed_result = {
+            "summary": (secrets_scan.scrub(result_summary) or "")[:MAX_PROPOSED_SUMMARY],
+            "output_refs": list(dict.fromkeys(output_refs))[:50],
+        }
+        db.commit()
+        return task
     finish_success(
         db,
         task,
@@ -1998,12 +2273,54 @@ def complete_task_as_agent(
         principal=ctx.principal,
         run_id=run.id,
     )
+    _after_agent_completion(db, ctx.company_id, task, run, ctx.principal)
+    db.commit()
+    return task
+
+
+MAX_PROPOSED_SUMMARY = 4000
+
+
+def _after_agent_completion(
+    db: Session, company_id: str, task: Task, run: TaskRun, principal: Principal
+) -> None:
     if task.kind == TaskKind.PLANNING:
-        agent = db.get(Agent, ctx.principal.id)
+        agent = db.get(Agent, principal.id)
         if agent is not None and agent.kind == "founder":
             from app.services import notes
 
-            notes.link_created_records(db, ctx.company_id, run, agent)
+            notes.link_created_records(db, company_id, run, agent)
+
+
+def apply_proposed_completion(
+    db: Session,
+    run: TaskRun,
+    proposal: dict[str, Any],
+    *,
+    self_checked: bool,
+    force_review: str | None = None,
+) -> Task | None:
+    """M18 Part B: the work graph's finish node completes the task the agent proposed a result for,
+    through the same service path as a direct completion. Commits. Returns None when the task is not
+    in progress any more (blocked, cancelled, completed some other way): nothing is applied."""
+    task = db.scalar(select(Task).where(Task.id == run.task_id, Task.company_id == run.company_id))
+    if task is None or task.status != S.IN_PROGRESS or task.assignee_agent_id != run.agent_id:
+        return None
+    agent = db.get(Agent, run.agent_id)
+    principal = Principal(
+        PrincipalType.AGENT, run.agent_id, agent.name if agent else "agent", run.company_id
+    )
+    finish_success(
+        db,
+        task,
+        summary=str(proposal.get("summary") or "") or None,
+        output_refs=list(proposal.get("output_refs") or []),
+        principal=principal,
+        run_id=run.id,
+        self_checked=self_checked,
+        force_review=force_review,
+    )
+    _after_agent_completion(db, run.company_id, task, run, principal)
     db.commit()
     return task
 

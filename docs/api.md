@@ -213,6 +213,15 @@ Policy = {
   timestamps; unknown fields 422) -> `Policy`. Audit `policy.updated` (`data.changed` = field names).
   Changing a budget field re-evaluates tasks blocked by budget; changing `allowed_model_providers`
   re-evaluates tasks blocked by `provider_not_allowed`.
+- M18 adds `approval_timeout_seconds` (default 86400, 3600-604800) and `agent_approval_timeout_seconds` (default 1800,
+  300-86400); humans only, audited as `policy.updated` (see "Milestone 18").
+- M18 Part B adds two booleans, both default `true` (existing companies get `true` too), owner/admin only, audited like every policy
+  change: `self_check_enabled` (the agent's proposed result is verified against the acceptance criteria before the task completes)
+  and `work_graph_enabled` (a durable work graph orchestrates each task run; `false` = today's one-shot runs).
+- M23: `Policy` also carries `intensity` (1-5) and `intensity_custom` (read-only here; unknown fields still 422). Editing a pace field
+  (`heartbeat_interval_seconds`, `max_concurrent_runs`, `max_planning_runs_per_hour`, `initiative_*`, `meetings_enabled`,
+  `max_meetings_per_company_per_day`, `self_check_enabled`) to a value other than the level's preset sets `intensity_custom`.
+  See "Milestone 23".
 - Approval kinds: `external_purchase`, `budget_increase`, `external_communication`,
   `production_deploy`, `sensitive_action`, `hire`, `other`.
 - `autonomy_mode: "supervised"` makes **every** approval a human approval.
@@ -358,7 +367,8 @@ Approval = { "id", "company_id", "kind", "status": "pending|approved|rejected|ch
              "amount_micros": null, "vendor": null, "recurrence": "one_time|monthly|yearly"|null,
              "risk": "low|medium|high", "evidence": {}, "scope": {}, "scope_hash",
              "decided_by_type": null, "decided_by_id": null, "decided_at": null, "decision_note": null,
-             "consumed_at": null, "created_at", "updated_at" }
+             "consumed_at": null, "expires_at": null /* M18: when a pending approval times out */,
+             "created_at", "updated_at" }
 Decision = { "id", "company_id", "made_by_type", "made_by_id", "title", "rationale": null,
              "related_task_id": null, "related_project_id": null, "context": {}, "created_at" }
 ```
@@ -486,7 +496,7 @@ company answers 404. A request with neither a run token nor an owner credential 
 | GET | `/context` | company, run, current task (+ parent, dependencies with results, artifacts, `review_note`), own profile, manager, direct reports, active colleagues (name, role, responsibilities; skill tags arrive with M4: `skills_available: false`), relevant policy limits and `tasks_created_this_run` |
 | POST | `/tasks` | create a task/subtask (`TaskCreate` body; `parent_task_id` defaults to the current task). 201, or 200 for a repeated `idempotency_key`. Enforces `max_delegation_depth`, `max_tasks_per_planning_cycle` (per run), and `budget_micros` <= the parent's remaining budget (409 `limit_exceeded`) |
 | PATCH | `/tasks/{id}` | `{status: "blocked"|"unblocked", reason?, assignee_agent_id?}` on tasks the agent created or manages (or its own current task, for blocking). Any other field is 422 |
-| POST | `/tasks/{id}/complete` | `{result_summary, output_refs?}` - assignee only, its current task, during the run -> `done` or `in_review` |
+| POST | `/tasks/{id}/complete` | `{result_summary, output_refs?}` - assignee only, its current task, during the run -> `done` or `in_review`; inside a **work-graph run** (`policy.work_graph_enabled`) it only *proposes* the result and answers `{ok: true, status: "proposed", task_id}` (the graph verifies it and completes the task; see "Durable work graph") |
 | POST | `/tasks/{id}/review` | reviewer only: `{decision: "accept"|"request_revision", note?}` |
 | POST | `/artifacts` | multipart (`file` + `title`, `kind`, `task_id`, ...) or JSON `{title, kind, content}`; `artifact_id` adds a version (only on its own artifacts / current task). `task_id` defaults to the current task |
 | POST | `/progress` | `{message}` -> RunEvent `progress` (seq >= 1,000,000) + live activity line |
@@ -1151,7 +1161,7 @@ agent and key within ten minutes raises a `rate_limit` alert. Agent-API endpoint
 - **Network egress with the Docker sandbox**: the sandbox already runs with the network off (`sandbox.network: false`), which is "default
   deny". Per-role domain allowlists are **not built** (they need a running Docker daemon to verify); until then no sandboxed tool reaches
   the network at all, and the only outside-reaching tool, `web_search`, goes through `check-tool`.
-- Not built: expiry of pending approvals (`expired` is never set), per-run caps for artifacts "marked for external publication" (no such
+- Not built: ~~expiry of pending approvals~~ (built in M18: `expired` is set by the deadline sweep), per-run caps for artifacts "marked for external publication" (no such
   marking exists; only provider actions are DLP-scanned), revocation of credentials when an agent retires (M7 lifecycle), pruning of
   `guardrail_events`, the `companyos stop --all` CLI (M9).
 
@@ -1577,9 +1587,9 @@ has one, else `context_length` of the provider). OpenRouter's public model list 
 
 | Method & path | Purpose |
 |---|---|
-| `GET /cli-runtimes` → `{items: [CliRuntimeStatus], next_cursor: null}`; `GET /cli-runtimes/{id}` | `id` ∈ `claude_code`, `codex`, `opencode`, `antigravity` (Antigravity CLI, binary `agy`), `cursor` (Cursor CLI, binary `agent`; `api_key` only, manual install) |
-| `POST /cli-runtimes/{id}/install` `{confirm: true}` → `202 CliInstallLog` | runs exactly `install.command` (`npm install -g <package>`) as a supervised child: no shell, no sudo, 15 min limit. `confirm` missing/false → 422 and nothing starts; no npm → 409; already installed → 409; `antigravity` / `cursor` (no npm package; the vendor ships a `curl \| bash` installer, never run from here) → 409 with the manual command |
-| `GET /cli-runtimes/{id}/install-log` → `CliInstallLog` | `{id, status: none|running|succeeded|failed, command, started_at, finished_at, exit_code, lines[≤400]}`, output scrubbed of secret-looking spans |
+| `GET /cli-runtimes` → `{items: [CliRuntimeStatus], next_cursor: null}`; `GET /cli-runtimes/{id}` | `id` ∈ `claude_code`, `codex`, `opencode`, `antigravity` (Antigravity CLI, binary `agy`), `cursor` (Cursor CLI, binary `agent`; `api_key` only). `CliRuntimeStatus.install`: `{available, methods: [{method: npm\|script, command, url?, available, reason?}], default_method: npm\|script\|null, command (the default's; the first method's when none can run), requires[], status, manual}`; `command` is exact and human-readable (`npm install -g …` or `Download https://… and run it with bash`) |
+| `POST /cli-runtimes/{id}/install` `{confirm: true, method?: "npm"\|"script"}` → `202 CliInstallLog` | installs with one of `install.methods` (no `method`: `install.default_method`, i.e. npm when npm exists and the CLI has a package, else the vendor script). `npm`: `npm install -g <package>`. `script`: the server downloads the vendor's installer (HTTPS, host allowlist incl. redirects, 1 MB cap), records its SHA-256 and runs `[bash\|sh, <private temp file>]` (never piped, no shell, no sudo). Both: supervised child, minimal env, 15 min limit. `confirm` missing/false → 422 and nothing starts (nothing is downloaded); unknown `method` for the CLI → 422; already installed / an install running / no method can run here / download refused or failed → 409. Audit `cli_runtime.install_started` / `install_finished` (method, url, sha256, exit code; no output) |
+| `GET /cli-runtimes/{id}/install-log` → `CliInstallLog` | `{id, status: none|running|succeeded|failed, command, method: npm|script|null, url, sha256 (script installs), started_at, finished_at, exit_code, lines[≤400]}`, output scrubbed of secret-looking spans |
 | `PUT /cli-runtimes/{id}/auth` `{mode: "own_login"|"api_key", credential_id?, model_provider_id?, model?}` → `CliRuntimeStatus` | `mode` must be in the CLI's `auth_modes` (Antigravity CLI: `api_key` only, a Gemini API key; Cursor CLI: `api_key` only, a Cursor API key; `own_login` → 422). `api_key` needs `credential_id` (a credential of a company you administer; never returned). `model_provider_id` (OpenCode only) points the CLI at a company model provider (endpoint and key). OpenCode needs `model_provider_id` or a `provider/model` name in `model`. Clears `last_test` |
 | `POST /cli-runtimes/{id}/test` → `CliRuntimeStatus` | one tiny headless prompt ("Reply with the single word OK.") in a temp dir, 60 s limit, `$0.05` cap where the CLI supports one, no tools / no company tools; stores `auth.last_test` |
 | ~~`GET\|POST\|DELETE /cli-runtimes/claude_code/login`~~ | **Removed in M17** (never released): sign-in is per connection, `GET\|POST\|DELETE /ai-stack/{id}/login` |
@@ -1897,3 +1907,257 @@ Adding a connection that equals one the bootstrap just built adopts it instead o
 ### Removed
 
 `PUT /companies/{cid}/ai-setup` (410), `GET|POST|DELETE /cli-runtimes/claude_code/login` (never released), `foundryos claude …` (now `foundryos ai …`), the setup wizard's `work` step and its `--work-mode`, `--cli`, `--cli-auth` options.
+
+## Milestone 18 (Part A) — Low-friction autonomy (`/api/companies/{cid}`, `/api/agent/v1`)
+
+Decide, don't ask; every wait has a deadline; **a timeout never approves anything** (`docs/specs/m18-low-friction-autonomy.md`).
+
+### Approval deadlines
+- `Approval.expires_at` (nullable): set when a pending approval is created. Human approver: now + `approval_timeout_seconds`
+  (default 24 h; 1 h - 7 days). Co-founder or peer approver: now + `agent_approval_timeout_seconds` (default 30 min; 5 min - 24 h).
+  Purchase approvals (`subject_type = purchase_request`) keep purchasing's own 7-day rule and have `expires_at = null`.
+- Both timeouts are `PATCH /policy` fields (owner/admin only; an agent's token gets `403`); the change is audited `policy.updated`.
+- The scheduler sweeps every 60 s (bounded batch, active companies only, one commit per approval):
+  - a pending approval of the **Co-founder (or a peer reviewer)** past `expires_at` is handed to **a person** once
+    (`approver = human`, a fresh human deadline, owners/admins notified `approval_needed`, audit `approval.escalated`);
+  - a pending **human** approval past `expires_at` becomes `status = expired`, `decided_by_type = system`,
+    `decision_note = "No answer within <n>h; declined by timeout"`, audit `approval.expired`; it can never be decided or consumed
+    afterwards (`409`). The requesting agent is woken (`approval_expired`: do not repeat the request, finish another way); a task that was
+    blocked on it (`task.error.approval_id`) returns to the queue with a `review_note`; hire / plan / domain / guardrail subjects are
+    declined as with a rejection. For guardrail approvals an expired one counts like a rejection (the identical content is refused).
+- Creating an approval for the Co-founder wakes it **at once** (trigger `approval_pending`, 5 s debounce) on every path (guardrail engine,
+  `company_request_approval`, hiring). An approval the Co-founder itself requests (or created while no Co-founder exists) is routed to a
+  person instead of a dead end, and the people are notified. Deciding an approval still wakes the requester (trigger `approval`).
+
+### Founder questions
+`FounderQuestion = { id, company_id, agent_id, task_id, run_id, question (<=1000), options [<=6 x <=120], default_answer (<=500),
+blocking, status: "open|answered|defaulted|cancelled", answer, answered_by_user_id, answered_via: "web|telegram|discord|whatsapp|slack|api"|null,
+deadline, answered_at, created_at, updated_at }`. The question text, options and default are written by an AI employee: show them as plain
+text (never as markdown/HTML). Texts that look like secrets are refused (`422`), for questions and answers alike.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/questions?status=&limit=&cursor=` | owners/admins only (others `403`, non-members `404`); `{items, next_cursor}`, newest first |
+| POST | `/questions/{qid}/answer` `{answer}` | 1-500 chars; `open` only (else `409`); `answered_via = "web"`; wakes the asking agent (`founder_answered`) only when the answer differs from its default |
+| POST | `/questions/{qid}/cancel` | the agent's default stands; releases a parked task |
+| POST | `/api/agent/v1/questions` | agent (run token): `{question, default_answer, options?, blocking?=false, deadline_hours?=4}` -> `201 QuestionOut`. `deadline_hours` clamps to 1-24. `blocking` needs a task. Limits (code): **5 open per company**, **2 per agent per 24 h**, else `429 question_limit` ("Decide yourself and record it with company_record_decision") |
+
+- An agent can never answer or cancel (`403`); another company's question is `404`.
+- Non-blocking (default): the agent keeps going with its default. **Blocking:** when the run ends the task is parked
+  (`blocked_reason = waiting_for_founder`, status `backlog`, the attempt is refunded) and returns to `ready` on answer, cancel or deadline;
+  the next run's context ("BEFORE YOU START") carries "The founder answered: ..." or "No answer from the founder; use your default: ...".
+- The sweep (60 s) turns open questions past `deadline` into `defaulted` (answer = default, audit `question.defaulted`).
+- Events (company SSE, ids and states only): `question.created`, `question.updated`. Notification kind `founder_question` (owners/admins, in-app).
+  Service entry points for other clients (chat channels): `questions.answer(db, ctx, qid, answer, via="telegram")`, `list_questions`, `cancel`.
+- Guardrail action `question.ask` (tier `internal_write`); runtime tool `company_ask_founder` (every role), MCP name `ask_founder`.
+
+### Agent meetings (M21)
+`Meeting = { id, company_id, organizer_agent_id, title (<=200), agenda (<=2000), expected_outcome (<=500), project_id, task_id,
+status: "scheduled|running|concluded|cancelled|failed", start_at, started_at, ended_at, round, max_rounds (2), summary,
+cancel_reason (why it was cancelled or failed), participants: [{agent_id, name, role_title, role: "organizer|participant", position,
+joined, passes}], created_at, updated_at }`; the detail adds `outcome = {decisions: [{title, rationale}], action_items: [{id, title,
+description, owner_agent_id, accepted, task_id, refused?}]}` and `messages: [{id, agent_id, agent_name, round, kind: "turn|synthesis",
+body (<=4000), proposals: {proposed, accepted, declined, pass, final?}, created_at}]`. Everything in a meeting is written by AI employees:
+show it as plain text / markdown without raw HTML.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/companies/{cid}/meetings?status=&agent_id=&limit=&cursor=` | any member; `{items, next_cursor}`, newest first |
+| GET | `/companies/{cid}/meetings/{id}` | any member; another company's meeting is `404` |
+| POST | `/companies/{cid}/meetings/{id}/cancel` `{reason?}` | owners/admins (members/viewers `403`); not-ended meetings only (else `409`); cancels the open turn |
+| POST | `/api/agent/v1/meetings` | `{title, agenda, expected_outcome, participant_agent_ids [1..3], start_in_minutes? (0..10080), project_id?, task_id?}` -> `201 {meeting_id, status, start_at}`. Participants: distinct, active, same company, not the organizer. `429 meeting_limit` ("Decide yourself, or add it to an existing meeting"): `max_meetings_per_agent_per_day` (3) / `max_meetings_per_company_per_day` (12) in the last 24 h (cancelled ones do not count), or an organizer with a running meeting. `403` when `policy.meetings_enabled` is off, `409` while the company is paused or the emergency stop is on |
+| POST | `/api/agent/v1/meetings/{id}/say` | `{message, propose? [{title, description?, owner_agent_id}], accept? [item ids], decline? [item ids], pass_turn?, final?, summary?, decisions? [{title, rationale}], action_items? [{id? , title?, description?, owner_agent_id?}]}`. Only inside the run of that agent's own turn task of that meeting (`403` otherwise, `409` when the turn is over). Only an item's owner accepts or declines it (`422`). The last (synthesis) turn must set `final=true`. Records the message and completes the turn task |
+| POST | `/api/agent/v1/meetings/{id}/cancel` `{reason?}` | the organizer only |
+
+- Policy (human-only, in `GET/PATCH /policy`): `meetings_enabled` (true), `max_meetings_per_agent_per_day` (3, 0-50), `max_meetings_per_company_per_day` (12, 0-500).
+- Turn tasks are `kind: "meeting"` with `meeting_id`; `GET /tasks` hides them unless `kind=meeting`; overview counts and the agents' company state exclude them.
+- `AgentLive.meeting_id`: the running meeting an agent is in. Events (company SSE, ids and states only): `meeting.updated`.
+- Audit: `meeting.scheduled|started|turn_started|message|concluded|cancelled|failed`. Guardrail actions `meeting.schedule|say|cancel` (tier `internal_write`);
+  runtime tools `company_schedule_meeting` / `company_cancel_meeting` (every role) and `company_meeting_say` (meeting-turn runs only).
+
+### Faster unblocking and retries with memory
+- Agent `PATCH /agent/v1/tasks/{id}` with `status: "blocked"` now requires `unblock_condition` (<=300 chars, `422` otherwise; stored in
+  `task.error.unblock_condition` and shown to the lead who is woken). Blocking from the UI is unchanged.
+- Watchdog `blocked_task` ladder: the Co-founder is asked after **30 min** (was 2 h), a person is alerted after **8 h** (was 24 h).
+- The heartbeat's "nothing new since the last heartbeat" skip lasts at most **6 h**.
+- `tasks.last_attempt` (JSON, internal) remembers how the previous attempt ended (failure class, code, redacted message <=1000 chars, last
+  progress report, run id; whether `run/<id>` kept commits is looked up when the next attempt starts); every failure class records it, a
+  success clears it. It reaches the next attempt as `TaskSpec.carry_over` (company_agent description / coding-CLI prompt).
+- `POST /agent/v1/tasks/{id}/retry` accepts `new_instructions` (<=2000): "retry with a new approach". It resets the attempts **once per task**
+  (`tasks.replans`, max 1), appends the text to the description under "Revised approach", and works even when the plain agent retries
+  are used up; a second one is `409 limit_exceeded` (`details.limit = max_replans`), after that only a person retries. The failure-analysis
+  task offers this option while `replans < 1`.
+
+### Durable work graph (M18 Part B)
+
+LangGraph orchestrates each task run; the existing runtimes (Claude Code and the other CLIs, or `company_agent`) still do the work.
+`policy.work_graph_enabled` (default true) switches it per company. It applies to `work`, `planning`, `hiring` and `routine` tasks (review
+tasks and meeting turns keep the one-shot path). No new endpoints; what changes:
+
+- `TaskRun.graph_thread_id` (`task:<task id>`) is set on a graph run. `task_runs.proposed_result` (internal JSON, scrubbed) holds the
+  result the agent proposed; `POST /agent/v1/tasks/{id}/complete` returns `{ok, status: "proposed", task_id}` instead of a task. The
+  runtimes' hard stop on completion is unchanged (the answer is not an error and not pending).
+- Graph: `prepare -> act -> check -> finish`. `act` is one runtime call. `check` runs only when the act proposed completion, the task has
+  acceptance criteria, it is a `work` task (management runs skip it), `policy.self_check_enabled` and the runtime can verify: a second,
+  tool-less, read-only call on the same routed connection (CLIs: their no-tools mode; `company_agent`: spec `mode: "verify"` without
+  company tools) answering `{"pass": bool, "feedback": str}`. Pass -> `done` (an explicit reviewer, or a code deliverable, keeps the
+  review). Fail -> act again with the feedback (`review_note`), at most **2 revisions**, then `in_review` with the feedback in the
+  transition reason. A failed or unparseable check is *inconclusive* and never blocks the task. Its usage is part of the run's usage.
+- Run events: `graph.node` `{node, outcome, summary}` for every transition (`prepare ok`, `act proposed|waiting_founder|waiting_approval|
+  failed|cancelled|completed`, `check passed|failed/revise|inconclusive|skipped`, `wait_* waiting|resumed`, `finish ...`, and
+  `graph continued_from_checkpoint|resumed_after_wait`).
+- Interrupts: a blocking founder question (or a pending approval the assignee asked for on this task) makes the graph `interrupt()`. The
+  run ends cleanly (`status succeeded`, `exit_reason "waiting"`); the task waits (`blocked_reason` `waiting_for_founder` /
+  `waiting_for_approval`, status `backlog`, attempt refunded). Answer/default/cancel of the question, or the decision/expiry of the
+  last pending approval, returns it to `ready`; its next run resumes the same thread with the answers/decisions. At most 5 waits per thread.
+- Crash/failure resume: a run that failed or was lost (`worker_lost`) leaves its thread at the last checkpoint; the next run of the task
+  continues from it instead of starting over. A thread whose task was reassigned is discarded.
+- Claude Code: the first act of a thread runs with `--session-id <uuid>`, later acts through the same AI connection with `--resume
+  <uuid>` (neither with `--no-session-persistence`); another connection starts a new session with a checkpoint summary. If a session
+  cannot be resumed (`No conversation found`) the act is repeated once in a new session with the summary.
+- Retention: a task's thread is deleted 30 days after it is done/cancelled (recovery sweep, bounded batch).
+
+## Milestone 19 — Chat channels (`/api/companies/{cid}`, `/api/webhooks/whatsapp/{channel_id}`)
+
+Talk to the company from Telegram, Discord or WhatsApp (spec: `docs/specs/m19-chat-channels.md`, trust model:
+`docs/security.md` section 9). Owners and admins manage channels; a person manages their own link. An agent's run token
+gets 403, a non-member 404. **Secrets are write-only**: no response carries a bot token, access token, app secret or
+(after creation) the verify token. A `write`-scoped API token cannot call these routes (admin scope only).
+
+| Method and path | Who | What |
+| --- | --- | --- |
+| `GET /channels` | owner/admin | `{items: [ChannelOut], available: [{kind, label, available, reason, needs_public_url}], next_cursor}`; `available` also lists Slack, Signal, Matrix, e-mail, SMS as `available: false` ("Coming later") |
+| `POST /channels` | owner/admin | `{kind: telegram\|discord, token}` or `{kind: whatsapp, whatsapp: {phone_number_id, access_token, app_secret, waba_id?}}`, optional `name`. Validates against the platform first (Telegram `getMe`, Discord `/users/@me`, WhatsApp phone-number lookup), stores the secrets, returns `201 ChannelOut`. WhatsApp also returns `webhook_url` and `verify_token` **once**. 422 `invalid_credentials` with the platform's message (never the token); 409 `channel_exists` (one per kind and company), `channel_in_use` (that bot/number already serves another workspace), `public_url_required` (WhatsApp without a public https address; `details.hint = "reachability"`) |
+| `PATCH /channels/{id}` | owner/admin | `{enabled?, name?}`; enabling re-validates the stored credentials and clears `last_error` |
+| `DELETE /channels/{id}` | owner/admin | `204`; stops polling, deletes links, codes and the message log, revokes and blanks the stored secret |
+| `POST /channels/{id}/link-code` | owner/admin | `{code, expires_at, deep_link, instructions}` for the caller: 8 characters, 10 minutes, single use, shown once. 409 `channel_not_active` |
+| `PATCH /channel-links/{id}` | the linked person | `{notify: {replies?, questions?, approvals?, alerts?, digest?}}` -> `LinkOut` |
+| `DELETE /channel-links/{id}` | the linked person, or an owner/admin | `204`; unlinks |
+| `GET /api/webhooks/whatsapp/{channel_id}` | Meta (public) | subscription handshake: plain-text `hub.challenge` when `hub.mode=subscribe` and `hub.verify_token` matches; else 403 |
+| `POST /api/webhooks/whatsapp/{channel_id}` | Meta (public) | `X-Hub-Signature-256` over the raw body, else 403 (same for an unknown channel); `200 {accepted: true}` and the messages are handled after the response |
+
+`ChannelOut`: `id, kind, name, status (connecting|active|error|disabled), config (non-secret: bot_username, bot_id,
+phone_number_id, display_phone, verified_name ...), last_error, last_event_at, created_at, links: [LinkOut],
+webhook_url (WhatsApp), verify_token (only in the creating response), invite_url (Discord)`. `LinkOut`: `id, channel_id,
+user_id, user_name, display_name, notify, linked_at, last_inbound_at, window_open` (`window_open` is WhatsApp's 24-hour
+window; `false` = updates are skipped until the person writes again).
+
+Audit actions: `chat.channel_connected|updated|removed|error`, `chat.link_code_issued`, `chat.linked|unlinked`,
+`chat.link_updated`, `chat.approval_decided` (`via` = platform). Company-stream event: `channel.updated`
+(`{channel_id}`, invalidate-only).
+
+### In the chat
+
+Plain text goes to the Command Center as a Founder's note and the AI Co-founder's answer comes back to the same chat;
+`/status`, `/goals`, `/tasks`, ... work as on the web. Chat-only commands: `/start <code>` (Telegram) or `link <code>`
+(Discord, WhatsApp) to link, `/unlink`, `/help`, `/questions`, `/approvals`. Founder questions arrive with one button per
+option plus "Use default" (or a numbered list on WhatsApp when there are more than 3 choices); replying to the message
+answers in your own words. Pending human approvals arrive with Approve / Decline. Critical alerts and (opt-in) a daily
+summary arrive too. Unsupported content (voice, files, stickers) is answered, not dropped. DMs only.
+
+### Deviations and notes
+
+* Delivery is a durable outbox, not an in-process `after_commit` pool: `chat_messages` rows with `direction = out`,
+  `status = pending` are written in the producer's transaction (`notify_user`, a note reply, a failed exchange) and sent
+  by the engine process (`ChannelSupervisor`, one lease holder per channel). `chat_messages` has extra columns
+  `external_user_id`, `attempts`, `next_attempt_at`; `ref_type` also takes `reply`, `denied` and `link_fail`.
+* Chat needs the engine process (`companyos up` or `COMPANY_OS_EMBEDDED_WORKER=1`); `COMPANY_OS_CHANNELS_ENABLED=0`
+  turns delivery off. The WhatsApp webhook is served by the API process.
+
+### Verified and not verified (Milestone 19)
+
+Verified by tests against fake platform servers (`httpx.MockTransport`; no network): linking and its limits, default deny,
+roles, inbound -> note -> reply, approval and question buttons and their re-validation, WhatsApp handshake / signature /
+24-hour window / interactive buttons, Discord REST sends and event conversion, Telegram cursor and dedupe, retries, the
+lease, secrets absent from responses, audit, events and logs, and the migration. **Not verified: any real Telegram bot,
+Discord bot or WhatsApp Business account.** The Discord Gateway client (`discord.py`) was constructed and its event
+mapping tested, but never connected to Discord.
+
+## Milestone 23 — Company intensity (`/api/companies/{cid}/intensity`)
+
+One level (1 Conserve, 2 Light, 3 Balanced, 4 Busy, 5 Continuous) writes a preset into the pace fields of the policy.
+It never touches a budget, spend limit, purchasing band, approval rule, guardrail, headcount or the AI stack.
+
+- `GET /intensity` (any company member; agents may read) -> `{level, name, custom, preset, effective, plan_only, warning}`.
+  `preset` = the values the level writes; `effective` = what the policy holds now (they differ when `custom`);
+  `plan_only` = at least one enabled AI connection and every one is a personal plan; `warning` is set then.
+- `PUT /intensity {level: 1-5, confirm?: bool}` -> same shape. Owner/admin humans only (403 for viewers, members and
+  agents; 404 for non-members). On a plan-only stack, levels 4-5 without `confirm: true` -> `409 intensity_confirm_required`.
+  Audit `policy.intensity_changed` (`data`: `level_before`, `level_after`, `custom_before`, `before`/`after` = the fields
+  that changed, `confirmed`, optional `reason`); a repeated choice of the same level is audited with empty before/after.
+- Presets (level 1 / 2 / 3 / 4 / 5):
+
+| Field | 1 | 2 | 3 | 4 | 5 |
+| --- | --- | --- | --- | --- | --- |
+| `heartbeat_interval_seconds` | 7200 | 3600 | 1800 | 900 | 300 |
+| `max_concurrent_runs` | 1 | 2 | 2 | 3 | 4 |
+| `max_planning_runs_per_hour` | 2 | 4 | 6 | 10 | 15 |
+| `initiative_enabled` / `initiative_interval_seconds` | false / 43200 | true / 43200 | true / 21600 | true / 10800 | true / 3600 |
+| `meetings_enabled` / `max_meetings_per_company_per_day` | false / 4 | true / 4 | true / 12 | true / 20 | true / 30 |
+| `self_check_enabled` | false | true | true | true | true |
+
+  At level 1 the numeric companions of the two switches keep the level-2 values (inert while off). The radar's cadence
+  has no policy field and is not controlled. `management_reserved_slots` is clamped to >= 1 and < `max_concurrent_runs`
+  whenever that is above 1 (recorded in `before`/`after`). Setting the heartbeat also moves the built-in `heartbeat` schedule.
+- Plan-only default: when an AI connection is saved (`POST /ai-stack`) and the stack is then plan-only, a company still at
+  the untouched default (level 3, not custom, no `policy.intensity_changed` ever audited) moves to level 2 (audited with
+  `reason`). A company that chose a level itself, even 3, or edited a pace field is never moved.
+- Migration `0023`: adds `intensity` (default 3) and `intensity_custom` (default false); existing companies keep level 3,
+  their policy heartbeat is aligned to the real schedule interval, and a company whose pace fields differ from the
+  Balanced preset is marked custom.
+
+## Milestone 22 — Human work and outsourcing (`/api/companies/{cid}`, `/api/agent/v1`)
+
+Text written by AI employees (titles, instructions, briefs) is plain text for clients. Money is integer micro-USD
+(`*_micros`); the step bodies take dollars (`*_usd`, converted exactly on the server).
+
+### Human work (things only a person can do)
+
+- Agent: `POST /agent/v1/human-work {title, instructions, category, why_human, due_in_hours?=48 (1-720), assignee_member_id?,
+  blocks_my_task?=true}` -> `201 {task_id, status, assignee_ref, pool, blocks_my_task, due_at, next}`. `category` is one of
+  `signature|call|identity|payment|physical|account|legal|other`. The assignee must be an active, non-viewer member of the
+  company (404 / 409 / 422 otherwise); without one the task is in the human pool. With `blocks_my_task` (only when the run has a
+  task) the run's task depends on the new one. Text with a secret is refused (422). Limits: 3 open per agent, 20 per company
+  (`429 human_work_limit`). Guardrail action `human_work.request` (tier `internal_write`); tool `company_request_human_work`
+  (every role), MCP name `request_human_work`.
+- Tasks carry `requires_human`, `human_category`, `human_instructions`, `requested_by_agent_id`; a human task cannot be
+  reassigned to an agent (422) and is never dispatched.
+- `GET /companies/{cid}/human-work?status=open|done&mine=bool&limit&cursor` -> `{items, next_cursor}` of
+  `{id, title, description, instructions, category, status, priority, due_at, overdue, assignee_ref, assignee_name, pool,
+  requested_by_agent_id, requested_by_agent_name, project_id, blocking_task_ids, result_summary, output_refs, created_at,
+  completed_at}`; open ones come overdue first, then by due date. Humans only (agents 403); `GET .../{task_id}` the same item.
+- `POST .../human-work/{task_id}/claim` (owner/admin/member with a membership; viewers 403): atomic, `409` when somebody else
+  took it or it is not in the pool. Complete it with `POST /tasks/{id}/complete {comment?, artifact_ids?}`.
+- `POST .../human-work/{task_id}/decline {reason}` (owner/admin): cancels it, removes the dependency, wakes the requesting agent
+  with the reason and returns the waiting task to the queue with a `review_note`. `409` when it is already finished.
+- Notifications: kind `human_work` to the assignee (or the owners and admins for the pool), and one reminder to the owners and
+  admins at due + 24 h; chat apps deliver them with the `questions` preference. Audit: `human_work.requested|claimed|declined|
+  reminded`. SSE: `human_work.created|updated`.
+
+### Outsourcing (freelance jobs)
+
+- Agent (HR only, 403 otherwise): `POST /agent/v1/outsource-jobs {title (<=200), brief (<=6000), skills[<=10], marketplace
+  fiverr|upwork|other, budget_usd, task_id?}` -> `201 {job_id, job_status, approval_id, budget_micros, next}`. It creates the job
+  and an `outsource_job` approval (risk medium, amount = budget) that is always decided by a person, whatever the policy or
+  autonomy mode; the generic `POST /agent/v1/approvals` refuses that kind (422). Refused: a brief with secrets, e-mail addresses,
+  phone numbers, card numbers or internal memory (422); a budget above `policy.outsource_max_job_micros` ($200 default;
+  `409 limit_exceeded`, details `limit`) or above what is left of the monthly company budget (details `limit: company_monthly`);
+  more than 5 open jobs. Guardrail action `outsource.draft`; tool `company_draft_outsource_job` (HR role only).
+- Policy (human-only, in `GET/PATCH /policy`): `outsource_max_job_micros` (200000000 = $200, 0 to 10000000000): the most one job may
+  be budgeted at. Agents cannot change it (403).
+- `GET /companies/{cid}/outsource-jobs?status&limit&cursor` -> `{items, next_cursor}`; `GET .../{id}`. A job is `{id, title, brief,
+  skills, marketplace, budget_micros, status (draft|pending_approval|approved|posted|hired|delivered|closed|cancelled|declined),
+  approval_id, approval_status, task_id, task_title, listing_url, freelancer_name, freelancer_profile_url, agreed_price_micros,
+  paid_micros, cost_kind (verified only once paid), ledger_entry_id, delivered_artifact_ids, notes, open_url (a public marketplace
+  page to start from; never fetched), created_by_agent_name, created_at, updated_at}`. Readable by every human member.
+- Steps (owner/admin; each audited `outsource.*`, each validates the transition, `409` otherwise): `POST .../{id}/posted
+  {listing_url}` (https, no credentials, on fiverr.com / upwork.com for those marketplaces, any https for `other`; from
+  `approved`); `.../hired {freelancer_name, freelancer_profile_url?, agreed_price_usd}` (from `approved`, `posted`, or `hired` to
+  correct it before any payment; `422` when the price is above the budget); `.../delivered {artifact_ids[], notes?}` (from `hired`;
+  the linked task gets the artifacts as outputs); `.../paid {amount_usd}` (from `hired`/`delivered`, once, never above the agreed
+  price (422); writes an `external_expenses` row with `source=outsourcing`, `cost_kind=verified`, integer micros; Foundry moves no
+  money); `.../close`; `.../cancel {reason?}` (a pending approval is withdrawn; `409` after a payment);
+  `.../raise-budget {new_budget_usd, reason?}` (a new approval for the difference; the budget changes only when it is approved).
+- Approvals: an `outsource_job` approval has `subject_type = outsource_job`, `subject_id = <job id>`. Approve -> `approved`;
+  reject, request changes or expiry (a timeout never approves) -> `declined`, and HR is woken. SSE `outsource.updated`.
+

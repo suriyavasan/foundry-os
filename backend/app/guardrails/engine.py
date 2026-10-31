@@ -181,6 +181,14 @@ def _maybe_alert_repeated(db: Session, base: dict[str, Any], key: str, now: date
         )
 
 
+# M18: a timed-out approval counts like a rejection: the same content is not resubmitted in a loop.
+_NOT_APPROVED = (
+    ApprovalStatus.REJECTED,
+    ApprovalStatus.CHANGES_REQUESTED,
+    ApprovalStatus.EXPIRED,
+)
+
+
 def _existing_approval(
     db: Session, company_id: str, scope_hash: str, now: datetime
 ) -> Approval | None:
@@ -203,7 +211,7 @@ def _existing_approval(
             if row.status == wanted:
                 return row
     for row in rows:
-        if row.status in (ApprovalStatus.REJECTED, ApprovalStatus.CHANGES_REQUESTED) and (
+        if row.status in _NOT_APPROVED and (
             row.decided_at is None or now - row.decided_at < REJECTION_MEMORY
         ):
             return row
@@ -472,18 +480,7 @@ def _approval_path(
             reviewer=reviewer,
             author_task_id=run.task_id if run else None,
         )
-    elif approver == Approver.FOUNDER:
-        from app.services import wakes
-
-        wakes.wake_founder(
-            db,
-            ctx.company_id,
-            "approval",
-            f"Approval needed: {approval.title}",
-            ref_type="approval",
-            ref_id=approval.id,
-            actor_agent_id=agent.id,
-        )
+    # An approval for the Co-founder wakes it inside create_approval_record (M18, every path).
     log.record(
         db,
         action=action,

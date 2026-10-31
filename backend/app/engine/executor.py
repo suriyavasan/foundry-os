@@ -17,6 +17,7 @@ from pathlib import Path
 from sqlalchemy import select, update
 
 from app.engine.context import EngineContext
+from app.engine.graph import runner as graph_runner
 from app.models.agent import Agent
 from app.models.company import Company
 from app.models.enums import AlertSeverity, CompanyStatus, CostKind, RunStatus, TaskStatus
@@ -39,6 +40,7 @@ from app.runtimes.base import (
 from app.services import (
     agent_auth,
     alerts,
+    attempt_memory,
     audit,
     command_center,
     containment,
@@ -235,8 +237,18 @@ class RunExecutor:
                 db.get(BudgetReservation, run.reservation_id) if run.reservation_id else None
             )
             limits = policy.load_policy(db, run.company_id)
-            db.commit()
             assert task and agent and company
+            graph = None
+            if graph_runner.graph_mode_for(limits, task):
+                # M18 Part B: this run is orchestrated by the task's durable work graph; from now on
+                # company_complete_task only proposes a result (the graph's finish completes it)
+                run.graph_thread_id = graph_runner.thread_id_for(task.id)
+                graph = {
+                    "task_kind": task.kind,
+                    "agent_kind": agent.kind,
+                    "self_check_enabled": bool(limits.self_check_enabled),
+                }
+            db.commit()
 
             stopped = emergency.is_active(db)
             if run.cancel_requested or company.status != CompanyStatus.ACTIVE or stopped:
@@ -277,6 +289,11 @@ class RunExecutor:
                     "run %s: could not read the repository binding", run_id, exc_info=True
                 )
                 repo_spec = None
+            try:  # M18: what the previous attempt ended with, and the Founder's answers
+                carry_over = attempt_memory.carry_over_text(db, task)
+            except Exception:  # never fail a run because the memory could not be read
+                logger.warning("run %s: could not build the carry-over", run_id, exc_info=True)
+                carry_over = None
             db.commit()  # no open transaction while git runs
             if review_target:
                 self._wait_for_target_run(review_target, run.company_id)
@@ -301,6 +318,7 @@ class RunExecutor:
                     priority=task.priority,
                     input_refs=list(task.input_refs),
                     review_note=task.review_note,
+                    carry_over=carry_over,
                 ),
                 agent=AgentSpec(
                     id=agent.id,
@@ -374,6 +392,7 @@ class RunExecutor:
             guard,
             stall_seconds,
             ws,
+            graph=graph,
         )
 
     # ------------------------------------------------------------ internals
@@ -390,6 +409,7 @@ class RunExecutor:
         guard,
         stall_seconds,
         ws: project_workspaces.Workspace | None = None,
+        graph: dict | None = None,
     ):
         cancel = CancelToken()
         state = _MonitorState()
@@ -404,8 +424,16 @@ class RunExecutor:
         monitor.start()
         result: ExecutionResult | None = None
         exception: BaseException | None = None
+        waiting: str | None = None
         try:
-            result = adapter.execute(request, sink, cancel)
+            if graph is not None:
+                deps = graph_runner.RunDeps(
+                    self.ctx, adapter, request, sink, cancel, runtime_id=adapter.id, **graph
+                )
+                ran = graph_runner.WorkGraphRunner(self.ctx).run(deps)
+                result, waiting = ran.result, ran.waiting
+            else:
+                result = adapter.execute(request, sink, cancel)
         except RuntimeAdapterError as exc:
             exception = exc
         except Exception as exc:  # the runtime is untrusted code: never let it kill the worker
@@ -416,6 +444,9 @@ class RunExecutor:
             monitor.join(timeout=5)
 
         outcome = self._outcome(result, exception, state, max_run_seconds, guard)
+        if waiting and outcome.status == RunStatus.SUCCEEDED:
+            # the graph interrupted (founder question / approval): a clean end, nothing completes
+            outcome = replace(outcome, exit_reason="waiting", summary=None, waiting=waiting)
         ref: dict | None = None
         if ws is not None:
             outcome, ref = self._close_workspace(run_id, request, ws, outcome)

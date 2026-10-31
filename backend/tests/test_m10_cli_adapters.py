@@ -472,6 +472,9 @@ def test_claude_mcp_config_launches_the_company_server_with_a_token_file(world):
         "request_help",
         "find_colleagues",
         "request_purchase",
+        "record_decision",  # M18: decide, don't ask
+        "ask_founder",
+        "request_human_work",  # M22: a person-only step (the server limits it)
     ]  # nothing that creates tasks, hires or decides approvals (a purchase request commits nothing)
 
 

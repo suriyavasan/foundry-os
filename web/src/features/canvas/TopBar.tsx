@@ -5,6 +5,7 @@ import { CompanySwitcher } from '@/components/layout/CompanySwitcher'
 import { Badge, Dot, IconButton, Tooltip } from '@/components/ui'
 import { EmergencyBanner } from '@/features/guardrails/EmergencyStop'
 import { NotificationBell } from '@/features/notifications/NotificationBell'
+import { IntensityPill } from '@/features/intensity/IntensityPill'
 import { UpdateBanner } from '@/features/system/UpdateBanner'
 import { ReachabilityIndicator } from '@/features/reachability/ReachabilityIndicator'
 import { ConnectionIndicator } from './ConnectionIndicator'
@@ -59,6 +60,7 @@ export function TopBar({ company }: { company: Company }) {
           <kbd className="hidden rounded-sm border border-line-strong px-1 text-[11px] text-fg-3 sm:inline">{mod} K</kbd>
         </button>
 
+        <IntensityPill companyId={company.id} />
         <PauseControl company={company} />
 
         <Tooltip content={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}>

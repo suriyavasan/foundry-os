@@ -34,6 +34,9 @@ const StandardsPanel = lazy(() => import('@/features/reflections/StandardsPanel'
 const CommandCenterPanel = lazy(() => import('@/features/commandcenter/CommandCenterPanel').then((m) => ({ default: m.CommandCenterPanel })))
 const RepositoriesPanel = lazy(() => import('@/features/repos/RepositoriesPanel').then((m) => ({ default: m.RepositoriesPanel })))
 const RepoPanel = lazy(() => import('@/features/repos/RepoPanel').then((m) => ({ default: m.RepoPanel })))
+const MeetingPanel = lazy(() => import('@/features/meetings/MeetingPanel').then((m) => ({ default: m.MeetingPanel })))
+const PeopleOpsPanel = lazy(() => import('@/features/people/PeopleOpsPanel').then((m) => ({ default: m.PeopleOpsPanel })))
+const JobPanel = lazy(() => import('@/features/people/JobPanel').then((m) => ({ default: m.JobPanel })))
 const WalletPanel = lazy(() => import('@/features/wallet/WalletPanel').then((m) => ({ default: m.WalletPanel })))
 const RadarPanel = lazy(() => import('@/features/radar/RadarPanel').then((m) => ({ default: m.RadarPanel })))
 const SettingsPanel = lazy(() => import('@/features/settings/SettingsPanel').then((m) => ({ default: m.SettingsPanel })))
@@ -78,6 +81,10 @@ function PanelSwitch({ panel }: { panel: NonNullable<ReturnType<typeof useCanvas
       return <WalletPanel key={key} />
     case 'radar':
       return <RadarPanel key={key} />
+    case 'people-ops':
+      return <PeopleOpsPanel key={key} />
+    case 'outsource':
+      return <JobPanel key={key} jobId={panel.id} />
     case 'integrations':
       return <IntegrationsPanel key={key} />
     case 'goals':
@@ -114,6 +121,8 @@ function PanelSwitch({ panel }: { panel: NonNullable<ReturnType<typeof useCanvas
       return <RepositoriesPanel key={key} />
     case 'repo':
       return <RepoPanel key={key} repositoryId={panel.id} />
+    case 'meeting':
+      return <MeetingPanel key={key} meetingId={panel.id} />
     case 'reflection':
       return <ReflectionThreadPanel key={key} reflectionId={panel.id} />
     case 'note':

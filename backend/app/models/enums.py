@@ -102,6 +102,7 @@ class TaskKind(StrEnum):
     PLANNING = "planning"
     HIRING = "hiring"
     ROUTINE = "routine"
+    MEETING = "meeting"  # M21: one speaking turn of an agent meeting (hidden from work boards)
 
 
 class TaskStatus(StrEnum):
@@ -171,6 +172,7 @@ class ApprovalKind(StrEnum):
     PRODUCTION_DEPLOY = "production_deploy"
     SENSITIVE_ACTION = "sensitive_action"
     HIRE = "hire"
+    OUTSOURCE_JOB = "outsource_job"  # M22: draft a freelance job; always decided by a person
     OTHER = "other"
 
 
@@ -312,6 +314,12 @@ class AlertStatus(StrEnum):
 WAITING_FOR_HIRE = "waiting_for_hire"
 WAITING_ON_SUBTASKS = "waiting_on_subtasks"
 AWAITING_PLAN_APPROVAL = "awaiting_plan_approval"
+# M18: a blocking founder question parks the task until it is answered or defaulted.
+WAITING_FOR_FOUNDER = "waiting_for_founder"
+# M18 Part B: a graph run ended because the agent waits for a pending approval of this task.
+WAITING_FOR_APPROVAL = "waiting_for_approval"
+# M22: the task depends on a human-work task (something only a person can do) that is not done.
+WAITING_FOR_HUMAN = "waiting_for_human"
 
 
 # ------------------------------------------------------------ Milestone 6: guardrails & governance
@@ -479,6 +487,7 @@ class ExpenseSource(StrEnum):
     HUMAN = "human"
     CARD = "card"
     PROVIDER_ACTION = "provider_action"
+    OUTSOURCING = "outsourcing"  # M22: a freelancer paid outside Foundry, recorded by a person
 
 
 class SubscriptionStatus(StrEnum):

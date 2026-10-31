@@ -6,20 +6,26 @@ Foundry AI OS never reads, copies or logs a CLI's own credential files: *own log
 its login itself; an *API key* lives in the encrypted credential store and is injected into one child
 process's environment.
 
-The install endpoint runs exactly the command it shows (``npm install -g <package>``), only with
-``confirm: true``, never through a shell and never with sudo, as a supervised child whose redacted
-output is kept for ``GET .../install-log``. A CLI without an npm package (Antigravity, Cursor: the vendor's
-``curl | bash`` installer) is never installed by this endpoint: the status carries a ``manual`` hint."""
+The install endpoint runs one of the CLI's documented install methods: ``npm install -g <package>``, or
+the vendor's official installer script, downloaded over HTTPS from an allowlisted host into a private temp
+file and run as ``[bash|sh, <file>]`` (never piped, never a shell string, never sudo). Both run as a
+supervised child with a minimal environment and a watchdog; output is kept (redacted) for
+``GET .../install-log``."""
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
+import shutil
 import subprocess
+import tempfile
 import threading
 from pathlib import Path
 from typing import Any
+from urllib.parse import urljoin, urlsplit
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -30,7 +36,13 @@ from app.models.company import CompanyMember
 from app.models.enums import MemberRole, MemberStatus
 from app.models.provider import Credential, ModelProvider
 from app.runtimes.cli import store
-from app.runtimes.cli.catalog import CLIS, CliSpec, sandbox_for
+from app.runtimes.cli.catalog import (
+    CLIS,
+    CliSpec,
+    InstallMethod,
+    assert_safe_install_argv,
+    sandbox_for,
+)
 from app.runtimes.cli.env import CliEnvironment, base_env, claude_config_dir
 from app.schemas.ai_setup import CliAuthUpdate
 from app.services import audit, events, plan_login, reachability
@@ -39,6 +51,9 @@ logger = logging.getLogger("company_os.cli_runtimes")
 
 INSTALL_LOG_LINES = 400
 INSTALL_TIMEOUT_SECONDS = 900
+SCRIPT_MAX_BYTES = 1_000_000
+SCRIPT_TIMEOUT_SECONDS = 20.0
+SCRIPT_MAX_REDIRECTS = 3
 OWN_LOGIN_WARNING = (
     "Own-login mode uses your real home directory so the CLI can find its login: isolation is weaker "
     "(an API key gives each agent its own home). Foundry AI OS never reads or copies the CLI's "
@@ -101,11 +116,54 @@ def _auth_block(state: dict[str, Any], spec: CliSpec) -> dict[str, Any]:
     }
 
 
+def _method_availability(
+    cli_env: CliEnvironment, method: InstallMethod, installed: bool
+) -> tuple[bool, str | None]:
+    if installed:
+        return False, "Already installed"
+    if method.kind == "npm":
+        if cli_env.find_tool("npm") is None:
+            return False, "npm was not found on this machine"
+        return True, None
+    if cli_env.find_tool(method.interpreter or "") is None:
+        return False, f"{method.interpreter} was not found on this machine"
+    return True, None
+
+
+def _install_block(
+    cli_env: CliEnvironment, spec: CliSpec, binary: str | None, install_state: dict[str, Any]
+) -> dict[str, Any]:
+    methods: list[dict[str, Any]] = []
+    default: InstallMethod | None = None
+    for m in spec.install_methods:
+        ok, reason = _method_availability(cli_env, m, binary is not None)
+        if ok and default is None:
+            default = m
+        methods.append(
+            {
+                "method": m.kind,
+                "command": m.command,
+                "url": m.url,
+                "available": ok,
+                "reason": reason,
+            }
+        )
+    shown = default or (spec.install_methods[0] if spec.install_methods else None)
+    return {
+        "available": default is not None,
+        "methods": methods,
+        "default_method": default.kind if default else None,
+        "command": shown.command if shown else None,
+        "requires": ["npm"] if spec.npm_package else [],
+        "status": install_state.get("status", "none"),
+        "manual": spec.manual_install,
+    }
+
+
 def status_of(db: Session, cli_env: CliEnvironment, cli_id: str) -> dict[str, Any]:
     spec = _spec(cli_id)
     binary = cli_env.find_binary(spec)
     state = store.load(db, cli_id)
-    npm = cli_env.find_tool("npm")
     install_state = state.get("install") or {}
     auth = _auth_block(state, spec)
     warnings: list[str] = []
@@ -124,8 +182,8 @@ def status_of(db: Session, cli_env: CliEnvironment, cli_id: str) -> dict[str, An
         )
         if binary is None:
             warnings.append(
-                "Foundry AI OS cannot install it (Google ships a shell installer, which is never run "
-                f"from here). In a terminal, run: {spec.manual_install}"
+                "Install it from Settings > AI (Foundry downloads Google's official installer and runs "
+                f"it after you confirm), or in a terminal run: {spec.manual_install}"
             )
     if cli_id == "cursor":
         warnings.append(
@@ -135,8 +193,8 @@ def status_of(db: Session, cli_env: CliEnvironment, cli_id: str) -> dict[str, An
         )
         if binary is None:
             warnings.append(
-                "Foundry AI OS cannot install it (Cursor ships a shell installer, which is never run "
-                f"from here). In a terminal, run: {spec.manual_install}"
+                "Install it from Settings > AI (Foundry downloads Cursor's official installer and runs "
+                f"it after you confirm), or in a terminal run: {spec.manual_install}"
             )
     if cli_id == "claude_code":
         warnings.append(
@@ -153,13 +211,7 @@ def status_of(db: Session, cli_env: CliEnvironment, cli_id: str) -> dict[str, An
         "auth_modes": list(spec.auth_modes),
         "auth": auth,
         "sandbox": sandbox_for(spec.id, binary is not None),
-        "install": {
-            "available": spec.install_command is not None and npm is not None and binary is None,
-            "command": " ".join(spec.install_command) if spec.install_command else None,
-            "requires": ["npm"] if spec.install_command else [],
-            "status": install_state.get("status", "none"),
-            "manual": spec.manual_install,
-        },
+        "install": _install_block(cli_env, spec, binary, install_state),
         "login_hint": spec.login_hint,
         "login": login,
         "warnings": warnings,
@@ -346,11 +398,105 @@ def install_log(db: Session, principal: Principal, logs_dir: Path, cli_id: str) 
         "id": spec.id,
         "status": state.get("status", "none"),
         "command": state.get("command"),
+        "method": state.get("method"),
+        "url": state.get("url"),
+        "sha256": state.get("sha256"),
         "started_at": state.get("started_at"),
         "finished_at": state.get("finished_at"),
         "exit_code": state.get("exit_code"),
         "lines": lines,
     }
+
+
+class InstallerDownloadError(Exception):
+    pass
+
+
+def download_installer(
+    method: InstallMethod, transport: httpx.BaseTransport | None = None
+) -> bytes:
+    """Fetch the vendor's installer script. HTTPS only; the URL and every redirect must stay on the
+    allowlisted host; at most ``SCRIPT_MAX_BYTES``; a short timeout."""
+    assert method.url and method.host
+    url = method.url
+    try:
+        with httpx.Client(
+            transport=transport,
+            follow_redirects=False,
+            timeout=SCRIPT_TIMEOUT_SECONDS,
+            headers={"User-Agent": "foundry-ai-os-installer"},
+        ) as client:
+            for _ in range(SCRIPT_MAX_REDIRECTS + 1):
+                parts = urlsplit(url)
+                if parts.scheme != "https" or parts.hostname != method.host:
+                    raise InstallerDownloadError(
+                        f"refused {parts.hostname or 'an unknown host'}: the installer must come "
+                        f"from https://{method.host}"
+                    )
+                with client.stream("GET", url) as resp:
+                    if resp.is_redirect:
+                        location = resp.headers.get("location")
+                        if not location:
+                            raise InstallerDownloadError("redirect without a location")
+                        url = urljoin(url, location)
+                        continue
+                    if resp.status_code != 200:
+                        raise InstallerDownloadError(f"the server answered {resp.status_code}")
+                    body = bytearray()
+                    for chunk in resp.iter_bytes():
+                        body += chunk
+                        if len(body) > SCRIPT_MAX_BYTES:
+                            raise InstallerDownloadError("the installer is larger than 1 MB")
+                    if not body.strip():
+                        raise InstallerDownloadError("the installer is empty")
+                    return bytes(body)
+            raise InstallerDownloadError("too many redirects")
+    except httpx.HTTPError as exc:
+        raise InstallerDownloadError(f"could not download ({type(exc).__name__})") from exc
+
+
+def _write_private_script(body: bytes) -> tuple[Path, Path]:
+    """The script as a 0600 file in a fresh 0700 directory; returns (directory, file)."""
+    directory = Path(tempfile.mkdtemp(prefix="foundry-install-"))
+    os.chmod(directory, 0o700)
+    path = directory / "install.sh"
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "wb") as fh:
+        fh.write(body)
+    return directory, path
+
+
+def _choose_method(
+    cli_env: CliEnvironment, spec: CliSpec, requested: str | None
+) -> tuple[InstallMethod, str]:
+    """(method, resolved tool path). Raises Conflict/ValidationFailed with a clear reason."""
+    if not spec.install_methods:
+        raise Conflict(f"{spec.display_name} has no install method")
+    if requested is not None:
+        m = spec.method(requested)
+        if m is None:
+            raise ValidationFailed(
+                f"{spec.display_name} cannot be installed with {requested!r}",
+                details=[{"loc": ["body", "method"], "msg": "not an install method of this CLI"}],
+            )
+        ok, reason = _method_availability(cli_env, m, False)
+        if not ok:
+            raise Conflict(f"{reason}: cannot install {spec.display_name} with {m.kind}")
+        candidates = [m]
+    else:
+        candidates = list(spec.install_methods)
+    reasons: list[str] = []
+    for m in candidates:
+        ok, reason = _method_availability(cli_env, m, False)
+        if ok:
+            tool = cli_env.find_tool("npm" if m.kind == "npm" else m.interpreter or "")
+            assert tool is not None
+            return m, tool
+        reasons.append(f"{m.kind}: {reason}")
+    raise Conflict(
+        f"{spec.display_name} cannot be installed from here ({'; '.join(reasons)}). "
+        f"Run the vendor's installer yourself in a terminal: {spec.manual_install or 'see its docs'}"
+    )
 
 
 def start_install(
@@ -362,59 +508,87 @@ def start_install(
     cli_id: str,
     *,
     confirm: bool,
+    method: str | None = None,
+    transport: httpx.BaseTransport | None = None,
 ) -> dict[str, Any]:
-    """Run ``npm install -g <package>`` as a supervised child. Needs ``confirm: true``."""
+    """Install a CLI with one of its methods as a supervised child. Needs ``confirm: true``."""
     require_owner(db, principal)
     spec = _spec(cli_id)
-    install_command = spec.install_command
-    if install_command is None:
-        raise Conflict(
-            f"{spec.display_name} cannot be installed from here (it is not an npm package). "
-            f"Run the vendor's installer yourself in a terminal: {spec.manual_install}"
-        )
     if confirm is not True:
+        shown = spec.install_methods[0].command if spec.install_methods else "its installer"
         raise ValidationFailed(
             "Installing runs a command on this machine; send confirm: true to approve "
-            f"`{' '.join(install_command)}`",
+            f"`{shown}` (or the method you chose)",
             details=[{"loc": ["body", "confirm"], "msg": "must be true"}],
         )
     if cli_env.find_binary(spec) is not None:
         raise Conflict(f"{spec.display_name} is already installed")
-    npm = cli_env.find_tool("npm")
-    if npm is None:
-        raise Conflict("npm is required to install it and was not found on this machine")
+    chosen, tool = _choose_method(cli_env, spec, method)
     with _lock:
         existing = _running.get(spec.id)
         if existing is not None and existing.is_alive():
             raise Conflict(f"{spec.display_name} is already being installed")
-        argv = [npm, *install_command[1:]]
-        assert argv[0] != "sudo" and "sudo" not in argv  # never elevated
-        logs_dir.mkdir(parents=True, exist_ok=True)
-        path = _log_path(logs_dir, spec.id)
-        path.write_text("", encoding="utf-8")
-        started = format_ts(utcnow())
-        command = " ".join(["npm", *install_command[1:]])
-        store.save(
-            db,
-            spec.id,
-            install={"status": "running", "command": command, "started_at": started},
-        )
-        _audit(
-            db,
-            principal,
-            "cli_runtime.install_started",
-            f"Installing {spec.display_name}: {command}",
-            {"id": spec.id, "command": command},
-        )
-        db.commit()
-        thread = threading.Thread(
-            target=_run_install,
-            args=(argv, cli_env, session_factory, path, spec, command, started),
-            name=f"cli-install-{spec.id}",
-            daemon=True,
-        )
-        _running[spec.id] = thread
-        thread.start()
+        script_dir: Path | None = None
+        sha256: str | None = None
+        if chosen.kind == "npm":
+            argv = [tool, "install", "-g", chosen.package or ""]
+        else:
+            try:
+                body = download_installer(chosen, transport)
+            except InstallerDownloadError as exc:
+                raise Conflict(f"Could not get {spec.display_name}'s installer: {exc}") from exc
+            sha256 = hashlib.sha256(body).hexdigest()
+            script_dir, script_path = _write_private_script(body)
+            argv = [tool, str(script_path)]
+        try:
+            assert_safe_install_argv(argv, chosen)
+            logs_dir.mkdir(parents=True, exist_ok=True)
+            path = _log_path(logs_dir, spec.id)
+            path.write_text("", encoding="utf-8")
+            started = format_ts(utcnow())
+            command = chosen.command
+            info = {"method": chosen.kind, "url": chosen.url, "sha256": sha256}
+            store.save(
+                db,
+                spec.id,
+                install={
+                    "status": "running",
+                    "command": command,
+                    "started_at": started,
+                    **info,
+                },
+            )
+            _audit(
+                db,
+                principal,
+                "cli_runtime.install_started",
+                f"Installing {spec.display_name}: {command}",
+                {"id": spec.id, "command": command, **info},
+            )
+            db.commit()
+            thread = threading.Thread(
+                target=_run_install,
+                args=(
+                    argv,
+                    cli_env,
+                    session_factory,
+                    path,
+                    spec,
+                    command,
+                    started,
+                    principal,
+                    info,
+                    script_dir,
+                ),
+                name=f"cli-install-{spec.id}",
+                daemon=True,
+            )
+            _running[spec.id] = thread
+            thread.start()
+        except BaseException:
+            if script_dir is not None:
+                shutil.rmtree(script_dir, ignore_errors=True)
+            raise
     return install_log(db, principal, logs_dir, spec.id)
 
 
@@ -426,11 +600,14 @@ def _run_install(
     spec: CliSpec,
     command: str,
     started: str,
+    principal: Principal,
+    info: dict[str, Any],
+    script_dir: Path | None = None,
 ) -> None:
     env = {
         **base_env(),
         "PATH": cli_env.search_path(spec),
-        "HOME": os.environ.get("HOME", str(Path.home())),
+        "HOME": str(cli_env.home),
         "npm_config_update_notifier": "false",
         "npm_config_fund": "false",
         "npm_config_audit": "false",
@@ -448,7 +625,7 @@ def _run_install(
         )
         count = 0
         assert proc.stdout is not None
-        watchdog = threading.Timer(INSTALL_TIMEOUT_SECONDS, proc.kill)  # a hung npm must end
+        watchdog = threading.Timer(INSTALL_TIMEOUT_SECONDS, proc.kill)  # a hung installer must end
         watchdog.start()
         try:
             with path.open("a", encoding="utf-8") as log:
@@ -465,28 +642,31 @@ def _run_install(
             log.write(f"Install could not run ({type(exc).__name__})\n")
         code = -1
     finally:
+        if script_dir is not None:
+            shutil.rmtree(script_dir, ignore_errors=True)
+        # a new binary may now exist: forget cached versions so status reflects it immediately
+        cli_env.__dict__.get("_versions", {}).clear()
+        status = "succeeded" if code == 0 else "failed"
         with session_factory() as db:
             store.save(
                 db,
                 spec.id,
                 install={
-                    "status": "succeeded" if code == 0 else "failed",
+                    "status": status,
                     "command": command,
                     "started_at": started,
                     "finished_at": format_ts(utcnow()),
                     "exit_code": code,
+                    **info,
                 },
             )
-            for company_id in {
-                cid
-                for cid in db.scalars(
-                    select(CompanyMember.company_id).where(
-                        CompanyMember.role == MemberRole.OWNER.value,
-                        CompanyMember.status == MemberStatus.ACTIVE,
-                    )
-                )
-            }:
-                events.emit(db, company_id, "cli_runtime.updated", {"id": spec.id})
+            _audit(
+                db,
+                principal,
+                "cli_runtime.install_finished",
+                f"Install of {spec.display_name} {status}",
+                {"id": spec.id, "status": status, "exit_code": code, **info},
+            )
             db.commit()
 
 

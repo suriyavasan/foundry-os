@@ -36,6 +36,7 @@ import { formatDateTime, formatRelative, formatTokens } from '@/lib/format'
 import { formatCost } from '@/lib/money'
 import { formatDuration } from '@/lib/dates'
 import { NotAvailable, Badge, Chip } from '@/components/ui'
+import { AgentMeetings } from '@/features/meetings/AgentMeetings'
 import { AgentSkillsTab } from '@/features/skills/AgentSkillsTab'
 import { ROLE_FAMILY_LABEL, inferRoleFamily } from '@/lib/roleFamily'
 import { AI_COFOUNDER_LABEL } from '@/lib/terms'
@@ -104,6 +105,11 @@ export function AgentPanel({ agentId }: { agentId: string }) {
               Open co-founder view
             </Button>
           )}
+          {inferRoleFamily(agent) === 'hr' && (
+            <Button size="sm" onClick={() => openPanel({ kind: 'people-ops' })}>
+              Open People ops
+            </Button>
+          )}
           <LifecycleActions agent={agent} companyId={companyId} />
         </>
       }
@@ -117,6 +123,7 @@ export function AgentPanel({ agentId }: { agentId: string }) {
           <TabsTrigger value="tasks">Tasks</TabsTrigger>
           <TabsTrigger value="runs">Runs</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
+          <TabsTrigger value="meetings">Meetings</TabsTrigger>
           <TabsTrigger value="skills">Skills</TabsTrigger>
           <TabsTrigger value="configuration">Configuration</TabsTrigger>
           <TabsTrigger value="budget">Budget</TabsTrigger>
@@ -133,6 +140,9 @@ export function AgentPanel({ agentId }: { agentId: string }) {
         </TabsContent>
         <TabsContent value="activity">
           <AgentActivityTab companyId={companyId} agentId={agent.id} />
+        </TabsContent>
+        <TabsContent value="meetings">
+          <AgentMeetings companyId={companyId} agentId={agent.id} />
         </TabsContent>
         <TabsContent value="skills">
           <AgentSkillsTab agent={agent} />

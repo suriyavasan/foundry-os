@@ -17,6 +17,8 @@ export const qk = {
   activityAll: (cid: string) => ['company', cid, 'activity'] as const,
   // M2 work engine. Everything lives under ['company', cid, <area>] so the stream can invalidate by prefix.
   policy: (cid: string) => ['company', cid, 'policy'] as const,
+  // M23 company intensity (GET /intensity). policy.updated stream events invalidate it.
+  intensity: (cid: string) => ['company', cid, 'intensity'] as const,
   goals: (cid: string) => ['company', cid, 'goals'] as const,
   projects: (cid: string) => ['company', cid, 'projects'] as const,
   tasksAll: (cid: string) => ['company', cid, 'tasks'] as const,
@@ -107,6 +109,20 @@ export const qk = {
   reflection: (cid: string, id: string) => ['company', cid, 'reflections', 'detail', id] as const,
   standardsAll: (cid: string) => ['company', cid, 'standards'] as const,
   standards: (cid: string) => ['company', cid, 'standards', 'list'] as const,
+  // M18/M20 founder questions an agent asks in the chat. question.* stream events invalidate the prefix.
+  questions: (cid: string) => ['company', cid, 'questions'] as const,
+  // M21 agent meetings. meeting.updated stream events invalidate the whole prefix.
+  meetingsAll: (cid: string) => ['company', cid, 'meetings'] as const,
+  meetings: (cid: string, status: string = 'all', agentId: string = '') => ['company', cid, 'meetings', 'list', status, agentId] as const,
+  meeting: (cid: string, id: string) => ['company', cid, 'meetings', 'detail', id] as const,
+  // M22 human work (things an AI employee needs a person for) and outsourcing (freelance jobs). human_work.* / outsource.* events invalidate.
+  humanWorkAll: (cid: string) => ['company', cid, 'human-work'] as const,
+  humanWork: (cid: string, status: string = 'open', mine: boolean = false) => ['company', cid, 'human-work', 'list', status, mine] as const,
+  outsourceAll: (cid: string) => ['company', cid, 'outsource-jobs'] as const,
+  outsourceJobs: (cid: string, status: string = 'all') => ['company', cid, 'outsource-jobs', 'list', status] as const,
+  outsourceJob: (cid: string, id: string) => ['company', cid, 'outsource-jobs', 'detail', id] as const,
+  // M19 chat channels (Telegram, Discord, WhatsApp). channel.updated stream events invalidate the prefix.
+  channels: (cid: string) => ['company', cid, 'channels'] as const,
   commandFeed: (cid: string) => ['company', cid, 'command-center', 'feed'] as const,
   // M14 GitHub-backed projects. repository.* events (and every mutation here) invalidate the whole prefix.
   reposAll: (cid: string) => ['company', cid, 'repositories'] as const,

@@ -84,9 +84,9 @@ export function enterAcceptsSuggestion(input: string, suggestion: SlashCommandDe
   return input.trim().toLowerCase() !== `/${suggestion.name}`
 }
 
-/** Plain Enter sends a single-line command; free text keeps ⌘/Ctrl+Enter so a thought can have several lines. */
+/** Enter sends whatever was typed (Shift+Enter adds a line); an empty or whitespace-only box keeps the Enter as a newline. */
 export function enterSends(input: string): boolean {
-  return parseInput(input).kind === 'command' && !input.includes('\n')
+  return parseInput(input).kind !== 'empty'
 }
 
 /* ------------------------------------- history ------------------------------------- */

@@ -113,7 +113,8 @@ class Runner:
             "is_error": is_error,
             "result_preview": self.writer.preview(text, PREVIEW_CHARS),
         })
-        if (not is_error and str(name) in ("company_complete_task", "company_update_task", "company_escalate")
+        if (not is_error and str(name) in ("company_complete_task", "company_update_task", "company_escalate",
+                                               "company_ask_founder", "company_request_human_work", "company_meeting_say")
                 and self.disposition()):
             self._finish_after_disposition(args)
 
@@ -124,7 +125,8 @@ class Runner:
             return
         self._finish_requested = True
         if isinstance(args, dict):
-            self._finish_summary = str(args.get("result_summary") or args.get("reason") or "").strip()
+            self._finish_summary = str(args.get("result_summary") or args.get("reason")
+                                       or args.get("message") or "").strip()
         agent = self.agent
         if agent is None:
             return
@@ -301,6 +303,13 @@ class Runner:
     def _outcome_from(self, result: dict[str, Any]) -> Outcome:
         final = str(result.get("final_response") or "").strip()
         reason = str(result.get("turn_exit_reason") or "")
+        if self.spec.mode == "verify" and not self.cancel_requested.is_set():
+            # M18 Part B: a self-check has no task to complete: the model's answer is the result.
+            if result.get("failed") or not final:
+                return Outcome(status="failed", exit_reason="model_error", exit_code=EXIT_FAILED,
+                               error=str(result.get("error") or "the verifier gave no answer"))
+            return Outcome(status="completed", exit_reason="completed", exit_code=EXIT_COMPLETED,
+                           summary=final[:4000])
         disp = self.disposition()
         if self._finish_requested and disp:
             # Finished through the API; whatever the model said afterwards (interrupted placeholder) is noise.

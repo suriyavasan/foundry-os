@@ -17,6 +17,11 @@ constructor's default script. Script keys (all optional):
     artifacts:            [{"title", "content", "kind", "mime_type"}]
     agent_api:            [{"method", "path", "json", "save_as", "expect"}, ...] steps run with
                           the run token against the agent API, in-process (see "Agent API steps")
+    per_call:             [script, ...] M18: overrides for the 1st, 2nd, ... work call on the same
+                          task (the work graph calls a runtime once per act); the last one repeats
+    verify:               M18: answers of the work graph's self-check (purpose "verify"): one
+                          {"pass": bool, "feedback": str} / {"raw": str} / {"result": "failed"},
+                          or a list of them used in order (the last repeats); default: pass
 
 Agent API steps (Milestone 5): a scripted run can act like a real agent. Set ``api_client`` (a
 TestClient bound to the app, ideally without the owner cookie) and either put ``agent_api`` steps
@@ -29,6 +34,7 @@ exception in a handler is recorded in ``runtime.errors`` and fails the run.
 
 from __future__ import annotations
 
+import json
 import re
 import threading
 from collections.abc import Callable
@@ -69,6 +75,8 @@ _KNOWN_KEYS = {
     "usage",
     "artifacts",
     "agent_api",
+    "per_call",
+    "verify",
 }
 
 
@@ -138,6 +146,8 @@ class ScriptedRuntime(RuntimeAdapter):
     id = "scripted"
     display_name = "Scripted (test fixture)"
     kind = "test_fixture"
+    supports_verify = True
+    supports_sessions = True  # the request's SessionSpec is recorded in ``requests``
     config_hint = (
         "Deterministic fixture for tests and demos of the work engine. Enabled by "
         "COMPANY_OS_ENABLE_TEST_RUNTIMES=1; it never calls a model."
@@ -183,7 +193,46 @@ class ScriptedRuntime(RuntimeAdapter):
         override = request.agent.runtime_config.get("script")
         if isinstance(override, dict):
             merged.update(override)
+        calls = merged.get("per_call")
+        if request.purpose == "work" and isinstance(calls, list) and calls:
+            n = sum(
+                1
+                for r in self.requests
+                if r.purpose == "work" and r.task.id == request.task.id and r is not request
+            )
+            step = calls[min(n, len(calls) - 1)]
+            if isinstance(step, dict):
+                merged.update(step)
         return merged
+
+    def _verify(self, request: ExecutionRequest, sink: EventSink, script: dict[str, Any]):
+        """The work graph's self-check: a canned verdict, nothing else (no agent API, no tools)."""
+        n = sum(
+            1
+            for r in self.requests
+            if r.purpose == "verify" and r.task.id == request.task.id and r is not request
+        )
+        raw = script.get("verify", {"pass": True, "feedback": ""})
+        answer = raw[min(n, len(raw) - 1)] if isinstance(raw, list) and raw else raw
+        answer = answer if isinstance(answer, dict) else {"pass": True, "feedback": ""}
+        sink.emit(ExecutionEvent(seq=1, type="run.started", payload={"summary": "Self-check"}))
+        usage = self._usage(answer.get("usage") or script.get("verify_usage"))
+        if answer.get("result") == "failed":
+            sink.emit(ExecutionEvent(seq=2, type="run.failed", payload={"message": "check failed"}))
+            return ExecutionResult(
+                status="failed",
+                error=ExecutionError(RuntimeErrorKind.FAILED, "check failed"),
+                usage=usage,
+            )
+        text = (
+            str(answer["raw"])
+            if "raw" in answer
+            else json.dumps(
+                {"pass": answer.get("pass", True), "feedback": answer.get("feedback", "")}
+            )
+        )
+        sink.emit(ExecutionEvent(seq=2, type="run.completed", payload={"summary": text[:200]}))
+        return ExecutionResult(status="succeeded", summary=text, usage=usage)
 
     def execute(
         self, request: ExecutionRequest, sink: EventSink, cancel: CancelToken
@@ -191,6 +240,8 @@ class ScriptedRuntime(RuntimeAdapter):
         with self._lock:
             self.requests.append(request)
         script = self._script_for(request)
+        if request.purpose == "verify":
+            return self._verify(request, sink, script)
         seq = 0
 
         def emit(type_: str, payload: dict[str, Any]) -> None:

@@ -89,10 +89,12 @@ describe('autocomplete', () => {
     expect(enterAcceptsSuggestion('/ta', undefined)).toBe(false)
   })
 
-  it('Enter sends a one-line command, never free text or a multi-line command', () => {
+  it('Enter sends a command or free text (Shift+Enter is the newline); an empty box sends nothing', () => {
     expect(enterSends('/status')).toBe(true)
-    expect(enterSends('/goal a\nb')).toBe(false)
-    expect(enterSends('a thought')).toBe(false)
+    expect(enterSends('a thought')).toBe(true)
+    expect(enterSends('/goal a\nb')).toBe(true)
+    expect(enterSends('   ')).toBe(false)
+    expect(enterSends('')).toBe(false)
   })
 })
 

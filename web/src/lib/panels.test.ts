@@ -37,6 +37,15 @@ describe('parsePanel', () => {
     expect(parsePanel(withPanel('', { kind: 'repo', id: 'abc' }))).toEqual({ kind: 'repo', id: 'abc' })
   })
 
+  it('parses the M22 panels: People ops and one freelance job', () => {
+    expect(parsePanel('?panel=people-ops')).toEqual({ kind: 'people-ops' })
+    expect(parsePanel('?panel=outsource:j-1')).toEqual({ kind: 'outsource', id: 'j-1' })
+    expect(parsePanel('?panel=outsource')).toBeNull()
+    expect(parsePanel('?panel=outsource:../x')).toBeNull()
+    expect(parsePanel('?panel=people-ops:1')).toBeNull()
+    expect(parsePanel(withPanel('', { kind: 'outsource', id: 'abc' }))).toEqual({ kind: 'outsource', id: 'abc' })
+  })
+
   it('reads a run id alongside a task panel only', () => {
     expect(parsePanel('?panel=task:t1&run=r1')).toEqual({ kind: 'task', id: 't1', run: 'r1' })
     expect(parsePanel('?panel=agent:a1&run=r1')).toEqual({ kind: 'agent', id: 'a1' })

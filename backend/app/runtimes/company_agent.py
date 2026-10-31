@@ -66,6 +66,7 @@ from app.services import (
     reviews,
     standards,
 )
+from app.services import meetings as meetings_service
 from app.services import memory as memory_service
 from app.services import skills as skills_service
 from app.skills.blobstore import BlobStore
@@ -181,6 +182,7 @@ class CompanyAgentAdapter(RuntimeAdapter):
     display_name = "Company Agent (Hermes fork)"
     kind = "agent_runtime"
     supports_execution = True
+    supports_verify = True  # M18 Part B: spec mode "verify" (tool-less, one question)
     config_hint = (
         "Install the runtime venv (see runtime/README.md: `uv sync` in runtime/), register a model "
         "provider (POST /api/companies/{id}/model-providers/detect for local Ollama), then give an "
@@ -395,6 +397,8 @@ class CompanyAgentAdapter(RuntimeAdapter):
             if task.review_note:
                 feedback = f"REVISION REQUESTED. Address this feedback:\n{task.review_note}"
                 description = f"{description}\n\n{feedback}".strip()
+            if task.carry_over:  # M18: retries with memory (data about the previous attempt)
+                description = f"{description}\n\nBEFORE YOU START\n{task.carry_over}".strip()
             spec: dict[str, Any] = {
                 "protocol": PROTOCOL,
                 "run_id": request.run_id,
@@ -437,6 +441,10 @@ class CompanyAgentAdapter(RuntimeAdapter):
                     "input_refs": list(task.input_refs),
                     "review_target": review_target,
                     "peer_review": peer_target,
+                    # M21: the meeting section of a meeting turn (None for every other task)
+                    "meeting": meetings_service.turn_brief(db, task_row)
+                    if task_row is not None
+                    else None,
                 },
                 "model": {
                     "provider": model.runtime_provider,
@@ -475,6 +483,16 @@ class CompanyAgentAdapter(RuntimeAdapter):
                 "project_name": project_name,
                 "files": list(request.workspace_files)[:MAX_WORKSPACE_FILES],
             }
+        if request.purpose == "verify":
+            # M18 Part B self-check: the same model and key, but one tool-less question. "todo" is
+            # the only toolset (an in-memory list; the spec requires one); no company tools at all.
+            spec["mode"] = "verify"
+            spec["toolsets"] = ["todo"]
+            spec["company_tools"] = []
+            spec["guardrails"] = guard_registry.runtime_spec(["todo"], [])
+            spec["task"]["description"] = request.task.description or ""
+            spec["limits"]["max_iterations"] = 3
+            spec.pop("workspace", None)
         # The local placeholder key is a public constant, not a secret (scrubbing "ollama" would
         # mangle ordinary text).
         secrets = [s for s in (api_key if key_is_secret else None, request.run_token) if s]

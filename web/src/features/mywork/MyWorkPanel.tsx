@@ -10,6 +10,7 @@ import { PanelFrame } from '@/features/canvas/PanelFrame'
 import { PriorityBadge, TaskStatusBadge } from '@/features/shared/badges'
 import { TaskCheckout } from '@/features/wallet/TaskCheckout'
 import { formatDateTime } from '@/lib/format'
+import { categoryLabel } from '@/lib/humanWork'
 import { splitMyWork, validateAttachment } from '@/lib/myWork'
 import { canManageTeam } from '@/lib/people'
 
@@ -90,7 +91,13 @@ function TaskSection({ companyId, title, description, tasks, onOpen, onAct }: { 
                   <TaskStatusBadge status={t.status} />
                   <PriorityBadge priority={t.priority} />
                   {t.due_at && <span>Due {formatDateTime(t.due_at)}</span>}
+                  {t.requires_human && <Badge tone="accent">{categoryLabel(t.human_category)}</Badge>}
                 </div>
+                {t.requires_human && t.human_instructions && (
+                  <p data-testid="human-instructions" className="mt-1.5 max-w-prose text-[12.5px] whitespace-pre-wrap text-fg-2">
+                    {t.human_instructions}
+                  </p>
+                )}
               </div>
               <div className="flex gap-1.5">
                 <Button size="sm" icon={<OctagonAlert className="size-3.5" />} aria-label={`Block ${t.title}`} onClick={() => onAct(t, 'block')}>
@@ -111,7 +118,7 @@ function TaskSection({ companyId, title, description, tasks, onOpen, onAct }: { 
   )
 }
 
-function ActDialog({ companyId, task, action, onClose }: { companyId: string; task: Task; action: 'complete' | 'block'; onClose: () => void }) {
+export function ActDialog({ companyId, task, action, onClose }: { companyId: string; task: Pick<Task, 'id' | 'title'>; action: 'complete' | 'block'; onClose: () => void }) {
   const act = useHumanTaskAction(companyId)
   const toast = useToast()
   const [comment, setComment] = useState('')

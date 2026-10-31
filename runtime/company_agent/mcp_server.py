@@ -42,6 +42,7 @@ DEFAULT_TOOLS = (
     "request_help",
     "find_colleagues",
     "request_purchase",
+    "ask_founder",
 )
 PREFIX = "company_"
 MAX_MESSAGE_BYTES = 4_000_000

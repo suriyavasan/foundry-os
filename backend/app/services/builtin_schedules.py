@@ -256,7 +256,12 @@ def ensure_company_builtins(db: Session, company_id: str, principal: Principal |
     )
     names: list[str] = []
     if founder is not None:
+        from app.services import policy
+
+        beat = policy.load_policy(db, company_id).heartbeat_interval_seconds  # M23: one source
         for spec in COFOUNDER_SCHEDULES:
+            if spec["name"] == HEARTBEAT_NAME:
+                spec = {**spec, "interval_seconds": beat}
             if _create(db, company, founder, spec, principal, audit_it=False) is not None:
                 names.append(spec["name"])
     if hr is not None and _create(db, company, hr, HR_SCHEDULE, principal, audit_it=False):

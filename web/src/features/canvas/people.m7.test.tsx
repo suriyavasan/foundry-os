@@ -38,7 +38,7 @@ function tree(members: ReturnType<typeof makeMember>[] | undefined, onMember = v
 }
 
 describe('human members in the org tree', () => {
-  it('draws humans with initials and a human glyph, inside the agent hierarchy', async () => {
+  it('draws humans with illustrated faces and a human glyph, inside the agent hierarchy', async () => {
     tree([sam, maya, ben])
     const chart = screen.getByRole('tree', { name: 'Organization chart' })
     expect(within(chart).getByText('Maya Chen')).toBeInTheDocument()
@@ -48,8 +48,11 @@ describe('human members in the org tree', () => {
     expect(within(chart).getAllByText('Sam')).toHaveLength(1)
     const avatars = [...chart.querySelectorAll('[data-family="member"]')]
     expect(avatars).toHaveLength(2)
-    expect(avatars[0]!.textContent).toContain('MC')
-    expect(avatars[0]!.querySelector('.cos-avatar-badge')).not.toBeNull()
+    // a stable illustrated face (decorative: the button carries the name), plus the human glyph badge
+    const face = avatars[0]!.querySelector('img.cos-avatar-face')!
+    expect(face.getAttribute('src')).toMatch(/^data:image\/svg\+xml;utf8,/)
+    expect(face).toHaveAttribute('alt', '')
+    expect(avatars[0]!.querySelector('.cos-avatar-role')).not.toBeNull()
     // an agent reporting to a human is nested under them
     const items = within(chart).getAllByRole('treeitem')
     const level = (name: RegExp) => Number(items.find((i) => within(i).queryByRole('button', { name }))!.getAttribute('aria-level'))

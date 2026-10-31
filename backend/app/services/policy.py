@@ -91,6 +91,18 @@ UPDATABLE = (
     "radar_agent_sources",
     "self_critique_enabled",
     "radar_contact_email",
+    # M21 agent meetings (human-only)
+    "meetings_enabled",
+    "max_meetings_per_agent_per_day",
+    "max_meetings_per_company_per_day",
+    # M18 approval deadlines (human-only)
+    "approval_timeout_seconds",
+    "agent_approval_timeout_seconds",
+    # M18 Part B (human-only)
+    "self_check_enabled",
+    "work_graph_enabled",
+    # M22 outsourcing (human-only)
+    "outsource_max_job_micros",
 )
 PURCHASE_FIELDS = frozenset(f for f in UPDATABLE if f.startswith(("purchase", "subscription_")))
 # What an AI may approve is capped in code, whatever the form sends (docs/specs/m15, section 5).
@@ -241,6 +253,9 @@ def update_policy(db: Session, ctx: CompanyContext, data: PolicyUpdate) -> Compa
             changed.append(field)
     if changed:
         policy.updated_at = utcnow()
+        from app.services import intensity  # local: intensity -> policy
+
+        went_custom = intensity.note_manual_edit(policy, changed)  # M23
         audit.record(
             db,
             company_id=ctx.company_id,
@@ -249,7 +264,7 @@ def update_policy(db: Session, ctx: CompanyContext, data: PolicyUpdate) -> Compa
             target_type="policy",
             target_id=policy.id,
             summary=f"Updated company policy: {', '.join(changed)}",
-            data={"changed": changed},
+            data={"changed": changed, **({"intensity_custom": True} if went_custom else {})},
         )
         events.emit(db, ctx.company_id, "policy.updated", {"changed": changed})
         bought = sorted(PURCHASE_FIELDS & set(changed))

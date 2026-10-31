@@ -324,6 +324,8 @@ class AgentTaskAction(RequestModel):
 
     reason: str | None = Field(default=None, max_length=1000)
     assignee_agent_id: str | None = None
+    # M18: retry a failed task "with a new approach" (resets the attempts once per task).
+    new_instructions: str | None = Field(default=None, max_length=2000)
 
 
 # ------------------------------------------------------------------ agent API: state

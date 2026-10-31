@@ -32,6 +32,9 @@ TOOLS = [
     "company_request_purchase", "company_review_subscription",
     "company_radar_digest", "company_radar_read", "company_radar_brief", "company_radar_propose",
     "company_radar_decide", "company_radar_keywords", "company_radar_ui_search", "company_radar_add_source",
+    "company_ask_founder",
+    "company_request_human_work", "company_draft_outsource_job",
+    "company_schedule_meeting", "company_meeting_say", "company_cancel_meeting",
 ]
 
 
@@ -56,7 +59,7 @@ def test_all_tools_registered_in_company_toolset():
 
     for name in TOOLS:
         assert registry.get_toolset_for_tool(name) == "company"
-    assert len(TOOLS) == 47
+    assert len(TOOLS) == 53
     assert sorted(TOOLS) == sorted(COMPANY_TOOL_NAMES)  # spec validation and registry cannot drift
 
 
@@ -121,14 +124,15 @@ def test_create_task_rejects_negative_budget_without_calling_api(configured, api
 
 
 def test_update_review_approval_tools(configured, api: StubApi):
-    call("company_update_task", action="block", reason="waiting on data")
+    call("company_update_task", action="block", reason="waiting on data", unblock_condition="the data arrives")
     call("company_update_task", action="reassign", task_id="t7", assignee_agent_id="a2")
     call("company_review_task", task_id="t7", decision="request_revision", note="more detail")
     call("company_request_approval", kind="external_purchase", title="Buy ads", amount_usd=20, risk="medium",
          scope={"vendor": "x"})
     call("company_decide_approval", approval_id="ap1", decision="approve", note="ok")
     bodies = [(r.method, r.path.replace("/api/agent/v1", ""), r.body) for r in api.requests]
-    assert bodies[0] == ("PATCH", "/tasks/task-1", {"status": "blocked", "reason": "waiting on data"})
+    assert bodies[0] == ("PATCH", "/tasks/task-1", {
+        "status": "blocked", "reason": "waiting on data", "unblock_condition": "the data arrives"})
     assert bodies[1] == ("PATCH", "/tasks/t7", {"assignee_agent_id": "a2"})
     assert bodies[2] == ("POST", "/tasks/t7/review", {"decision": "request_revision", "note": "more detail"})
     assert bodies[3][2]["amount_micros"] == 20_000_000 and bodies[3][2]["kind"] == "external_purchase"
@@ -232,9 +236,19 @@ def test_new_artifact_version_needs_no_title(configured, api: StubApi):
 
 
 def test_complete_and_block_dispositions_tracked(configured, api: StubApi):
-    call("company_update_task", action="block", reason="stuck")
+    call("company_update_task", action="block", reason="stuck", unblock_condition="the cause is gone")
     assert ctx.dispositions() == {"task-1": "blocked"}
     call("company_complete_task", result_summary="finished")
+    assert ctx.dispositions() == {"task-1": "completed"}
+
+
+def test_a_proposed_completion_counts_as_completed_and_ends_the_run(configured, api: StubApi):
+    """M18 Part B: inside a work-graph run the API answers {ok, status: "proposed"} instead of a task. That is
+    neither an error nor a pending approval, so the usual hard stop on completion applies."""
+    api.forced["/tasks/task-1/complete"] = (
+        200, {"ok": True, "status": "proposed", "task_id": "task-1"})
+    out = call("company_complete_task", result_summary="finished")
+    assert "error" not in out and out["status"] == "proposed"
     assert ctx.dispositions() == {"task-1": "completed"}
 
 
@@ -250,7 +264,7 @@ def test_successful_task_bodies_with_an_error_field_are_not_tool_errors(configur
     assert out["status"] == "done"
     assert ctx.dispositions() == {"task-1": "completed"}
     assert tool_result_is_error("company_complete_task", json.dumps(out)) is False
-    call("company_update_task", action="block", reason="stuck", task_id="task-9")
+    call("company_update_task", action="block", reason="stuck", unblock_condition="gone", task_id="task-9")
     assert tool_result_is_error("company_update_task", json.dumps({"id": "t", "error": task_error})) is False
     # real failures are still failures
     failure = json.dumps({"error": "invalid_transition", "message": "Only in-progress tasks can be completed"})
@@ -260,7 +274,7 @@ def test_successful_task_bodies_with_an_error_field_are_not_tool_errors(configur
 
 def test_blocking_marks_the_disposition_even_when_the_task_body_has_an_error_object(configured, api: StubApi):
     api.task_error = {"code": "failed", "message": "old failure", "run_id": "r0"}
-    call("company_update_task", action="block", reason="stuck")
+    call("company_update_task", action="block", reason="stuck", unblock_condition="the cause is gone")
     assert ctx.dispositions() == {"task-1": "blocked"}
 
 
@@ -510,6 +524,8 @@ def test_manage_goal_project_schedule_map_to_the_agent_api(configured, api: Stub
 def test_update_task_retry_cancel_and_handoff_dispositions(configured, api: StubApi):
     call("company_update_task", action="retry", task_id="t9", assignee_agent_id="a2", reason="again")
     assert api.calls("POST", "/tasks/t9/retry")[0].body == {"reason": "again", "assignee_agent_id": "a2"}
+    call("company_update_task", action="retry", task_id="t8", new_instructions="Split the work")
+    assert api.calls("POST", "/tasks/t8/retry")[0].body == {"new_instructions": "Split the work"}
     call("company_update_task", action="cancel", task_id="t9", reason="moot")
     assert api.calls("POST", "/tasks/t9/cancel")[0].body == {"reason": "moot"}
     assert ctx.dispositions() == {}
@@ -878,3 +894,152 @@ def test_purchase_tools_are_hidden_unless_allowed(api: StubApi, tmp_path: Path):
         assert not ctx.tool_enabled("company_review_subscription")
     finally:
         ctx.reset()
+
+
+# ------------------------------------------------------------------ M18: decide, don't ask
+
+def test_blocking_a_task_needs_an_unblock_condition(configured, api: StubApi):
+    out = call("company_update_task", action="block", reason="stuck")
+    assert out["error"] == "invalid_arguments" and "unblock_condition" in out["message"]
+    assert "company_ask_founder" in out["message"]  # a question for the founder is not a block
+    assert api.requests == [] and ctx.dispositions() == {}  # never reached the server
+    call("company_update_task", action="block", reason="stuck", unblock_condition="  a key   is added ")
+    assert api.calls("PATCH", "/tasks/task-1")[0].body == {
+        "status": "blocked", "reason": "stuck", "unblock_condition": "a key is added"}
+    assert ctx.dispositions() == {"task-1": "blocked"}
+
+
+def test_ask_founder_posts_the_question_with_its_default(configured, api: StubApi):
+    out = call("company_ask_founder", question="Which tone?", default_answer="friendly",
+               options=["friendly", "formal"], deadline_hours=6)
+    assert out["status"] == "open" and "Keep going with your default" in out["next"]
+    assert api.calls("POST", "/questions")[0].body == {
+        "question": "Which tone?", "default_answer": "friendly", "options": ["friendly", "formal"],
+        "blocking": False, "deadline_hours": 6}
+    assert ctx.dispositions() == {}  # the run goes on with the default
+    assert call("company_ask_founder", question="No default")["error"] == "invalid_arguments"
+    assert call("company_ask_founder", question="Q", default_answer="d", deadline_hours="soon")["error"] == "invalid_arguments"
+
+
+def test_a_blocking_question_ends_the_run_like_a_block(configured, api: StubApi):
+    out = call("company_ask_founder", question="Which database?", default_answer="postgres", blocking=True)
+    assert "parked" in out["next"] and "company_complete_task" in out["next"]
+    assert api.calls("POST", "/questions")[0].body["blocking"] is True
+    assert ctx.dispositions() == {"task-1": "blocked"}
+
+
+def test_a_refused_question_does_not_end_the_run(configured, api: StubApi):
+    api.forced["/questions"] = (429, {"error": {"code": "question_limit", "message": "Decide yourself and record "
+                                                "it with company_record_decision.", "details": None}})
+    out = call("company_ask_founder", question="Q", default_answer="d", blocking=True)
+    assert out["error"] == "question_limit" and "company_record_decision" in out["message"]
+    assert ctx.dispositions() == {}
+
+
+# ---- M22: human work and outsourcing
+
+
+def test_request_human_work_posts_the_request_and_blocks_the_task(configured, api: StubApi):
+    out = call("company_request_human_work", title="Sign the NDA", instructions="Sign page 3",
+               category="signature", why_human="A legal signature", due_in_hours=24,
+               assignee_member_id="m-7")
+    assert out["pool"] is True and out["blocks_my_task"] is True and out["task_id"]
+    assert api.calls("POST", "/human-work")[0].body == {
+        "title": "Sign the NDA", "instructions": "Sign page 3", "category": "signature",
+        "why_human": "A legal signature", "due_in_hours": 24, "assignee_member_id": "m-7",
+        "blocks_my_task": True}
+    assert ctx.dispositions() == {"task-1": "blocked"}  # the run is over: the task waits for a person
+
+
+def test_request_human_work_without_blocking_keeps_the_run_going(configured, api: StubApi):
+    out = call("company_request_human_work", title="Call the bank", instructions="Ask for a form",
+               category="call", why_human="A phone call", blocks_my_task=False)
+    assert out["blocks_my_task"] is False
+    assert api.calls("POST", "/human-work")[0].body["blocks_my_task"] is False
+    assert ctx.dispositions() == {}
+
+
+def test_request_human_work_checks_its_arguments_and_a_refusal_does_not_end_the_run(configured, api: StubApi):
+    assert call("company_request_human_work", title="T", instructions="I", category="signature")["error"] == "invalid_arguments"
+    bad = call("company_request_human_work", title="T", instructions="I", category="dance", why_human="w")
+    assert bad["error"] == "invalid_arguments" and "signature" in bad["message"]
+    assert call("company_request_human_work", title="T", instructions="I", category="call", why_human="w",
+                due_in_hours="soon")["error"] == "invalid_arguments"
+    assert api.calls("POST", "/human-work") == []
+    api.forced["/human-work"] = (429, {"error": {"code": "human_work_limit", "message": "Do it yourself, or ask "
+                                                 "the founder a question (company_ask_founder).", "details": None}})
+    out = call("company_request_human_work", title="T", instructions="I", category="call", why_human="w")
+    assert out["error"] == "human_work_limit" and "company_ask_founder" in out["message"]
+    assert ctx.dispositions() == {}
+
+
+def test_draft_outsource_job_posts_a_draft_only(configured, api: StubApi):
+    out = call("company_draft_outsource_job", title="Logo", brief="SVG + PNG, 3 drafts, 5 days",
+               skills=["logo design"], marketplace="Fiverr", budget_usd="50.5", task_id="task-9")
+    assert out["job_status"] == "pending_approval" and out["budget_micros"] == 50_500_000
+    assert api.calls("POST", "/outsource-jobs")[0].body == {
+        "title": "Logo", "brief": "SVG + PNG, 3 drafts, 5 days", "skills": ["logo design"],
+        "marketplace": "fiverr", "budget_usd": 50.5, "task_id": "task-9"}
+    assert ctx.dispositions() == {}
+
+
+def test_draft_outsource_job_checks_its_arguments(configured, api: StubApi):
+    assert call("company_draft_outsource_job", title="Logo", brief="b", marketplace="fiverr")["error"] == "invalid_arguments"
+    assert call("company_draft_outsource_job", title="L", brief="b", marketplace="craigslist", budget_usd=5)["error"] == "invalid_arguments"
+    assert call("company_draft_outsource_job", title="L", brief="b", marketplace="upwork", budget_usd="lots")["error"] == "invalid_arguments"
+    assert call("company_draft_outsource_job", title="L", brief="b", marketplace="upwork", budget_usd=0)["error"] == "invalid_arguments"
+    assert api.calls("POST", "/outsource-jobs") == []
+    api.forced["/outsource-jobs"] = (403, {"error": {"code": "forbidden", "message": "Only the HR agent can draft "
+                                                      "outsourced jobs", "details": None}})
+    out = call("company_draft_outsource_job", title="L", brief="b", marketplace="upwork", budget_usd=5)
+    assert out["error"] == "forbidden" and "HR" in out["message"]
+
+
+# ---- M21: agent meetings
+
+
+def test_schedule_meeting_posts_the_invitation(configured, api: StubApi):
+    out = call("company_schedule_meeting", title="Launch", agenda="Who does what", expected_outcome="A split",
+               participant_agent_ids=["a2", "a3"], start_in_minutes=15, project_id="p1")
+    assert out["status"] == "scheduled" and out["meeting_id"]
+    assert api.calls("POST", "/meetings")[0].body == {
+        "title": "Launch", "agenda": "Who does what", "expected_outcome": "A split",
+        "participant_agent_ids": ["a2", "a3"], "start_in_minutes": 15, "project_id": "p1"}
+    assert call("company_schedule_meeting", title="T", agenda="A", expected_outcome="O",
+                participant_agent_ids=[])["error"] == "invalid_arguments"
+    assert call("company_schedule_meeting", title="T", agenda="A", expected_outcome="O",
+                participant_agent_ids=["a", "b", "c", "d"])["error"] == "invalid_arguments"
+    assert ctx.dispositions() == {}  # calling a meeting does not end this run
+
+
+def test_meeting_say_posts_once_and_ends_the_turn(configured, api: StubApi):
+    out = call("company_meeting_say", meeting_id="m-1", message="Agreed", accept=["i1"],
+               propose=[{"title": "Draft", "owner_agent_id": "a2"}])
+    assert out["meeting_id"] == "m-1"
+    body = api.calls("POST", "/meetings/m-1/say")[0].body
+    assert body["message"] == "Agreed" and body["accept"] == ["i1"] and body["pass_turn"] is False
+    assert body["propose"] == [{"title": "Draft", "owner_agent_id": "a2"}] and "final" not in body
+    assert ctx.dispositions() == {"task-1": "completed"}  # the runner stops on it like complete_task
+    assert call("company_meeting_say", message="x")["error"] == "invalid_arguments"
+
+
+def test_a_refused_say_does_not_end_the_turn(configured, api: StubApi):
+    api.forced["/meetings/m-2/say"] = (403, {"error": {"code": "forbidden", "message": "not your turn",
+                                                      "details": None}})
+    assert call("company_meeting_say", meeting_id="m-2", message="hi")["error"] == "forbidden"
+    assert ctx.dispositions() == {}
+
+
+def test_final_say_carries_the_summary_decisions_and_items(configured, api: StubApi):
+    call("company_meeting_say", meeting_id="m-3", message="Wrap up", final=True, summary="Done",
+         decisions=[{"title": "Go", "rationale": "ok"}], action_items=[{"id": "i1"}, "junk"])
+    body = api.calls("POST", "/meetings/m-3/say")[0].body
+    assert body["final"] is True and body["summary"] == "Done"
+    assert body["decisions"] == [{"title": "Go", "rationale": "ok"}] and body["action_items"] == [{"id": "i1"}]
+
+
+def test_cancel_meeting(configured, api: StubApi):
+    out = call("company_cancel_meeting", meeting_id="m-4", reason="not needed")
+    assert out["status"] == "cancelled"
+    assert api.calls("POST", "/meetings/m-4/cancel")[0].body == {"reason": "not needed"}
+    assert call("company_cancel_meeting", meeting_id="m-4")["error"] == "invalid_arguments"

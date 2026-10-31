@@ -90,7 +90,13 @@ def test_role_selection_hands_out_the_tools(app, client, company):
     for role in ("lead", "worker", "hr"):
         assert REQUEST in tools[role], role
         assert REVIEW not in tools[role], role
-    assert len(tools["worker"]) <= 10  # small models degrade with many tools
+    assert (
+        len(tools["worker"]) <= 15
+    )  # small models degrade with many tools (M18 added two, M21 two, M22 one)
+    assert "company_request_human_work" in tools["worker"]  # M22: every role, the one new tool
+    assert "company_draft_outsource_job" in tools["hr"]  # M22: HR only
+    for role in ("founder", "lead", "worker"):
+        assert "company_draft_outsource_job" not in tools[role], role
 
 
 def test_manager_role_gets_the_request_tool(app, client, company):

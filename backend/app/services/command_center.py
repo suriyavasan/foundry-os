@@ -603,6 +603,11 @@ def _emit(db: Session, ex: CommandExchange) -> None:
         "command.updated",
         {"exchange_id": ex.id, "status": ex.status, "note_id": ex.note_id, "run_id": ex.run_id},
     )
+    if ex.input_kind == "note" and ex.status in (ExchangeStatus.ANSWERED, ExchangeStatus.FAILED):
+        from app.services.channels import outbox  # M19: a message from a chat is answered there
+
+        note = db.get(FounderNote, ex.note_id) if ex.note_id else None
+        outbox.on_exchange(db, ex, has_agent_reply=note is not None and _has_agent_reply(db, note))
 
 
 def _for_note(db: Session, note_id: str) -> CommandExchange | None:

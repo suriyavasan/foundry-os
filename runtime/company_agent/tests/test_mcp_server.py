@@ -77,7 +77,7 @@ def test_initialize_list_and_call(api, tmp_path):
     listed = mcp.request("tools/list")["result"]["tools"]
     assert [t["name"] for t in listed] == [
         "get_context", "report_progress", "submit_artifact", "complete_task",
-        "update_task", "request_help", "find_colleagues", "request_purchase",
+        "update_task", "request_help", "find_colleagues", "request_purchase", "ask_founder",
     ]
     assert all(t["inputSchema"]["type"] == "object" and t["description"] for t in listed)
     out = mcp.request("tools/call", {"name": "report_progress", "arguments": {"message": "halfway"}})["result"]

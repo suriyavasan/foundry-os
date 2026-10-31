@@ -487,6 +487,117 @@ export function diffM16(m: M16FormValues, saved?: CompanyPolicy): Partial<RadarP
   return out
 }
 
+/* ------------------------------ Milestone 18 (approval deadlines, self-check, work graph) and 21 (meetings) ------------------------------ */
+
+/** Seconds the server accepts: a human approval waits 1 h - 7 days, a Co-founder approval 5 min - 24 h (`schemas/policy.py`). */
+export const APPROVAL_TIMEOUT_HOURS = { min: 1, max: 168 } as const
+export const AGENT_APPROVAL_TIMEOUT_MINUTES = { min: 5, max: 1440 } as const
+
+export const M18_BOOL_FIELDS: Array<{ key: 'self_check_enabled' | 'work_graph_enabled'; label: string; hint: string }> = [
+  { key: 'self_check_enabled', label: 'Agents check their own work before finishing', hint: 'Before a task is marked done, the agent reads its result against the acceptance criteria and fixes what is missing (at most twice).' },
+  { key: 'work_graph_enabled', label: 'Durable work graph', hint: 'Runs survive a crash and pick up where they stopped, and wait for your answer or an approval without losing their place. Off: every run starts from scratch.' },
+]
+
+/** M18 values as typed, only for the fields the backend reported (same rule as M6 and M12). Hours and minutes are what people think in; the API takes seconds. */
+export interface M18FormValues {
+  approval_timeout_hours?: string
+  agent_approval_timeout_minutes?: string
+  self_check_enabled?: boolean
+  work_graph_enabled?: boolean
+}
+export const hasM18Fields = (m: M18FormValues): boolean => Object.keys(m).length > 0
+
+/** 86400 -> "24", 5400 -> "1.5" */
+const trimNumber = (n: number): string => String(Math.round(n * 100) / 100)
+
+function m18ToForm(p: CompanyPolicy): M18FormValues {
+  const m: M18FormValues = {}
+  if (p.approval_timeout_seconds !== undefined) m.approval_timeout_hours = trimNumber(p.approval_timeout_seconds / 3600)
+  if (p.agent_approval_timeout_seconds !== undefined) m.agent_approval_timeout_minutes = trimNumber(p.agent_approval_timeout_seconds / 60)
+  if (p.self_check_enabled !== undefined) m.self_check_enabled = p.self_check_enabled
+  if (p.work_graph_enabled !== undefined) m.work_graph_enabled = p.work_graph_enabled
+  return m
+}
+
+function checkAmount(raw: string, min: number, max: number, unit: string): string | undefined {
+  const t = raw.trim()
+  if (!/^\d+(\.\d{1,2})?$/.test(t)) return `Enter a number of ${unit}`
+  if (Number(t) < min) return `At least ${min} ${min === 1 ? unit.replace(/s$/, '') : unit}`
+  if (Number(t) > max) return `At most ${max.toLocaleString('en-US')} ${unit}`
+  return undefined
+}
+
+export function validateM18(m: M18FormValues): PolicyFormErrors {
+  const e: PolicyFormErrors = {}
+  if (m.approval_timeout_hours !== undefined) {
+    const err = checkAmount(m.approval_timeout_hours, APPROVAL_TIMEOUT_HOURS.min, APPROVAL_TIMEOUT_HOURS.max, 'hours')
+    if (err) e.approval_timeout_hours = err
+  }
+  if (m.agent_approval_timeout_minutes !== undefined) {
+    const err = checkAmount(m.agent_approval_timeout_minutes, AGENT_APPROVAL_TIMEOUT_MINUTES.min, AGENT_APPROVAL_TIMEOUT_MINUTES.max, 'minutes')
+    if (err) e.agent_approval_timeout_minutes = err
+  }
+  return e
+}
+
+function diffM18(m: M18FormValues, p: CompanyPolicy): UpdatePolicyRequest {
+  const out: UpdatePolicyRequest = {}
+  if (m.approval_timeout_hours !== undefined && p.approval_timeout_seconds !== undefined) {
+    const s = Math.round(Number(m.approval_timeout_hours) * 3600)
+    if (Number.isFinite(s) && s !== p.approval_timeout_seconds) out.approval_timeout_seconds = s
+  }
+  if (m.agent_approval_timeout_minutes !== undefined && p.agent_approval_timeout_seconds !== undefined) {
+    const s = Math.round(Number(m.agent_approval_timeout_minutes) * 60)
+    if (Number.isFinite(s) && s !== p.agent_approval_timeout_seconds) out.agent_approval_timeout_seconds = s
+  }
+  if (m.self_check_enabled !== undefined && p.self_check_enabled !== undefined && m.self_check_enabled !== p.self_check_enabled) out.self_check_enabled = m.self_check_enabled
+  if (m.work_graph_enabled !== undefined && p.work_graph_enabled !== undefined && m.work_graph_enabled !== p.work_graph_enabled) out.work_graph_enabled = m.work_graph_enabled
+  return out
+}
+
+export type M21NumberKey = 'max_meetings_per_agent_per_day' | 'max_meetings_per_company_per_day'
+export const M21_NUMBER_FIELDS: Array<{ key: M21NumberKey; label: string; hint: string; min: number; max: number }> = [
+  { key: 'max_meetings_per_agent_per_day', label: 'Meetings per employee per day', hint: 'How many meetings one employee may call in 24 hours. 0 means none. Past the limit they decide it themselves.', min: 0, max: 50 },
+  { key: 'max_meetings_per_company_per_day', label: 'Meetings per company per day', hint: 'How many meetings the whole company may hold in 24 hours. 0 means none.', min: 0, max: 500 },
+]
+
+export interface M21FormValues extends Partial<Record<M21NumberKey, string>> {
+  meetings_enabled?: boolean
+}
+export const hasM21Fields = (m: M21FormValues): boolean => Object.keys(m).length > 0
+
+function m21ToForm(p: CompanyPolicy): M21FormValues {
+  const m: M21FormValues = {}
+  if (p.meetings_enabled !== undefined) m.meetings_enabled = p.meetings_enabled
+  for (const f of M21_NUMBER_FIELDS) if (p[f.key] !== undefined) m[f.key] = String(p[f.key])
+  return m
+}
+
+export function validateM21(m: M21FormValues): PolicyFormErrors {
+  const e: PolicyFormErrors = {}
+  for (const f of M21_NUMBER_FIELDS) {
+    const raw = m[f.key]
+    if (raw === undefined) continue
+    const t = raw.trim()
+    if (!/^\d+$/.test(t) || !Number.isSafeInteger(Number(t))) e[f.key] = 'Enter a whole number'
+    else if (Number(t) < f.min) e[f.key] = `At least ${f.min}`
+    else if (Number(t) > f.max) e[f.key] = `At most ${f.max.toLocaleString('en-US')}`
+  }
+  return e
+}
+
+function diffM21(m: M21FormValues, p: CompanyPolicy): UpdatePolicyRequest {
+  const out: UpdatePolicyRequest = {}
+  if (m.meetings_enabled !== undefined && p.meetings_enabled !== undefined && m.meetings_enabled !== p.meetings_enabled) out.meetings_enabled = m.meetings_enabled
+  for (const f of M21_NUMBER_FIELDS) {
+    const raw = m[f.key]
+    if (raw === undefined || p[f.key] === undefined) continue
+    const n = Number(raw)
+    if (Number.isFinite(n) && n !== p[f.key]) out[f.key] = n
+  }
+  return out
+}
+
 export interface PolicyFormValues {
   autonomy_mode: AutonomyMode
   human_approval_required_for: ApprovalKind[]
@@ -499,6 +610,8 @@ export interface PolicyFormValues {
   m12: M12FormValues
   m15: M15FormValues
   m16: M16FormValues
+  m18: M18FormValues
+  m21: M21FormValues
 }
 
 export type PolicyFormErrors = Partial<Record<string, string>>
@@ -518,6 +631,8 @@ export function policyToForm(p: CompanyPolicy): PolicyFormValues {
     m12: m12ToForm(p),
     m15: m15ToForm(p),
     m16: m16ToForm(p),
+    m18: m18ToForm(p),
+    m21: m21ToForm(p),
   }
 }
 
@@ -537,7 +652,7 @@ export function validatePolicyForm(v: PolicyFormValues, saved?: CompanyPolicy): 
     else if (Number(raw) < f.min) e[f.key] = `At least ${f.min}`
     else if (!Number.isSafeInteger(Number(raw))) e[f.key] = 'Too large'
   }
-  return { ...e, ...validateM6(v.m6), ...validateM12(v.m12, v.limits, saved), ...validateM15(v.m15), ...validateM16(v.m16) }
+  return { ...e, ...validateM6(v.m6), ...validateM12(v.m12, v.limits, saved), ...validateM15(v.m15), ...validateM16(v.m16), ...validateM18(v.m18), ...validateM21(v.m21) }
 }
 
 const sameSet = (a: string[], b: string[]) => a.length === b.length && [...a].sort().join('|') === [...b].sort().join('|')
@@ -560,5 +675,5 @@ export function diffPolicy(v: PolicyFormValues, p: CompanyPolicy): UpdatePolicyR
   }
   const providers = v.allowed_model_providers.map((s) => s.trim()).filter(Boolean)
   if (!sameList(providers, p.allowed_model_providers)) out.allowed_model_providers = providers
-  return { ...out, ...diffM6(v.m6, p), ...diffM12(v.m12, p), ...(diffM15(v.m15, p) as UpdatePolicyRequest), ...(diffM16(v.m16, p) as UpdatePolicyRequest) }
+  return { ...out, ...diffM6(v.m6, p), ...diffM12(v.m12, p), ...(diffM15(v.m15, p) as UpdatePolicyRequest), ...(diffM16(v.m16, p) as UpdatePolicyRequest), ...diffM18(v.m18, p), ...diffM21(v.m21, p) }
 }

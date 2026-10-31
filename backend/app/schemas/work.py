@@ -12,6 +12,9 @@ PriorityLiteral = Literal["low", "normal", "high", "urgent"]
 GoalStatusLiteral = Literal["proposed", "active", "achieved", "abandoned"]
 ProjectStatusLiteral = Literal["planned", "active", "paused", "completed", "cancelled"]
 TaskKindLiteral = Literal["work", "review", "planning", "hiring", "routine"]
+# What a task READS as: M21 adds "meeting" (one speaking turn of an agent meeting). Nobody makes or
+# edits that kind through the task API, so the input models above keep ``TaskKindLiteral``.
+TaskKindOutLiteral = Literal["work", "review", "planning", "hiring", "routine", "meeting"]
 TaskStatusLiteral = Literal[
     "backlog",
     "ready",
@@ -160,7 +163,7 @@ class Task(ApiModel):
     title: str
     description: str | None
     acceptance_criteria: str | None
-    kind: TaskKindLiteral
+    kind: TaskKindOutLiteral
     status: TaskStatusLiteral
     priority: PriorityLiteral
     assignee_agent_id: str | None
@@ -182,6 +185,12 @@ class Task(ApiModel):
     output_refs: list[str]
     review_note: str | None
     blocked_reason: str | None = None  # e.g. "waiting_for_hire"
+    meeting_id: str | None = None  # M21: the meeting a "meeting" task is a turn of
+    # M22: something only a person can do (see /human-work); never dispatched to a runtime.
+    requires_human: bool = False
+    human_category: str | None = None
+    human_instructions: str | None = None
+    requested_by_agent_id: str | None = None
     created_by_type: ActorTypeLiteral
     created_by_id: str | None
     created_by_run_id: str | None

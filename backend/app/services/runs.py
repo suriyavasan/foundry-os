@@ -50,6 +50,9 @@ class RunOutcome:
     usage: UsageReport | None = None
     executed: bool = True  # False -> the runtime never ran: release the reservation
     artifacts: list[ArtifactRef] = field(default_factory=list)
+    # M18 Part B: the work graph interrupted ("founder" | "approval"): the run ends cleanly
+    # (succeeded, exit_reason "waiting") and the task is parked instead of completed.
+    waiting: str | None = None
 
 
 # ---------------------------------------------------------------- queries
@@ -495,6 +498,7 @@ def _apply_to_task(
             principal=principal,
             run_id=run.id,
             now=now,
+            waiting=outcome.waiting,
         )
         return
     if outcome.status in (RunStatus.FAILED, RunStatus.TIMED_OUT):

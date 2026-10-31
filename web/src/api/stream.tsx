@@ -91,6 +91,11 @@ function invalidateLive(qc: QueryClient, cid: string) {
     qk.reflectionsAll(cid),
     qk.standardsAll(cid),
     qk.commandFeed(cid),
+    qk.questions(cid),
+    qk.channels(cid),
+    qk.meetingsAll(cid),
+    qk.humanWorkAll(cid),
+    qk.outsourceAll(cid),
   ]) {
     void qc.invalidateQueries({ queryKey: key })
   }

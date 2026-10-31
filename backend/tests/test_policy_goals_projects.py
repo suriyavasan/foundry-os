@@ -16,7 +16,7 @@ def test_company_creation_also_creates_default_policy(app, client, company):
     assert p["max_concurrent_runs"] == 2 and p["max_delegation_depth"] == 3
     assert p["max_tasks_per_planning_cycle"] == 10 and p["max_attempts_per_task"] == 3
     assert p["max_revisions"] == 2 and p["max_run_seconds"] == 900 and p["max_headcount"] == 12
-    assert p["heartbeat_interval_seconds"] == 900
+    assert p["heartbeat_interval_seconds"] == 1800  # what the built-in heartbeat really uses
     assert p["default_run_reservation_micros"] == 50_000
     assert p["daily_budget_micros"] is None and p["monthly_budget_micros"] is None
     assert p["allowed_model_providers"] == []

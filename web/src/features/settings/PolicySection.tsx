@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ApiError, errorMessage, useMemberDirectory, usePolicy, useUpdatePolicy } from '@/api'
 import type { CompanyPolicy } from '@/api/types'
+import { IntensitySetting } from '@/features/intensity/IntensitySetting'
 import { StringListEditor } from '@/components/forms/StringListEditor'
 import { Boundary, Button, Card, CardBody, CardHeader, Field, FormError, Input, SectionLabel, Select, useToast } from '@/components/ui'
 import { formatUsd } from '@/lib/money'
@@ -12,12 +13,16 @@ import {
   M15_NUMBER_FIELDS,
   M16_BOOL_FIELDS,
   M16_NUMBER_FIELDS,
+  M18_BOOL_FIELDS,
+  M21_NUMBER_FIELDS,
   MODEL_ROUTING_OPTIONS,
   ROLE_FAMILIES,
   diffPolicy,
   hasM12Fields,
   hasM15Fields,
   hasM16Fields,
+  hasM18Fields,
+  hasM21Fields,
   hasM6Fields,
   policyToForm,
   validatePolicyForm,
@@ -34,6 +39,7 @@ export function PolicySection({ companyId }: { companyId: string }) {
   return (
     <Card>
       <CardHeader title="Policy & limits" description="Hard limits the company cannot exceed. Enforced by the backend. Agents can never change them." />
+      <IntensitySetting companyId={companyId} />
       <Boundary query={q} compact={false} rows={5} unavailableTitle="Policy is not built yet" unavailableText="Autonomy mode, budgets and limits come with the work engine. Until then nothing is enforced.">
         {(policy) => <PolicyForm key={policy.updated_at ?? JSON.stringify(policy)} companyId={companyId} policy={policy} />}
       </Boundary>
@@ -74,11 +80,21 @@ function PolicyForm({ companyId, policy }: { companyId: string; policy: CompanyP
     setValues((v) => ({ ...v, m16: { ...v.m16, ...p } }))
     setErrors({})
   }
+  const setM18 = (p: Partial<PolicyFormValues['m18']>) => {
+    setValues((v) => ({ ...v, m18: { ...v.m18, ...p } }))
+    setErrors({})
+  }
+  const setM21 = (p: Partial<PolicyFormValues['m21']>) => {
+    setValues((v) => ({ ...v, m21: { ...v.m21, ...p } }))
+    setErrors({})
+  }
   const members = useMemberDirectory(companyId)
   const m6 = values.m6
   const m12 = values.m12
   const m15 = values.m15
   const m16 = values.m16
+  const m18 = values.m18
+  const m21 = values.m21
   const toggleFamily = (family: (typeof ROLE_FAMILIES)[number]['value']) => {
     const cur = m12.cli_role_families ?? []
     setM12({ cli_role_families: cur.includes(family) ? cur.filter((f) => f !== family) : [...cur, family] })
@@ -413,6 +429,59 @@ function PolicyForm({ companyId, policy }: { companyId: string; policy: CompanyP
                   {({ id, invalid, describedBy }) => <Input id={id} type="email" autoComplete="off" value={m16.radar_contact_email} invalid={invalid} aria-describedby={describedBy} onChange={(e) => setM16({ radar_contact_email: e.target.value })} />}
                 </Field>
               )}
+            </div>
+          </section>
+        )}
+
+        {hasM18Fields(m18) && (
+          <section className="space-y-3" aria-label="Approval deadlines and self-check">
+            <SectionLabel>Approval deadlines &amp; self-check</SectionLabel>
+            <p className="text-[12px] text-fg-3">Nothing waits forever. A deadline never approves anything for you. Only you can change these, agents never can.</p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {m18.approval_timeout_hours !== undefined && (
+                <Field label="Your approvals expire after (hours)" error={errors.approval_timeout_hours} hint="Unanswered approvals are declined after this time, never approved. The employee is told and finishes another way. 1 hour to 7 days (168).">
+                  {({ id, invalid, describedBy }) => <Input id={id} inputMode="decimal" value={m18.approval_timeout_hours} invalid={invalid} aria-describedby={describedBy} onChange={(e) => setM18({ approval_timeout_hours: e.target.value })} />}
+                </Field>
+              )}
+              {m18.agent_approval_timeout_minutes !== undefined && (
+                <Field label="Co-founder approvals go to you after (minutes)" error={errors.agent_approval_timeout_minutes} hint="If the AI Co-founder has not decided by then, the approval is sent to you. 5 minutes to 24 hours (1440).">
+                  {({ id, invalid, describedBy }) => <Input id={id} inputMode="decimal" value={m18.agent_approval_timeout_minutes} invalid={invalid} aria-describedby={describedBy} onChange={(e) => setM18({ agent_approval_timeout_minutes: e.target.value })} />}
+                </Field>
+              )}
+            </div>
+            <div className="grid gap-1.5 sm:grid-cols-2">
+              {M18_BOOL_FIELDS.filter((f) => m18[f.key] !== undefined).map((f) => (
+                <label key={f.key} className="flex cursor-pointer items-start gap-2 rounded-md border border-line bg-raised px-2.5 py-2 text-[13px] hover:bg-hover">
+                  <input type="checkbox" className="mt-0.5 size-3.5 accent-(--accent)" checked={m18[f.key] ?? false} onChange={(e) => setM18({ [f.key]: e.target.checked })} />
+                  <span>
+                    <span className="block text-fg">{f.label}</span>
+                    <span className="block text-[12px] text-fg-3">{f.hint}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {hasM21Fields(m21) && (
+          <section className="space-y-3" aria-label="Agent meetings">
+            <SectionLabel>Agent meetings</SectionLabel>
+            <p className="text-[12px] text-fg-3">Employees may call a short meeting with up to three colleagues instead of going through the AI Co-founder. You can read every one. Only you can change these limits.</p>
+            {m21.meetings_enabled !== undefined && (
+              <label className="flex cursor-pointer items-start gap-2 rounded-md border border-line bg-raised px-2.5 py-2 text-[13px] hover:bg-hover">
+                <input type="checkbox" className="mt-0.5 size-3.5 accent-(--accent)" checked={m21.meetings_enabled} onChange={(e) => setM21({ meetings_enabled: e.target.checked })} />
+                <span>
+                  <span className="block text-fg">Employees may hold meetings</span>
+                  <span className="block text-[12px] text-fg-3">Off: employees cannot schedule new meetings.</span>
+                </span>
+              </label>
+            )}
+            <div className="grid gap-4 sm:grid-cols-2">
+              {M21_NUMBER_FIELDS.filter((f) => m21[f.key] !== undefined).map((f) => (
+                <Field key={f.key} label={f.label} error={errors[f.key]} hint={f.hint}>
+                  {({ id, invalid, describedBy }) => <Input id={id} inputMode="numeric" value={m21[f.key]} invalid={invalid} aria-describedby={describedBy} onChange={(e) => setM21({ [f.key]: e.target.value })} />}
+                </Field>
+              ))}
             </div>
           </section>
         )}

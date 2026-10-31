@@ -143,10 +143,12 @@ def test_an_empty_stack_is_not_ready_and_lists_the_options(client, company):
     assert options["ollama"]["available"] is False  # not detected
     assert options["claude_plan"]["group"] == "plan" and options["claude_plan"]["warning"]
     assert options["claude_plan"]["needs_install"] is True  # no claude on this PATH
+    # no npm in the test environment: the default is the vendor's script, run only after a confirm
     assert (
-        options["claude_plan"]["install"]["command"] == "npm install -g @anthropic-ai/claude-code"
+        options["claude_plan"]["install"]["command"]
+        == "Download https://claude.ai/install.sh and run it with bash"
     )
-    assert options["cursor_plan"]["install"]["available"] is False  # vendor shell installer
+    assert options["cursor_plan"]["install"]["command"].startswith("Download https://cursor.com/")
 
 
 def test_the_catalog_reflects_installs_and_existing_plan_connections(client, company, bin_dir):

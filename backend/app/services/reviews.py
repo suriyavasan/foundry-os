@@ -298,6 +298,14 @@ def ensure_failure_analysis(
         "2. Split the work into smaller tasks (company_create_task); the failed task stays failed.",
         "3. Give up: record the decision (company_record_decision); the failed task stays failed.",
     ]
+    if task.replans < 1:  # M18: one retry with a new approach per task; then only a person decides
+        lines.insert(
+            -2,
+            "1b. Try again with a NEW approach (once per task): company_update_task "
+            f"action=retry task_id={task.id} new_instructions='<what to do differently, at "
+            "most 2000 characters>'. The attempts start over and the instructions are added "
+            "to the task.",
+        )
     data = TaskCreate(
         title=f"Failure analysis: {task.title}"[:300],
         description="\n".join(lines),

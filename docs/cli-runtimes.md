@@ -173,7 +173,7 @@ Cost and usage: the documented `result` event carries only timing, `is_error`, t
 `unknown`, never `estimated`). The `apiKeySource` field of the `system` init event is ignored.
 
 **Install is manual.** Cursor's installer is `curl https://cursor.com/install -fsS | bash` (macOS/Linux/WSL; `irm 'https://cursor.com/install?win32=true' | iex` on Windows PowerShell). It is not an
-npm package and Company OS never runs a `curl | bash` script: `POST /api/cli-runtimes/cursor/install` answers 409, `install.manual` and a status warning carry the command.
+npm package; Foundry installs it with the vendor-script method (see "Install").
 
 **Known gaps (the documentation does not say, so nothing depends on it):**
 - How `--force` interacts with deny rules is described only as "unless they are explicitly denied" (parameters page); the permissions page does not detail it. The adapter relies on that sentence plus `--sandbox enabled`; it is the
@@ -187,13 +187,39 @@ npm package and Company OS never runs a `curl | bash` script: `POST /api/cli-run
 
 ## Install
 
-`npm install -g @anthropic-ai/claude-code`, `npm install -g @openai/codex`, `npm install -g opencode-ai` (package names exist on the npm registry: `npm view` 2026-10-24). `POST /api/cli-runtimes/{id}/install`
-runs exactly that command (no shell, no sudo; a global prefix that needs root fails with npm's own message and the log says so), only with `confirm: true`. **The install endpoint was exercised with a fake npm only; no real
-install was run.** Interactive logins are the person's step in a terminal.
+`POST /api/cli-runtimes/{id}/install {confirm: true, method?: "npm"|"script"}` (installation owner only) installs a CLI with one of its **install methods**, listed in order in `CliSpec.install_methods`
+(`backend/app/runtimes/cli/catalog.py`) and in the status as `install.methods[]`. The default is `npm` when npm is on this machine and the CLI has a package, else the vendor's script.
 
-**Antigravity CLI is not an npm package.** Google's installer is `curl -fsSL https://antigravity.google/cli/install.sh | bash` (macOS/Linux; PowerShell and CMD variants on Windows; it places `agy` in
-`~/.local/bin`; docs/getting-started). Foundry AI OS never runs a `curl | bash` installer: `POST /api/cli-runtimes/antigravity/install` answers 409 with that command, `install.available` is `false`,
-`install.command` is `null`, and `install.manual` plus a status warning carry the command for the person to run in their own terminal. **Cursor CLI is handled the same way** (`curl https://cursor.com/install -fsS | bash`).
+| CLI | npm package | Vendor installer script (interpreter) | Installs `bin` into |
+|---|---|---|---|
+| Claude Code | `@anthropic-ai/claude-code` | `https://claude.ai/install.sh` (`bash`) | `~/.local/bin/claude` (symlink into `~/.local/share/claude/versions/`) |
+| Codex | `@openai/codex` | `https://chatgpt.com/codex/install.sh` (`sh`) | **not documented** (see below) |
+| OpenCode | `opencode-ai` | `https://opencode.ai/install` (`bash`) | **not documented**; `~/.opencode/bin` and `~/.local/bin` are searched |
+| Cursor CLI | none | `https://cursor.com/install` (`bash`) | `~/.local/bin/agent` (inferred: the docs tell you to put `~/.local/bin` on PATH) |
+| Antigravity CLI | none | `https://antigravity.google/cli/install.sh` (`bash`) | `~/.local/bin/agy` (stated) |
+
+Sources, all fetched 2026-10-28: Claude Code, `code.claude.com/docs/en/setup` (native install `curl -fsSL https://claude.ai/install.sh | bash`; launcher at `~/.local/bin/claude`; npm `npm install -g @anthropic-ai/claude-code`);
+Cursor, `cursor.com/docs/cli/installation` (`curl https://cursor.com/install -fsS | bash`; `agent --version`); OpenCode, `opencode.ai/docs` (`curl -fsSL https://opencode.ai/install | bash`; `npm install -g opencode-ai`);
+Antigravity, `antigravity.google/docs/getting-started?tab=cli` (`curl -fsSL https://antigravity.google/cli/install.sh | bash`, "by default, the `agy` binary is installed at `~/.local/bin/agy`");
+Codex, `learn.chatgpt.com/docs/codex/cli` (the former `developers.openai.com/codex/cli` redirects there; "standalone installer for macOS and Linux": `curl -fsSL https://chatgpt.com/codex/install.sh | sh`; the page lists npm and
+Homebrew too but showed no commands). The Codex and OpenCode docs pages do **not** state the directory their scripts install into; Foundry searches the user-level dirs already in `known_dirs` (`~/.local/bin`, `~/.npm-global/bin`,
+`~/.opencode/bin`) and, if a binary lands elsewhere, the status stays "not installed" until it is on `PATH` (the person can add it to `COMPANYOS_CLI_SEARCH_PATHS`). Windows installers are not offered.
+
+**npm method.** Runs `npm install -g <package>` (argv, no shell, no sudo; a global prefix that needs root fails with npm's own message and the log says so).
+
+**Script method.** Foundry downloads the script itself (never `curl | bash`): HTTPS only, the URL **and every redirect** must stay on the allowlisted host (`claude.ai`, `chatgpt.com`, `opencode.ai`, `cursor.com`,
+`antigravity.google`), at most 3 redirects, 1 MB cap, 20 s timeout. It is written to a private temp directory (0700, file 0600), its **SHA-256 is computed and recorded**, and it is run as `[bash|sh, <file>]` (exactly two
+argv entries: no `-c`, no pipe, no sudo/doas/su; `assert_safe_install_argv`). Same supervision as npm: minimal environment (`base_env()` + `HOME` + `PATH` incl. the known dirs), 900 s watchdog, redacted log, one install per CLI at a time.
+The temp directory is deleted when the run ends. The SHA-256 is shown in the UI and written to the audit log, but is **not compared with a vendor-published hash**: none of these vendors documents one for the script, so the hash
+is a record (so the owner can see afterwards what ran), not a verification.
+
+Audit: `cli_runtime.install_started` and `cli_runtime.install_finished` carry `method`, `url`, `sha256` and (finish) `status` and `exit_code`, never the output. After a run the version cache is cleared, so the status flips to installed
+without a restart. `409` cases: already installed, an install running, no method can run here (npm missing and `bash`/`sh` missing; the message names each reason and the manual command), the download failed or was refused.
+`422`: no `confirm`, or a `method` the CLI does not have.
+
+**Verified vs not.** Exercised: the endpoint, method selection, download rules (host allowlist, cross-host and http redirects, size cap, loops), the argv, the temp-file cleanup, the audit rows, the redacted log and binary discovery
+after install, all with a **fake HTTP transport and tiny fake shell installers** (`tests/test_cli_install_methods.py`; the test app's default installer transport answers 404, so no test can ever fetch a vendor script). **No real
+vendor installer was downloaded or run, and no real `npm install` was run**; the URLs above are copied from the vendors' documentation, not fetched. Interactive logins are the person's step (in a terminal or Settings > AI).
 
 ## Isolation model
 

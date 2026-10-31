@@ -13,7 +13,7 @@ const co = (cid: string) => `/companies/${cid}`
 export function useHumanTaskAction(cid: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (v: { task: Task; action: 'complete'; comment: string; file: File | null } | { task: Task; action: 'block'; comment: string }) => {
+    mutationFn: async (v: { task: Pick<Task, 'id'>; action: 'complete'; comment: string; file: File | null } | { task: Pick<Task, 'id'>; action: 'block'; comment: string }) => {
       if (v.action === 'block') return apiFetch<Task>(`${co(cid)}/tasks/${v.task.id}/block`, { method: 'POST', body: { reason: v.comment } })
       const artifact_ids: string[] = []
       if (v.file) {

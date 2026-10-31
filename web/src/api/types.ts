@@ -356,7 +356,7 @@ export interface AgentLive {
 
 export type AutonomyMode = 'autonomous' | 'supervised'
 export type ApprovalKind =
-  'external_purchase' | 'budget_increase' | 'external_communication' | 'production_deploy' | 'sensitive_action' | 'hire' | 'other'
+  'external_purchase' | 'budget_increase' | 'external_communication' | 'production_deploy' | 'sensitive_action' | 'hire' | 'outsource_job' | 'other'
 
 export interface CompanyPolicy {
   company_id?: Uuid
@@ -401,6 +401,23 @@ export interface CompanyPolicy {
   initiative_enabled?: boolean
   initiative_interval_seconds?: number
   project_auto_complete?: boolean
+  /**
+   * M18 (low-friction autonomy) and M21 (agent meetings). Optional like the milestones before: an older backend does not
+   * send them and the Settings form hides them. Owner/admin only on the server.
+   * Timeouts are seconds: a human approval 1 h - 7 days, a Co-founder approval 5 min - 24 h.
+   */
+  approval_timeout_seconds?: number
+  agent_approval_timeout_seconds?: number
+  self_check_enabled?: boolean
+  work_graph_enabled?: boolean
+  meetings_enabled?: boolean
+  max_meetings_per_agent_per_day?: number
+  max_meetings_per_company_per_day?: number
+  /** M22: the most one outsourced (freelance) job may be budgeted at, in micro-USD ($200 default). Owner/admin only on the server. */
+  outsource_max_job_micros?: number
+  /** M23: the company intensity level (1-5) and whether a pace field was edited by hand since. Read-only here: PUT /intensity. */
+  intensity?: number
+  intensity_custom?: boolean
 }
 
 export type ModelRouting = 'free_first' | 'pinned' | 'quality_first'
@@ -467,6 +484,8 @@ export type UpdateProjectRequest = Partial<CreateProjectRequest>
 /* ---------------------------------- tasks ---------------------------------- */
 
 export type TaskKind = 'work' | 'review' | 'planning' | 'hiring' | 'routine'
+/** What a task reads as: M21 adds `meeting` (one speaking turn of an agent meeting; nobody creates one, and task lists hide them). */
+export type TaskKindOut = TaskKind | 'meeting'
 export type TaskStatus =
   'backlog' | 'ready' | 'in_progress' | 'in_review' | 'revision_requested' | 'blocked' | 'done' | 'failed' | 'cancelled'
 
@@ -486,7 +505,7 @@ export interface Task {
   title: string
   description: string | null
   acceptance_criteria: string | null
-  kind: TaskKind
+  kind: TaskKindOut
   status: TaskStatus
   priority: Priority
   assignee_agent_id: Uuid | null
@@ -515,6 +534,11 @@ export interface Task {
   depends_on?: Uuid[]
   /** M7 (assumed): `agent:<id>` | `member:<id>`. A human assignee has `assignee_agent_id: null`. */
   assignee_ref?: string | null
+  /** M22: something only a person can do (never dispatched to a runtime). Written by an AI employee: plain text. */
+  requires_human?: boolean
+  human_category?: string | null
+  human_instructions?: string | null
+  requested_by_agent_id?: Uuid | null
 }
 
 export interface CreateTaskRequest {
@@ -680,6 +704,11 @@ export interface Approval {
   dlp_findings?: DlpFinding[] | null
   /** M7 (assumed): `member:<id>` when the approval is scoped to one human; null/absent = any owner/admin. */
   approver_ref?: string | null
+  /** M18: when a pending approval times out (a human one is declined, a Co-founder one goes to a human). Absent before M18. */
+  expires_at?: Timestamp | null
+  /** What a decision acts on (set by the server): `outsource_job` (M22) links to its freelance job via `subject_id`. */
+  subject_type?: string | null
+  subject_id?: Uuid | null
 }
 
 export interface ApprovalFilters {
@@ -2173,6 +2202,29 @@ export interface CliLastTest {
   tested_at: Timestamp | null
 }
 
+export type CliInstallMethodKind = 'npm' | 'script'
+
+/** One way to install a CLI: `command` is exact and human-readable ("npm install -g …" / "Download <url> and run it with bash"). */
+export interface CliInstallMethodInfo {
+  method: CliInstallMethodKind
+  command: string
+  url: string | null
+  available: boolean
+  reason: string | null
+}
+
+export interface CliInstallInfo {
+  /** Some method can run here and the CLI is not installed yet. */
+  available: boolean
+  methods?: CliInstallMethodInfo[]
+  default_method?: CliInstallMethodKind | null
+  /** The default method's command (the first method's when none can run). */
+  command?: string | null
+  requires: string[]
+  /** What the person types in their own terminal; shown when no method can run here. */
+  manual?: string | null
+}
+
 /** `GET /api/cli-runtimes` (installation level). The API key itself is never returned. */
 export interface CliRuntimeStatus {
   id: CliRuntimeId | (string & {})
@@ -2198,12 +2250,7 @@ export interface CliRuntimeStatus {
     email: string | null
   } | null
   /** `manual`: a command the person runs themselves when there is no automatic install (Antigravity, Cursor). */
-  install: {
-    available: boolean
-    command?: string | null
-    requires: string[]
-    manual?: string | null
-  }
+  install: CliInstallInfo
   login_hint: string | null
   warnings: string[]
 }
@@ -2221,6 +2268,9 @@ export interface CliInstallLog {
   state: 'idle' | 'running' | 'succeeded' | 'failed'
   lines: string[]
   exit_code: number | null
+  method?: CliInstallMethodKind | null
+  /** Script installs: SHA-256 of the downloaded installer. */
+  sha256?: string | null
 }
 
 /* ---------------------------------- reflections --------------------------------- */
@@ -2400,3 +2450,47 @@ export type RepoSyncState = ProjectRepository['sync_state']
 export type PullStage = RepoPullRequestSummary['stage']
 export type RepoItemKind = RepoItem['kind']
 export type RepoItemStatus = RepoItem['status']
+
+/* ------------------------- M19 chat channels (generated) ------------------------ */
+// GET /companies/{cid}/channels -> ChannelList; POST /channels -> ChannelOut (WhatsApp: webhook_url + verify_token ONCE);
+// PATCH/DELETE /channels/{id}; POST /channels/{id}/link-code -> LinkCodeOut; PATCH/DELETE /channel-links/{id}.
+export type ChatChannel = Schemas['ChannelOut']
+export type ChatChannelList = Schemas['ChannelList']
+export type ChatChannelCreate = Schemas['ChannelCreate']
+export type ChatChannelPatch = Schemas['ChannelPatch']
+export type ChatChannelKind = ChatChannel['kind']
+export type ChatChannelStatus = ChatChannel['status']
+export type ChatKindInfo = Schemas['AvailableKind']
+export type ChatLink = Schemas['LinkOut']
+export type ChatLinkPatch = Schemas['LinkPatch']
+export type ChatNotifyPrefs = Schemas['NotifyPrefs']
+export type ChatLinkCode = Schemas['LinkCodeOut']
+export type WhatsAppCredentials = Schemas['WhatsAppCredentials']
+
+/* ------------------------- M21 agent meetings (generated) ----------------------- */
+// GET /companies/{cid}/meetings[?status=&agent_id=] -> Page<Meeting>; GET /meetings/{id} -> MeetingDetail;
+// POST /meetings/{id}/cancel {reason?} (owner/admin) -> MeetingDetail. SSE `meeting.updated`.
+// Everything said in a meeting is written by AI employees: show it as plain text / markdown without raw HTML.
+export type Meeting = Schemas['MeetingOut']
+export type MeetingDetail = Schemas['MeetingDetail']
+export type MeetingParticipant = Schemas['MeetingParticipantOut']
+export type MeetingMessage = Schemas['MeetingMessageOut']
+export type MeetingStatus = Meeting['status']
+
+/* ------------------- M22 human work and outsourcing (generated) ------------------ */
+// GET /companies/{cid}/human-work[?status=open|done&mine=] -> Page<HumanWorkItem>; POST .../{id}/claim; POST .../{id}/decline {reason}.
+// GET /companies/{cid}/outsource-jobs[?status=] -> Page<OutsourceJob>; POST .../{id}/posted|hired|delivered|paid|close|cancel|raise-budget.
+// Titles, instructions and briefs are written by AI employees: show them as plain text. Foundry never posts, hires or pays on a
+// marketplace: a person does, and records it here.
+export type HumanWorkItem = Schemas['HumanWorkItem']
+export type HumanCategory = NonNullable<HumanWorkItem['category']>
+export type OutsourceJob = Schemas['OutsourceJobOut']
+export type OutsourceStatus = OutsourceJob['status']
+export type Marketplace = OutsourceJob['marketplace']
+
+/* ----------------------- M23 company intensity (generated) ---------------------- */
+// GET /companies/{cid}/intensity -> Intensity; PUT {level, confirm?} (owner/admin) -> Intensity.
+// 409 `intensity_confirm_required`: levels 4-5 on a plan-only AI stack need `confirm: true`.
+// `preset` = what the level writes into the policy; `effective` = what the policy holds now (they differ when custom).
+export type Intensity = Schemas['Intensity']
+export type IntensityUpdate = Schemas['IntensityUpdate']

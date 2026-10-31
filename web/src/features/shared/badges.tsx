@@ -17,6 +17,7 @@ import {
   TASK_STATUS_LABEL,
   TASK_STATUS_TONE,
 } from '@/lib/taskStatus'
+import { EXPIRED_LABEL } from '@/lib/approvalExpiry'
 import { titleCase } from '@/lib/format'
 
 export function TaskStatusBadge({ status }: { status: TaskStatus }) {
@@ -51,7 +52,7 @@ const APPROVAL_TONE: Record<ApprovalStatus, Tone> = {
   expired: 'neutral',
 }
 export function ApprovalStatusBadge({ status }: { status: ApprovalStatus }) {
-  return <Badge tone={APPROVAL_TONE[status] ?? 'neutral'}>{titleCase(status)}</Badge>
+  return <Badge tone={APPROVAL_TONE[status] ?? 'neutral'}>{status === 'expired' ? EXPIRED_LABEL : titleCase(status)}</Badge>
 }
 
 const ARTIFACT_TONE: Record<ArtifactStatus, Tone> = { draft: 'neutral', submitted: 'info', accepted: 'success', rejected: 'danger' }

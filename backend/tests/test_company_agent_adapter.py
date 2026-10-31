@@ -470,6 +470,29 @@ def test_revision_feedback_is_part_of_the_task_description(env):
     assert "orig" in desc and "REVISION REQUESTED" in desc and "Add sources" in desc
 
 
+def test_the_previous_attempt_is_part_of_the_task_description(env):
+    """M18 A5: a retry's context carries how the last attempt ended (and the Founder's answers)."""
+    request = env.request(
+        "t scenario:inspect",
+        task=TaskSpec(
+            "task-1",
+            "t scenario:inspect",
+            "orig",
+            None,
+            "work",
+            "normal",
+            [],
+            None,
+            carry_over="The previous attempt (number 1) ended with a permanent failure (failed).",
+        ),
+    )
+    sink = RecordingSink()
+    env.adapter.execute(request, sink, CancelToken())
+    desc = next(e.payload for e in sink.events if e.type == "progress")["task"]["description"]
+    assert desc.startswith("orig") and "BEFORE YOU START" in desc
+    assert "previous attempt (number 1)" in desc
+
+
 def test_hr_gets_the_hiring_tools_and_workers_get_a_lean_set(env):
     hr = _inspect(env)
     assert (
@@ -504,6 +527,9 @@ def test_hr_gets_the_hiring_tools_and_workers_get_a_lean_set(env):
         "company_request_help",
         "company_propose_memory",
         "company_request_purchase",
+        "company_record_decision",  # M18: decide, don't ask
+        "company_ask_founder",
+        "company_request_human_work",  # M22: the one new tool every role gets
         # M16: a research-family employee gets the radar tools (app/radar/access.py)
         "company_radar_digest",
         "company_radar_read",
@@ -512,6 +538,9 @@ def test_hr_gets_the_hiring_tools_and_workers_get_a_lean_set(env):
         "company_radar_keywords",
         "company_radar_add_source",
         "company_radar_ui_search",
+        # M21: every role may call and cancel a meeting
+        "company_schedule_meeting",
+        "company_cancel_meeting",
     ]
     assert seen["toolsets"] == ["company", "file", "web", "search", "skills", "todo"]
     assert "skills_manage" not in seen["toolsets"]

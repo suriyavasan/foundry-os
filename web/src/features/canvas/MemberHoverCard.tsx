@@ -26,7 +26,7 @@ export function MemberHoverCardContent({ member, managerLabel }: { member: Membe
   return (
     <HoverCardContent align="center" side="bottom">
       <div className="flex items-start gap-3">
-        <MemberAvatar name={member.display_name} size="lg" />
+        <MemberAvatar name={member.display_name} seed={member.id} size="lg" />
         <div className="min-w-0 flex-1">
           <div className="truncate text-[14px] font-semibold text-fg">{member.display_name}</div>
           <div className="truncate text-[12px] text-fg-3">{member.title ?? `@${member.username}`}</div>

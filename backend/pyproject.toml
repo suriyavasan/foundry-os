@@ -27,6 +27,8 @@ dependencies = [
     "webauthn>=3.0.1",
     # M16 radar: feed XML is parsed with defusedxml (no entities, no external DTDs).
     "defusedxml>=0.7.1",
+    "discord-py>=2.5,<3",
+    "langgraph>=1.2,<2",
 ]
 
 [dependency-groups]
@@ -84,6 +86,8 @@ ignore = ["B008"]
 "app/runtimes/cli/*" = ["E501"]
 "app/services/command_center.py" = ["E501"]
 "app/services/cli_runtimes.py" = ["E501"]
+# M19 chat channels: user-facing chat texts and platform quirks read better as whole sentences.
+"app/services/channels/*" = ["E501"]
 "app/services/reflections.py" = ["E501"]
 "app/services/standards.py" = ["E501"]
 "app/services/ai_setup.py" = ["E501"]

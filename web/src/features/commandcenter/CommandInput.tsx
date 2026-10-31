@@ -1,8 +1,7 @@
 import clsx from 'clsx'
-import { CornerDownLeft } from 'lucide-react'
+import { ArrowUp } from 'lucide-react'
 import { useEffect, useId, useImperativeHandle, useRef, useState, type Ref } from 'react'
-import { Button, Tooltip } from '@/components/ui'
-import { isMac } from '@/features/canvas/TopBar'
+import { Tooltip } from '@/components/ui'
 import {
   HISTORY_START,
   applySuggestion,
@@ -29,10 +28,14 @@ export interface CommandInputHandle {
   fill: (text: string) => void
 }
 
+/** The composer grows with its text up to this many lines, then scrolls. */
+const MAX_LINES = 6
+const LINE_PX = 20
+
 /**
- * The Command Center input. `/` opens the command list (↑/↓ to move, Tab or Enter to accept); ↑/↓ browse what this browser typed
- * before; ⌘/Ctrl+Enter always sends; Enter sends a one-line command and adds a line to free text. Whatever is sent appears at
- * once in the feed above, so every input visibly gets an output.
+ * The Command Center composer, pinned under the conversation. `/` opens the command list (↑/↓ to move, Tab or Enter to accept);
+ * ↑/↓ browse what this browser typed before; Enter sends and Shift+Enter adds a line (⌘/Ctrl+Enter also sends). Whatever is sent
+ * appears at once in the conversation above, so every input visibly gets an output.
  */
 export function CommandInput({
   companyId,
@@ -58,7 +61,6 @@ export function CommandInput({
   const ref = useRef<HTMLTextAreaElement>(null)
   const listId = useId()
   const hintId = useId()
-  const mod = isMac() ? '⌘' : 'Ctrl'
 
   const suggestions = dismissed ? [] : matchCommands(value)
   const open = suggestions.length > 0
@@ -69,7 +71,7 @@ export function CommandInput({
     const el = ref.current
     if (!el) return
     el.style.height = 'auto'
-    el.style.height = `${Math.min(el.scrollHeight, 132)}px`
+    el.style.height = `${Math.min(el.scrollHeight, MAX_LINES * LINE_PX)}px`
   }, [value])
 
   useImperativeHandle(handle, () => ({
@@ -178,10 +180,7 @@ export function CommandInput({
       <label htmlFor={id} className="sr-only">
         Command or message for the {AI_COFOUNDER_LABEL}
       </label>
-      <div className={clsx('flex items-start gap-2 rounded-md border border-line-strong bg-canvas px-2.5 py-2 transition-colors focus-within:border-accent focus-within:ring-1 focus-within:ring-accent', error && 'border-danger')}>
-        <span aria-hidden className="mt-px font-mono text-[13px] leading-5 font-semibold text-accent-fg select-none">
-          ❯
-        </span>
+      <div className={clsx('flex items-end gap-2 rounded-2xl border border-line-strong bg-canvas py-1.5 pr-1.5 pl-3.5 transition-colors focus-within:border-accent focus-within:ring-1 focus-within:ring-accent', error && 'border-danger')}>
         <textarea
           ref={ref}
           id={id}
@@ -198,14 +197,20 @@ export function CommandInput({
           aria-describedby={hintId}
           aria-keyshortcuts="Meta+Enter Control+Enter"
           aria-invalid={!!error || undefined}
-          spellCheck={false}
-          placeholder={compact ? `Type / for commands, or tell the ${AI_COFOUNDER_LABEL} anything` : `Type / for commands, or write anything for the ${AI_COFOUNDER_LABEL}`}
-          className="block max-h-[132px] min-h-5 w-full resize-none bg-transparent font-mono text-[12.5px] leading-5 text-fg outline-none placeholder:font-sans placeholder:text-fg-3"
+          spellCheck={value.startsWith('/') ? false : undefined}
+          placeholder={compact ? `Message the ${AI_COFOUNDER_LABEL}, or type / for commands` : `Write to the ${AI_COFOUNDER_LABEL}, or type / for commands`}
+          className={clsx('my-[5px] block min-h-5 w-full resize-none bg-transparent leading-5 text-fg outline-none placeholder:text-fg-3', value.startsWith('/') ? 'font-mono text-[12.5px]' : 'text-[13.5px]')}
+          style={{ maxHeight: MAX_LINES * LINE_PX }}
         />
-        <Tooltip content={`Send (${mod} + Enter)`}>
-          <Button type="submit" size="sm" variant="primary" className="-my-0.5 shrink-0" icon={<CornerDownLeft className="size-3.5" />} aria-keyshortcuts="Meta+Enter Control+Enter">
-            Send
-          </Button>
+        <Tooltip content="Send (Enter)">
+          <button
+            type="submit"
+            aria-label="Send"
+            aria-keyshortcuts="Enter Meta+Enter Control+Enter"
+            className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-accent text-fg-on-accent transition-colors hover:bg-accent-hover disabled:opacity-50"
+          >
+            <ArrowUp className="size-4" aria-hidden />
+          </button>
         </Tooltip>
       </div>
 
@@ -234,18 +239,15 @@ export function CommandInput({
         </ul>
       )}
 
-      <p id={hintId} className="mt-1.5 text-[11.5px] text-fg-3">
-        {error ? (
-          <span role="alert" className="text-danger">
-            {error}
-          </span>
-        ) : (
-          <>
-            <kbd className="rounded-sm border border-line-strong px-1">↵</kbd> runs a command · <kbd className="rounded-sm border border-line-strong px-1">{mod} ↵</kbd> sends · <kbd className="rounded-sm border border-line-strong px-1">↑</kbd>
-            <kbd className="rounded-sm border border-line-strong px-1">↓</kbd> history
-          </>
-        )}
-      </p>
+      {error ? (
+        <p id={hintId} role="alert" className="mt-1.5 px-1 text-[11.5px] text-danger">
+          {error}
+        </p>
+      ) : (
+        <p id={hintId} className="mt-1.5 hidden px-1 text-[11px] text-fg-3 sm:block">
+          <kbd className="font-sans">Enter</kbd> to send · <kbd className="font-sans">Shift + Enter</kbd> for a new line · <kbd className="font-sans">/</kbd> for commands
+        </p>
+      )}
     </form>
   )
 }

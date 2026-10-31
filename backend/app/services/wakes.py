@@ -81,6 +81,13 @@ TRIGGER_LABELS = {
     "retry": "retried wake",
     "budget": "budget block",
     "blocked": "blocked task",
+    # M18
+    "approval_pending": "approval waiting for you",
+    "approval_expired": "approval declined by timeout",
+    "founder_answered": "the founder's answer",
+    # M22
+    "human_work": "human work update",
+    "outsourcing": "outsourcing update",
 }
 
 
@@ -392,16 +399,25 @@ def _fingerprint_row(db: Session, company_id: str) -> AutonomyIntervention | Non
     )
 
 
+HEARTBEAT_SKIP_EXPIRY = timedelta(hours=6)  # M18: an unchanged set is looked at again after this
+
+
 def heartbeat_skip_reason(db: Session, company_id: str, now: datetime) -> str | None:
     """Why the heartbeat creates no planning run now: nothing needs attention, or the attention
-    items are exactly those of the last heartbeat (it already looked at them). No commit."""
+    items are exactly those of the last heartbeat (it already looked at them) -- but only for
+    ``HEARTBEAT_SKIP_EXPIRY`` (6 h): whatever still needs attention is looked at at least that
+    often (M18). No commit."""
     items = attention_items(db, company_id, now)
     row = _fingerprint_row(db, company_id)
     if not items:
         if row is not None:  # a recurring identical set must fire again
             db.delete(row)
         return "nothing to review"
-    if row is not None and (row.data or {}).get("fingerprint") == attention_fingerprint(items):
+    if (
+        row is not None
+        and (row.data or {}).get("fingerprint") == attention_fingerprint(items)
+        and row.last_at > now - HEARTBEAT_SKIP_EXPIRY
+    ):
         return "nothing new since the last heartbeat"
     return None
 

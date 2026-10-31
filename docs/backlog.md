@@ -38,7 +38,7 @@ Size: S (≤ a day), M (a few days), L (milestone-sized, needs a spec).
 
 ## B3. HR: human-work panel and outsourcing marketplace
 
-- **Status:** idea · **Size:** L (needs a spec) · **Area:** HR agent (Harper), new HR panel
+- **Status:** done (2026-10-31), see `docs/specs/m22-human-work-and-outsourcing.md` (M22) · **Size:** L · **Area:** HR agent (Harper), People ops panel
 - **Ask:** HR already hires AI agents. Extend HR to cover work an agent cannot do:
   1. **Human-required work list** — a panel listing tasks that only a human can do, or
      that need human intervention (sign a form, make a call, physical errand, KYC, etc.).
@@ -50,8 +50,9 @@ Size: S (≤ a day), M (a few days), L (milestone-sized, needs a spec).
   (rule 9); posting a job publicly is outward-facing and must be approved. No claims the
   marketplace integration works until exercised against the real site (rule 8) — likely
   starts as "draft brief + manual post" before any API/browser automation.
-- **Open questions:** Which marketplaces first? Does a freelancer appear on the org chart
-  (as a contractor node) or only in the HR panel?
+- **Open questions (answered in M22):** Fiverr and Upwork first (plus "Other"); freelancers appear in the HR/People ops panel and in
+  the org List view under "Contractors", not on the map. Built as "draft brief, a person approves, posts and records": no
+  marketplace automation, no payment by Foundry.
 
 ## B4. Horizontal organization chart
 
@@ -69,7 +70,7 @@ Size: S (≤ a day), M (a few days), L (milestone-sized, needs a spec).
 
 ## B5. Company "intensity" slider (spend vs. continuity)
 
-- **Status:** idea · **Size:** M · **Area:** top-right of the shell, policy/scheduler
+- **Status:** done (2026-10-31), see `docs/specs/m23-intensity.md` (M23); verified with tests only · **Size:** M · **Area:** top-right of the shell, policy/scheduler
 - **Ask:** A slider in the top-right that sets how hard all agents work.
   - **Low:** conserve — fewer autonomous runs, cheaper models, longer idle gaps, lower spend.
   - **High:** continuous — agents keep picking up work non-stop, spend more.
@@ -183,3 +184,13 @@ Size: S (≤ a day), M (a few days), L (milestone-sized, needs a spec).
   edits any time, in onboarding and Settings. Legal ways only: Claude via the official Claude Code sign-in or the
   Anthropic API; one plan sign-in per CLI per company.
 - Subsumes B6 (multiple keys + routing) and B9's engine switch.
+
+## B11. Install every coding CLI from the UI
+
+- **Status:** done (2026-10-28), not yet released; real installers never run during development · **Size:** M
+- **Ask:** install any supported CLI (Claude Code, Codex, OpenCode, Cursor, Antigravity) from the UI.
+- **Done:** each CLI has install methods: npm and/or the vendor's official installer script (URLs from the vendors'
+  docs, see `docs/cli-runtimes.md` "Install"). Scripts are downloaded by Foundry over HTTPS from one allowlisted
+  host, SHA-256 recorded, run as `[bash|sh, file]` (no pipe, no sudo) after the owner confirms the exact command.
+  Settings > AI has "Coding tools on this computer". Codex and OpenCode don't document where their scripts put the
+  binary; if it lands outside the searched dirs the tool shows "not installed" until it is on PATH.

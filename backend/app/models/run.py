@@ -70,6 +70,11 @@ class TaskRun(TimestampMixin, Base):
     # M12: where the run's files lived and what became of them:
     # {kind, base, commit, merged, conflict}.
     workspace_ref: Mapped[dict | None] = mapped_column(JSON)
+    # M18 Part B: set when a work-graph run orchestrates this run (LangGraph thread "task:<id>").
+    # In such a run ``company_complete_task`` only *proposes* a result (stored here, no secrets);
+    # the graph's finish node completes the task.
+    graph_thread_id: Mapped[str | None] = mapped_column(String(255))
+    proposed_result: Mapped[dict | None] = mapped_column(JSON)
 
 
 class RunEvent(Base):

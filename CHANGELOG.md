@@ -8,6 +8,47 @@ automatically with the next patch version (see `docs/install.md`, "Cut a release
 
 ## [Unreleased]
 
+### Added
+
+- **People for the things AI cannot do, and freelancers through HR (M22).** When an AI employee needs a signature, a phone
+  call, an identity check or an errand, it now asks a person: the request is a task for one colleague or the shared pool
+  (anyone can click "I'll do it"), it shows up in the chat and in People ops, and the employee's own task waits until it is
+  done and then continues with the comment and files you gave. If you decline, it is told why and finds another way.
+  HR can also draft a freelance job for Fiverr or Upwork; you approve it (always you, whatever the policy), post it on the
+  marketplace yourself and record who you hired, the delivery and what you paid. Foundry never posts, messages, hires
+  or pays on a marketplace, and a payment you record is a verified expense. Freelancers appear under "Contractors" in the
+  organization list.
+- **One intensity control for the whole company (M23).** A five-step control in the top bar (and above the policy
+  fields in Settings) sets how hard the company works: from *Conserve* (check-ins every 2 h, one run at a time, no
+  initiative or meetings) to *Continuous* (every 5 min, four at once, new work every hour). It changes pace only,
+  never a budget, and every change is audited. A hand-edited pace setting shows as *Custom*. On a Claude or Cursor
+  plan the top two levels ask you to confirm first, and a new plan-only company starts at *Light*.
+- **Far fewer stops for the founder (M18).** Agents decide reversible choices themselves and record them; they can
+  ask you a question, but always with the default they will use, so work keeps going. Every wait has a deadline:
+  an approval waiting on the AI Co-founder goes to you after 30 minutes, and one waiting on you is *declined*
+  after 24 hours (a timeout never approves or spends anything). Blocked work escalates faster, retries remember
+  why the last attempt failed, and a failed task gets one automatic "new approach".
+- **Durable task runs with LangGraph (M18).** Every task runs as a saved graph (prepare, work, self-check,
+  finish). The agent checks its own result against the acceptance criteria and revises up to twice; simple
+  tasks that pass go straight to done. Waiting for your answer or an approval frees the slot and resumes later,
+  and a crashed run continues from its last step. Claude Code keeps its session within a run.
+- **Agents hold meetings (M21).** Any agent can call one to three colleagues to a short turn-based meeting; the
+  decisions are recorded and only the action items their owners accepted become tasks. You can read every
+  meeting, and the org map draws a line between agents in a meeting.
+- **A chat-first home (M20).** The Command Center is now a chat at the top of the canvas, with agents' questions
+  inline and one-tap answers. The org chart is a compact map of colourful faces and lines, or a list.
+- **Talk to your company from Telegram, Discord and WhatsApp (M19).** Connect a bot (Telegram from @BotFather,
+  a Discord bot, or the official WhatsApp Business Cloud API), link your account with a one-time code, and send
+  instructions that go to the AI Co-founder like the web Command Center; its answers, your agents' questions (with
+  one-tap options), approvals (Approve / Decline) and critical alerts come back to the chat. Only official APIs are
+  used. Unknown senders are refused, buttons are re-checked on the server, secrets are write-only, and WhatsApp
+  respects Meta's 24-hour window. Set it up in onboarding ("Chat apps", skippable) or Settings.
+- **Install every coding tool from the UI.** Settings > AI has a "Coding tools on this computer" section listing
+  Claude Code, Codex, OpenCode, Cursor and Antigravity with their installed state and version, and an Install
+  button for the installation owner. Each tool can be installed with npm or with the vendor's official installer
+  script (Foundry downloads it over HTTPS from the vendor's own host, records its SHA-256, and runs it without a
+  pipe or sudo, only after you confirm the exact command).
+
 ## [0.2.0] - 2026-10-28
 
 ### Added

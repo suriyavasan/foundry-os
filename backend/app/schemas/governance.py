@@ -70,6 +70,7 @@ class Approval(ApiModel):
     approver_ref: str | None = None  # M7: `member:<id>` when scoped to one human
     outbound: ApprovalOutbound | None = None
     dlp_findings: list[DlpFinding] | None = None
+    expires_at: Timestamp | None = None  # M18: when a pending approval times out
     created_at: Timestamp
     updated_at: Timestamp
 

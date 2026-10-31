@@ -556,6 +556,9 @@ def _add_agent_reply(db: Session, rc: AgentRunContext, note: FounderNote, body: 
         data={"reply_id": reply.id},
     )
     _emit(db, note, "note.replied", reply_id=reply.id, author_type="agent", agent_id=rc.agent.id)
+    from app.services.channels import outbox  # M19: a note written in a chat is answered there
+
+    outbox.on_note_reply(db, note.id, note.company_id, reply.id)
     if note.author_user_id:  # M7: the person who wrote the note hears the AI Co-founder's answer
         notifications.notify_user(
             db,

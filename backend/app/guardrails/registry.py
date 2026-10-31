@@ -96,6 +96,15 @@ _API_ACTIONS = [
     _a("peer_review.decide", T.INTERNAL_WRITE, "Decide a peer review assigned to you"),
     _a("escalation.create", T.INTERNAL_WRITE, "Escalate to the AI Co-founder"),
     _a("help.request", T.INTERNAL_WRITE, "Ask your lead for help"),
+    _a("question.ask", T.INTERNAL_WRITE, "Ask the Founder a question (with a default)"),
+    # M22: a request for a person (a task for a member or the human pool) and, HR only, the draft
+    # of a freelance job. Neither commits money nor contacts anyone: an outsourcing approval is
+    # always decided by a person, and Foundry never posts on a marketplace itself.
+    _a("human_work.request", T.INTERNAL_WRITE, "Ask a person to do something only a person can do"),
+    _a("outsource.draft", T.INTERNAL_WRITE, "Draft a freelance job (HR; a person must approve it)"),
+    _a("meeting.schedule", T.INTERNAL_WRITE, "Call a meeting with 1-3 colleagues"),
+    _a("meeting.say", T.INTERNAL_WRITE, "Speak in your own meeting turn"),
+    _a("meeting.cancel", T.INTERNAL_WRITE, "Cancel a meeting you organize"),
     _a("note.triage", T.INTERNAL_WRITE, "Triage a Founder's note"),
     _a("note.reply", T.INTERNAL_WRITE, "Reply to a Founder's note"),
     _a("memory.propose", T.INTERNAL_WRITE, "Propose a memory entry"),
@@ -521,6 +530,12 @@ _ROUTES = [
     RouteSpec("POST", "/hiring-requests", "hire.request"),
     RouteSpec("POST", "/escalations", "escalation.create"),
     RouteSpec("POST", "/help-requests", "help.request"),
+    RouteSpec("POST", "/questions", "question.ask"),
+    RouteSpec("POST", "/human-work", "human_work.request"),
+    RouteSpec("POST", "/outsource-jobs", "outsource.draft"),
+    RouteSpec("POST", "/meetings", "meeting.schedule"),
+    RouteSpec("POST", "/meetings/{meeting_id}/say", "meeting.say"),
+    RouteSpec("POST", "/meetings/{meeting_id}/cancel", "meeting.cancel"),
     RouteSpec("POST", "/goals", "goal.create"),
     RouteSpec("PATCH", "/goals/{goal_id}", "goal.update"),
     RouteSpec("POST", "/projects", "project.create"),

@@ -29,6 +29,7 @@ from app.schemas.agent_api import (
     AgentTaskPatch,
     ProgressBody,
     ProgressOut,
+    ProposedCompletion,
 )
 from app.schemas.artifact import ArtifactDetail, ArtifactVersion
 from app.schemas.autonomy import (
@@ -74,12 +75,27 @@ from app.schemas.hr import (
     RoleTemplate,
     RoleTemplateCreate,
 )
+from app.schemas.human_work import (
+    HumanWorkRequest,
+    HumanWorkRequested,
+    OutsourceDraft,
+    OutsourceDrafted,
+)
+from app.schemas.meetings import (
+    MeetingCancel,
+    MeetingOut,
+    MeetingSaid,
+    MeetingSay,
+    MeetingSchedule,
+    MeetingScheduled,
+)
 from app.schemas.purchasing import (
     PurchaseAck,
     PurchaseRequestCreate,
     SubscriptionOut,
     SubscriptionReviewIn,
 )
+from app.schemas.questions import QuestionAsk, QuestionOut
 from app.schemas.reflections import (
     AgentReflectionPost,
     AgentReflectionReply,
@@ -116,11 +132,15 @@ from app.services import (
     decisions,
     goals,
     hiring,
+    human_work,
+    meetings,
     memory,
     notes,
+    outsourcing,
     policy,
     projects,
     purchasing,
+    questions,
     reflections,
     role_templates,
     schedules,
@@ -193,11 +213,12 @@ def patch_task(task_id: str, body: AgentTaskPatch, rc: RunCtx, db: DbSession):
         assignee_agent_id=agent_id,
         assignee_given=given,
         assignee_member_id=member_id,
+        unblock_condition=body.unblock_condition,
     )
     return _one(db, task)
 
 
-@router.post("/tasks/{task_id}/complete", response_model=Task)
+@router.post("/tasks/{task_id}/complete", response_model=Task | ProposedCompletion)
 def complete_task(task_id: str, body: AgentTaskComplete, rc: RunCtx, db: DbSession):
     task = tasks.complete_task_as_agent(
         db,
@@ -207,6 +228,8 @@ def complete_task(task_id: str, body: AgentTaskComplete, rc: RunCtx, db: DbSessi
         result_summary=body.result_summary,
         output_refs=body.output_refs,
     )
+    if rc.run.graph_thread_id and rc.run.proposed_result is not None:
+        return ProposedCompletion(task_id=task.id)  # M18 Part B: the work graph finishes it
     return _one(db, task)
 
 
@@ -251,6 +274,81 @@ def post_progress(body: ProgressBody, rc: RunCtx, db: DbSession):
 @router.post("/decisions", response_model=Decision, status_code=201)
 def record_decision(body: DecisionCreate, rc: RunCtx, db: DbSession):
     return decisions.create_decision(db, rc.ctx, body, default_task_id=rc.run.task_id)
+
+
+@router.post("/questions", response_model=QuestionOut, status_code=201)
+def ask_founder(body: QuestionAsk, rc: RunCtx, db: DbSession):
+    """Ask the Founder a question, with the default you will use (M18). Limits: 5 open per company,
+    2 per agent per 24 h (429 ``question_limit``)."""
+    return questions.ask(db, rc.ctx, rc.run, body)
+
+
+@router.post("/human-work", response_model=HumanWorkRequested, status_code=201)
+def request_human_work(body: HumanWorkRequest, rc: RunCtx, db: DbSession):
+    """Ask a person to do something only a person can do (M22): sign, call, KYC, an errand. It
+    becomes a task for a member or the human pool; with ``blocks_my_task`` your task waits for it.
+    Limits: 3 open per agent, 20 per company (429 ``human_work_limit``)."""
+    task, pool, blocks = human_work.request(db, rc.ctx, rc.run, body)
+    return HumanWorkRequested(
+        task_id=task.id,
+        status=task.status,
+        assignee_ref=task.assignee_ref,
+        pool=pool,
+        blocks_my_task=blocks,
+        due_at=task.due_at,
+        next=(
+            "Your task waits until the person completes this; you continue in a later run and "
+            "see their comment and files. Stop now: do not call company_complete_task."
+            if blocks
+            else "Keep going with what you can do without it; you are not blocked."
+        ),
+    )
+
+
+@router.post("/outsource-jobs", response_model=OutsourceDrafted, status_code=201)
+def draft_outsource_job(body: OutsourceDraft, rc: RunCtx, db: DbSession):
+    """HR only (M22): prepare a freelance job. It commits nothing and posts nothing: a person must
+    approve it (always a human decision), post it on the marketplace's own site and record the
+    result. Limits: 5 open jobs, the per-job ceiling and the company's monthly budget."""
+    job, approval = outsourcing.draft(db, rc.ctx, body)
+    return OutsourceDrafted(
+        job_id=job.id,
+        job_status=job.status,
+        approval_id=approval.id,
+        budget_micros=job.budget_micros,
+        next=(
+            "A person decides this approval. If approved they post the job on the marketplace "
+            "themselves and record who was hired; you do not post, message or pay anyone."
+        ),
+    )
+
+
+@router.post("/meetings", response_model=MeetingScheduled, status_code=201)
+def schedule_meeting(body: MeetingSchedule, rc: RunCtx, db: DbSession):
+    """Call a meeting with 1-3 colleagues (M21). Limits: daily caps, one running meeting as
+    organizer
+    (429 ``meeting_limit``)."""
+    m = meetings.schedule(db, rc.ctx, rc.run, body)
+    return MeetingScheduled(meeting_id=m.id, status=m.status, start_at=m.start_at)
+
+
+@router.post("/meetings/{meeting_id}/say", response_model=MeetingSaid)
+def meeting_say(meeting_id: str, body: MeetingSay, rc: RunCtx, db: DbSession):
+    """Speak in your own meeting turn; this call ends the turn (M21)."""
+    msg = meetings.say(db, rc.ctx, rc.run, meeting_id, body)
+    return MeetingSaid(
+        message_id=msg.id,
+        meeting_id=meeting_id,
+        round=msg.round,
+        next="Your turn is over. Stop now; do not call any other tool.",
+    )
+
+
+@router.post("/meetings/{meeting_id}/cancel", response_model=MeetingOut)
+def cancel_meeting(meeting_id: str, body: MeetingCancel, rc: RunCtx, db: DbSession):
+    """The organizer cancels its meeting (M21)."""
+    meetings.cancel(db, rc.ctx, meeting_id, body.reason)
+    return meetings.get_detail(db, rc.ctx, meeting_id)
 
 
 @router.post("/approvals", response_model=ApprovalCreated, status_code=201)
@@ -370,7 +468,12 @@ def hiring_request(body: HiringRequestCreate, response: Response, rc: RunCtx, db
 def retry_task(task_id: str, body: AgentTaskAction, rc: RunCtx, db: DbSession):
     """Retry a failed task you manage (optionally with another assignee)."""
     task = tasks.retry_as_agent(
-        db, rc.ctx, task_id, reason=body.reason, assignee_id=body.assignee_agent_id
+        db,
+        rc.ctx,
+        task_id,
+        reason=body.reason,
+        assignee_id=body.assignee_agent_id,
+        new_instructions=body.new_instructions,
     )
     return _one(db, task)
 

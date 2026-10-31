@@ -17,6 +17,7 @@ DEFAULT_HIRE_MONTHLY_BUDGET_MICROS = 5_000_000
 DEFAULT_MAX_AGENT_MONTHLY_BUDGET_MICROS = 25_000_000
 DEFAULT_BUDGET_ALERT_THRESHOLDS = (50, 80, 100)
 DEFAULT_STALL_SECONDS = 180
+DEFAULT_HEARTBEAT_SECONDS = 1800
 # M15 purchasing. Code ceilings on what an AI may approve (docs/specs/m15, section 4).
 MAX_PURCHASE_AUTO_APPROVE_MICROS = 100_000_000  # $100 per charge, no one approves
 MAX_PURCHASE_AGENT_AUTO_MONTHLY_MICROS = 500_000_000  # $500 per agent and month, auto
@@ -31,6 +32,11 @@ DEFAULT_RADAR_MAX_ITEMS_PER_DAY = 400
 DEFAULT_RADAR_MAX_IDEAS_PER_DAY = 5
 DEFAULT_RADAR_MAX_OPEN_IDEAS = 25
 DEFAULT_RADAR_MAX_GOALS_PER_WEEK = 1
+# M18 approval deadlines (docs/specs/m18, A1).
+DEFAULT_APPROVAL_TIMEOUT_SECONDS = 86_400
+DEFAULT_AGENT_APPROVAL_TIMEOUT_SECONDS = 1_800
+# M22: per-job ceiling for an outsourced (freelance) job, micro-USD ($200).
+DEFAULT_OUTSOURCE_MAX_JOB_MICROS = 200_000_000
 
 
 class CompanyPolicy(Base):
@@ -57,7 +63,11 @@ class CompanyPolicy(Base):
     max_revisions: Mapped[int] = mapped_column(Integer, default=2, nullable=False)
     max_run_seconds: Mapped[int] = mapped_column(Integer, default=900, nullable=False)
     max_headcount: Mapped[int] = mapped_column(Integer, default=12, nullable=False)
-    heartbeat_interval_seconds: Mapped[int] = mapped_column(Integer, default=900, nullable=False)
+    # The built-in heartbeat schedule is created at this interval (and follows it); M23 intensity
+    # drives it. The default is the 30 min every company's heartbeat schedule was created with.
+    heartbeat_interval_seconds: Mapped[int] = mapped_column(
+        Integer, default=DEFAULT_HEARTBEAT_SECONDS, nullable=False
+    )
     default_run_reservation_micros: Mapped[int] = mapped_column(
         BigInteger, default=50_000, nullable=False
     )
@@ -311,6 +321,52 @@ class CompanyPolicy(Base):
     )
     # Owner contact appended to the radar User-Agent (NULL = none).
     radar_contact_email: Mapped[str | None] = mapped_column(String(200))
+    # M18: how long a pending approval waits before the sweep acts (human: declined by timeout;
+    # Co-founder: handed to a human once). Seconds; human-only, bounded in the schema.
+    approval_timeout_seconds: Mapped[int] = mapped_column(
+        Integer,
+        default=DEFAULT_APPROVAL_TIMEOUT_SECONDS,
+        server_default=str(DEFAULT_APPROVAL_TIMEOUT_SECONDS),
+        nullable=False,
+    )
+    agent_approval_timeout_seconds: Mapped[int] = mapped_column(
+        Integer,
+        default=DEFAULT_AGENT_APPROVAL_TIMEOUT_SECONDS,
+        server_default=str(DEFAULT_AGENT_APPROVAL_TIMEOUT_SECONDS),
+        nullable=False,
+    )
+    # M18 Part B: the agent checks its proposed result against the acceptance criteria before the
+    # task completes; the durable work graph orchestrates each task run (off = one-shot runs).
+    self_check_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true(), nullable=False
+    )
+    work_graph_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true(), nullable=False
+    )
+    # M21 agent meetings (human-only): off switch and the daily caps per agent / company.
+    meetings_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true(), nullable=False
+    )
+    max_meetings_per_agent_per_day: Mapped[int] = mapped_column(
+        Integer, default=3, server_default="3", nullable=False
+    )
+    max_meetings_per_company_per_day: Mapped[int] = mapped_column(
+        Integer, default=12, server_default="12", nullable=False
+    )
+    # M22 outsourcing (human-only): the most one freelance job may be budgeted at ($200 default).
+    outsource_max_job_micros: Mapped[int] = mapped_column(
+        BigInteger,
+        default=DEFAULT_OUTSOURCE_MAX_JOB_MICROS,
+        server_default=str(DEFAULT_OUTSOURCE_MAX_JOB_MICROS),
+        nullable=False,
+    )
+    # M23 company intensity (human-only, set through PUT /intensity): 1-5, default 3 (Balanced). It
+    # writes a preset into the pace fields (never a budget); a hand edit of one of those fields
+    # afterwards sets ``intensity_custom``.
+    intensity: Mapped[int] = mapped_column(Integer, default=3, server_default="3", nullable=False)
+    intensity_custom: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )
     budget_lock_version: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)

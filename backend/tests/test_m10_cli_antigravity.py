@@ -151,6 +151,9 @@ def test_mcp_config_launches_only_the_company_server_and_the_token_stays_in_its_
         "request_help",
         "find_colleagues",
         "request_purchase",
+        "record_decision",  # M18
+        "ask_founder",
+        "request_human_work",  # M22: a person-only step (the server limits it)
     ]
     [(token_path, token)] = rec["token_files"].items()
     assert token["text"] == RUN_TOKEN and token["mode"] == 0o600
@@ -330,18 +333,16 @@ def test_sandbox_is_honestly_none():
     assert box["available"] is False and box["kind"] == "none" and "command(*)" in box["detail"]
 
 
-def test_status_lists_antigravity_with_a_manual_install_and_no_automatic_one(world):
+def test_status_lists_antigravity_with_a_script_install_method(world):
     items = {i["id"]: i for i in world.client.get("/api/cli-runtimes").json()["items"]}
     agy = items["antigravity"]
     assert agy["display_name"] == "Antigravity CLI" and agy["installed"] is False
     assert agy["auth_modes"] == ["api_key"]
-    assert agy["install"] == {
-        "available": False,
-        "command": None,
-        "requires": [],
-        "status": "none",
-        "manual": "curl -fsSL https://antigravity.google/cli/install.sh | bash",
-    }
+    inst = agy["install"]
+    assert inst["manual"] == "curl -fsSL https://antigravity.google/cli/install.sh | bash"
+    assert inst["requires"] == [] and inst["status"] == "none"
+    assert [m["method"] for m in inst["methods"]] == ["script"]
+    assert inst["methods"][0]["url"] == "https://antigravity.google/cli/install.sh"
     assert any("never started with a prompt" in w for w in agy["warnings"])
     # the web tile shows `warnings`, so the manual command is repeated there while it is missing
     assert any("install.sh | bash" in w for w in agy["warnings"])
@@ -352,14 +353,18 @@ def test_status_lists_antigravity_with_a_manual_install_and_no_automatic_one(wor
     assert agy["binary_path"] == str(world.bin_dir / "agy")
 
 
-def test_the_install_endpoint_never_runs_the_curl_installer(world):
+def test_the_install_endpoint_never_pipes_the_installer_and_npm_is_not_used(world):
     # a working npm is present: it must still not be used for Antigravity
     from tests.m10_helpers import write_script
 
     write_script(world.bin_dir, "npm", "import sys\nsys.exit(0)\n")
+    r = world.client.post(
+        "/api/cli-runtimes/antigravity/install", json={"confirm": True, "method": "npm"}
+    )
+    assert r.status_code == 422
+    # the default test transport answers 404: nothing is downloaded, nothing runs
     r = world.client.post("/api/cli-runtimes/antigravity/install", json={"confirm": True})
-    assert r.status_code == 409
-    assert "install.sh" in r.json()["error"]["message"]
+    assert r.status_code == 409 and "installer" in r.json()["error"]["message"]
     assert world.client.get("/api/cli-runtimes/antigravity").json()["install"]["status"] == "none"
 
 

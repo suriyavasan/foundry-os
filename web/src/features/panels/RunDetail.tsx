@@ -9,7 +9,7 @@ import { RunStatusBadge } from '@/features/shared/badges'
 import { formatDuration } from '@/lib/dates'
 import { formatDateTime, formatTokens } from '@/lib/format'
 import { formatCost } from '@/lib/money'
-import { describeRunEvent } from '@/lib/runEvents'
+import { describeGraphStep, describeRunEvent, isGraphStep } from '@/lib/runEvents'
 import { isRunActive } from '@/lib/taskStatus'
 
 const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
@@ -144,8 +144,19 @@ function EventLog({ events, loading, error, onRetry, live, run }: { events: RunE
                   <time dateTime={e.occurred_at} className="shrink-0 text-fg-3">
                     {time.format(new Date(e.occurred_at))}
                   </time>
-                  <Chip className="shrink-0">{e.type}</Chip>
-                  <span className="min-w-0 flex-1 break-words whitespace-pre-wrap text-fg">{describeRunEvent(e)}</span>
+                  {isGraphStep(e) ? (
+                    <span data-testid="graph-step" className="min-w-0 flex-1 break-words text-fg-2">
+                      <span aria-hidden className="mr-1.5 text-fg-3">
+                        ›
+                      </span>
+                      {describeGraphStep(e)}
+                    </span>
+                  ) : (
+                    <>
+                      <Chip className="shrink-0">{e.type}</Chip>
+                      <span className="min-w-0 flex-1 break-words whitespace-pre-wrap text-fg">{describeRunEvent(e)}</span>
+                    </>
+                  )}
                 </div>
                 {Object.keys(e.payload ?? {}).length > 0 && (
                   <details className="mt-1 ml-10">

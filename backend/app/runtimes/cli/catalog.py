@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 # Anything in an argv (or in a generated config) that would switch a CLI's safety off. The adapters
 # assert none of these are present before spawning; a test asserts it for every adapter and mode.
@@ -21,6 +22,36 @@ FORBIDDEN_ARGV = (
 
 
 @dataclass(frozen=True)
+class InstallMethod:
+    """One way Foundry may install a CLI. ``npm``: ``npm install -g <package>``. ``script``: download the
+    vendor's official installer from ``url`` (HTTPS, host must equal ``host``), then run
+    ``[interpreter, <private temp file>]`` -- never a pipe, never a shell string, never sudo."""
+
+    kind: str  # "npm" | "script"
+    package: str | None = None
+    url: str | None = None
+    interpreter: str | None = None  # "bash" | "sh"
+    host: str | None = None  # the only host the script (and every redirect) may come from
+
+    @property
+    def command(self) -> str:
+        """The exact, human-readable thing that will happen (shown before the owner confirms)."""
+        if self.kind == "npm":
+            return f"npm install -g {self.package}"
+        return f"Download {self.url} and run it with {self.interpreter}"
+
+
+def npm_method(package: str) -> InstallMethod:
+    return InstallMethod(kind="npm", package=package)
+
+
+def script_method(url: str, interpreter: str) -> InstallMethod:
+    host = urlsplit(url).hostname
+    assert url.startswith("https://") and host and interpreter in ("bash", "sh")
+    return InstallMethod(kind="script", url=url, interpreter=interpreter, host=host)
+
+
+@dataclass(frozen=True)
 class CliSpec:
     id: str  # claude_code | codex | opencode | antigravity | cursor
     display_name: str
@@ -33,6 +64,9 @@ class CliSpec:
     key_env: str | None = None
     # Shown instead of an install button when the CLI has no npm package (the person runs it themselves).
     manual_install: str | None = None
+    # Ordered install methods (the first one that can run here is the default). Every script URL below
+    # comes from the vendor's official documentation (see ``docs/cli-runtimes.md``, "Install").
+    install_methods: tuple[InstallMethod, ...] = ()
     # The command a person runs in a terminal to sign this CLI in with their own account, for
     # ``foundryos setup`` (inherited stdio, so device codes and URLs reach the terminal). UNVERIFIED:
     # taken from each CLI's documentation / ``--help``, never run by the test suite or on this machine
@@ -48,6 +82,9 @@ class CliSpec:
         """The one command the install endpoint may run; None when there is no automatic install."""
         return ["npm", "install", "-g", self.npm_package] if self.npm_package else None
 
+    def method(self, kind: str) -> InstallMethod | None:
+        return next((m for m in self.install_methods if m.kind == kind), None)
+
 
 CLIS: dict[str, CliSpec] = {
     "claude_code": CliSpec(
@@ -56,6 +93,10 @@ CLIS: dict[str, CliSpec] = {
         binaries=("claude",),
         known_dirs=(".claude/local", ".local/bin", ".npm-global/bin"),
         npm_package="@anthropic-ai/claude-code",
+        install_methods=(
+            npm_method("@anthropic-ai/claude-code"),
+            script_method("https://claude.ai/install.sh", "bash"),
+        ),
         login_hint="Run `foundryos ai login` in a terminal (or use Sign in with Claude in Settings > AI)",
         key_env="ANTHROPIC_API_KEY",
         # `claude auth login` (checked against `claude --help` 2.1.308). It must run with Foundry's own
@@ -68,6 +109,10 @@ CLIS: dict[str, CliSpec] = {
         binaries=("codex",),
         known_dirs=(".local/bin", ".npm-global/bin"),
         npm_package="@openai/codex",
+        install_methods=(
+            npm_method("@openai/codex"),
+            script_method("https://chatgpt.com/codex/install.sh", "sh"),
+        ),
         login_hint="Run `codex login` in a terminal",
         key_env="CODEX_API_KEY",
         # Unverified: `codex login --device-auth` is the device-code flow for machines without a browser.
@@ -79,6 +124,10 @@ CLIS: dict[str, CliSpec] = {
         binaries=("opencode",),
         known_dirs=(".opencode/bin", ".local/bin", ".npm-global/bin"),
         npm_package="opencode-ai",
+        install_methods=(
+            npm_method("opencode-ai"),
+            script_method("https://opencode.ai/install", "bash"),
+        ),
         login_hint="Run `opencode auth login` in a terminal",
         key_env=None,  # provider-specific: see opencode.PROVIDER_KEY_ENV
         # Unverified: `opencode auth login` is an interactive provider picker that stores its own login.
@@ -89,7 +138,8 @@ CLIS: dict[str, CliSpec] = {
         display_name="Antigravity CLI",
         binaries=("agy",),
         known_dirs=(".local/bin",),
-        npm_package=None,  # Google ships a shell installer (curl | bash), which we never run
+        npm_package=None,  # Google ships a shell installer, run as a downloaded file (never piped)
+        install_methods=(script_method("https://antigravity.google/cli/install.sh", "bash"),),
         login_hint=(
             "Create a Gemini API key in Google AI Studio and add it here (no own-login mode: "
             "Foundry AI OS never writes into your own ~/.gemini)"
@@ -103,7 +153,8 @@ CLIS: dict[str, CliSpec] = {
         display_name="Cursor CLI",
         binaries=("agent",),
         known_dirs=(".local/bin",),
-        npm_package=None,  # Cursor ships a shell installer (curl | bash), which we never run
+        npm_package=None,  # Cursor ships a shell installer, run as a downloaded file (never piped)
+        install_methods=(script_method("https://cursor.com/install", "bash"),),
         login_hint=(
             "Create a Cursor API key in the Cursor Dashboard (API Keys) and add it here (no own-login "
             "mode: Foundry AI OS never writes into your own ~/.cursor)"
@@ -117,6 +168,33 @@ CLIS: dict[str, CliSpec] = {
 
 def spec_for(cli_id: str) -> CliSpec | None:
     return CLIS.get(cli_id)
+
+
+INSTALL_INTERPRETERS = ("bash", "sh")
+_ELEVATORS = ("sudo", "doas", "su", "pkexec", "runas")
+
+
+def assert_safe_install_argv(argv: list[str], method: InstallMethod) -> None:
+    """The install argv is exactly ``[npm, install, -g, <package>]`` or ``[bash|sh, <file>]``: no shell
+    string (``-c``), no pipe, no privilege elevation."""
+    from pathlib import PurePath
+
+    assert_safe_argv(argv)
+    if any(PurePath(a).name in _ELEVATORS for a in argv):
+        raise ValueError("refusing to run an installer with elevated privileges")
+    if method.kind == "npm":
+        if len(argv) != 4 or PurePath(argv[0]).name != "npm" or argv[1:3] != ["install", "-g"]:
+            raise ValueError("unexpected npm install argv")
+    elif method.kind == "script":
+        if (
+            len(argv) != 2
+            or PurePath(argv[0]).name not in INSTALL_INTERPRETERS
+            or argv[1].startswith("-")
+            or "|" in argv[1]
+        ):
+            raise ValueError("unexpected installer argv")
+    else:
+        raise ValueError("unknown install method")
 
 
 def assert_safe_argv(argv: list[str]) -> None:

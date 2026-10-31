@@ -74,3 +74,9 @@ export const setDismissedUpdate = (version: string) => safeSet(UPDATE_DISMISSED_
 const ORG_ORIENTATION_KEY = 'company-os.org-orientation'
 export const getOrgOrientation = (): 'horizontal' | 'vertical' => (safeGet(ORG_ORIENTATION_KEY) === 'vertical' ? 'vertical' : 'horizontal')
 export const setOrgOrientation = (o: 'horizontal' | 'vertical') => safeSet(ORG_ORIENTATION_KEY, o)
+
+/** Organization widget view chosen in this browser: the radial map (default) or the grouped list. */
+export type OrgView = 'map' | 'list'
+const ORG_VIEW_KEY = 'company-os.org-view'
+export const getOrgView = (): OrgView => (safeGet(ORG_VIEW_KEY) === 'list' ? 'list' : 'map')
+export const setOrgView = (v: OrgView) => safeSet(ORG_VIEW_KEY, v)

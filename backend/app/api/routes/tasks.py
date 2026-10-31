@@ -14,7 +14,7 @@ from app.schemas.work import (
     RunEventPage,
     Task,
     TaskCreate,
-    TaskKindLiteral,
+    TaskKindOutLiteral,
     TaskReasonBody,
     TaskRun,
     TaskStatusLiteral,
@@ -40,7 +40,7 @@ def list_tasks(
     assignee_agent_id: str | None = None,
     assignee_ref: str | None = None,
     parent_task_id: str | None = None,
-    kind: TaskKindLiteral | None = None,
+    kind: TaskKindOutLiteral | None = None,
     limit: Limit = DEFAULT_LIMIT,
     cursor: str | None = None,
 ):

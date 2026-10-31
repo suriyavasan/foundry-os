@@ -459,3 +459,47 @@ def register_cli_adapters(app) -> None:
         )
         if app.state.runtimes.get(adapter.id) is None:
             app.state.runtimes.register(adapter)
+
+
+# ------------------------------------------------------------------ vendor installer scripts (fakes only)
+
+
+class FakeInstallerHost:
+    """A fake HTTP transport for vendor installer downloads: ``routes`` maps URL -> (status, body or
+    redirect location). Records every request URL. Nothing here touches the network."""
+
+    def __init__(self, routes: dict[str, tuple[int, str | bytes]] | None = None) -> None:
+        import httpx
+
+        self.routes = routes or {}
+        self.requests: list[str] = []
+        self.transport = httpx.MockTransport(self._handle)
+
+    def _handle(self, request):
+        import httpx
+
+        url = str(request.url)
+        self.requests.append(url)
+        status, body = self.routes.get(url, (404, b""))
+        if 300 <= status < 400:
+            return httpx.Response(status, headers={"location": str(body)})
+        return httpx.Response(status, content=body if isinstance(body, bytes) else body.encode())
+
+
+def fake_installer_source(
+    home: Path, binary: str, *, exit_code: int = 0, bin_rel: str = ".local/bin"
+) -> str:
+    """A shell 'vendor installer' that writes a fake binary into ``home/bin_rel`` (a known dir) and
+    prints a line with a secret-looking token (the log must redact it)."""
+    return (
+        "#!/bin/sh\n"
+        f'echo "installing {binary} into $HOME/{bin_rel}"\n'
+        'echo "token sk-ant-cli-key-0123456789abcdef leaked?"\n'
+        f'echo "$0" > "{home}/installer.path"\n'
+        f'if [ "{exit_code}" = "0" ]; then\n'
+        f'  mkdir -p "$HOME/{bin_rel}"\n'
+        f'  printf "#!/bin/sh\\necho 1.3.3\\n" > "$HOME/{bin_rel}/{binary}"\n'
+        f'  chmod 755 "$HOME/{bin_rel}/{binary}"\n'
+        "fi\n"
+        f"exit {exit_code}\n"
+    )

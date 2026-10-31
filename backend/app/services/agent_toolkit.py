@@ -33,7 +33,26 @@ SANDBOX_ONLY = frozenset({"terminal", "code_execution"})
 # nothing; the server decides, rate limits and requires the agent to own the task). The AI
 # Co-founder, who runs the strategic loop and not the work, answers subscription renewal reviews.
 PURCHASE_REQUEST_TOOL = "company_request_purchase"
+# M18 decide-don't-ask: every role records the choices it makes and may ask the Founder (the server
+# limits how often: 5 open questions per company, 2 per agent per day).
+ASK_FOUNDER_TOOL = "company_ask_founder"
+RECORD_DECISION_TOOL = "company_record_decision"
+# M22: every role may ask a person to do something only a person can do (the server limits it:
+# 3 open per agent, 20 per company); only HR drafts freelance jobs (a person approves each one).
+HUMAN_WORK_TOOL = "company_request_human_work"
+OUTSOURCE_TOOL = "company_draft_outsource_job"
 SUBSCRIPTION_REVIEW_TOOL = "company_review_subscription"
+# M21 agent meetings: every role may call a meeting and cancel one it organizes (the server limits
+# how often). ``company_meeting_say`` exists only inside a meeting-turn run (``run_company_tools``).
+MEETING_TOOLS = ("company_schedule_meeting", "company_cancel_meeting")
+MEETING_SAY_TOOL = "company_meeting_say"
+# What a meeting-turn run offers: speak, read the context, look up colleagues, call a follow-up.
+MEETING_TURN_TOOLS = (
+    MEETING_SAY_TOOL,
+    "company_get_context",
+    "company_find_colleagues",
+    "company_schedule_meeting",
+)
 
 WORKER_TOOLS = (
     "company_get_context",
@@ -45,11 +64,13 @@ WORKER_TOOLS = (
     "company_request_help",
     "company_propose_memory",
     PURCHASE_REQUEST_TOOL,
+    RECORD_DECISION_TOOL,
+    ASK_FOUNDER_TOOL,
+    HUMAN_WORK_TOOL,  # M22
 )
 MANAGER_EXTRA = (
     "company_plan_project",
     "company_review_task",
-    "company_record_decision",
     "company_request_approval",
     "company_find_colleagues",
     "company_request_hire",
@@ -72,6 +93,8 @@ LEAD_TOOLS = (
     "company_escalate",
     "company_propose_memory",
     PURCHASE_REQUEST_TOOL,
+    ASK_FOUNDER_TOOL,
+    HUMAN_WORK_TOOL,  # M22
 )
 # The AI Co-founder: strategy only. It reads the live state, triages the Founder's notes,
 # shapes goals/projects/schedules, requests hires and decides; it does not do the work itself.
@@ -100,6 +123,8 @@ FOUNDER_TOOLS = (
     "company_revise_reflection",
     # M15: answers subscription renewal reviews (it does not request purchases itself)
     SUBSCRIPTION_REVIEW_TOOL,
+    ASK_FOUNDER_TOOL,  # M18
+    HUMAN_WORK_TOOL,  # M22
 )
 HR_TOOLS = (
     "company_get_context",
@@ -117,6 +142,10 @@ HR_TOOLS = (
     "company_hire_agent",
     "company_propose_memory",
     PURCHASE_REQUEST_TOOL,
+    RECORD_DECISION_TOOL,
+    ASK_FOUNDER_TOOL,
+    HUMAN_WORK_TOOL,  # M22
+    OUTSOURCE_TOOL,  # M22: HR only; a person approves every job
 )
 
 
@@ -176,6 +205,10 @@ def company_tools_for(db: Session, agent: Agent, override: Any = None) -> list[s
     else:
         tools = list(WORKER_TOOLS)
     tools.extend(radar_tools_for(db, agent))  # M16 radar
+    from app.services import policy
+
+    if policy.load_policy(db, agent.company_id).meetings_enabled:
+        tools.extend(MEETING_TOOLS)  # M21
     if can_use_provider_actions(db, agent):
         tools.append("company_provider_action")
     tools = list(dict.fromkeys(tools))
@@ -200,6 +233,9 @@ def run_company_tools(
     tools = company_tools_for(db, agent, (runtime_config or {}).get("company_tools"))
     if task is None:
         return tools
+    if task.kind == "meeting":
+        # M21: a meeting turn offers the meeting tools and read-only context, nothing else.
+        return list(MEETING_TURN_TOOLS)
     if task.kind == "review" and peer.review_target(db, task) is not None:
         # A peer review run decides one thing; nothing else is on offer.
         return ["company_decide_peer_review", "company_complete_task"]

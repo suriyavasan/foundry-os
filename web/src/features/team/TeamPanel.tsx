@@ -64,7 +64,7 @@ export function TeamPanel() {
                       <TR key={m.id}>
                         <TD>
                           <div className="flex items-center gap-2.5">
-                            <MemberAvatar name={m.display_name} size="sm" />
+                            <MemberAvatar name={m.display_name} seed={m.id} size="sm" />
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5 font-medium">
                                 <span className="truncate">{m.display_name}</span>

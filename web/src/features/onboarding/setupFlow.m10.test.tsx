@@ -67,7 +67,7 @@ describe('first run, all six screens on an M10 backend', () => {
 
     // 1 Welcome
     expect(await screen.findByRole('heading', { name: 'A company that runs itself.' })).toBeInTheDocument()
-    expect(screen.getByText('Step 1 of 6 · Welcome')).toBeInTheDocument()
+    expect(screen.getByText('Step 1 of 7 · Welcome')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Back' })).not.toBeInTheDocument()
     await u.click(screen.getByRole('button', { name: /Start/ }))
 
@@ -86,7 +86,7 @@ describe('first run, all six screens on an M10 backend', () => {
 
     // 4 Connect your AI: mandatory
     expect(await screen.findByRole('heading', { name: 'Connect your AI' })).toBeInTheDocument()
-    expect(screen.getByText('Step 4 of 6 · Connect your AI')).toBeInTheDocument()
+    expect(screen.getByText('Step 4 of 7 · Connect your AI')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
     expect(api.calls.some((c) => c.path.endsWith('/notes'))).toBe(false) // the server would refuse a note now
     await u.click(await screen.findByRole('button', { name: 'Add AI' }))
@@ -101,13 +101,20 @@ describe('first run, all six screens on an M10 backend', () => {
 
     // 5 Your code: the idea waits for this choice too, so the Co-founder sees the project with its repository
     expect(await screen.findByRole('heading', { name: 'Where should your code live?' })).toBeInTheDocument()
-    expect(screen.getByText('Step 5 of 6 · Your code')).toBeInTheDocument()
+    expect(screen.getByText('Step 5 of 7 · Your code')).toBeInTheDocument()
     expect(order).toEqual(['POST ai-stack openrouter'])
     await u.click(screen.getByRole('button', { name: /No GitHub for now/ }))
 
-    // 6 Meet your team: the first note was posted only now that the AI works and the code's home is chosen
-    expect(await screen.findByRole('heading', { name: 'Meet your team' })).toBeInTheDocument()
+    // 6 Chat apps (skippable): the first note was posted only now that the AI works and the code's home is chosen
+    expect(await screen.findByRole('heading', { name: 'Talk to your company from your phone' })).toBeInTheDocument()
+    expect(screen.getByText('Step 6 of 7 · Chat apps')).toBeInTheDocument()
     expect(order).toEqual(['POST ai-stack openrouter', 'POST notes'])
+    expect(screen.queryByRole('button', { name: 'Back' })).not.toBeInTheDocument() // the repository step already ran
+    await u.click(screen.getByRole('button', { name: 'Skip for now' }))
+
+    // 7 Meet your team
+    expect(await screen.findByRole('heading', { name: 'Meet your team' })).toBeInTheDocument()
+    expect(screen.getByText('Step 7 of 7 · Meet your team')).toBeInTheDocument()
     expect(api.calls.find((c) => c.path === '/companies/c9/notes')?.body).toEqual({ body: 'Sell lemonade' })
     const team = screen.getByRole('list', { name: 'Your first employees' })
     expect(await within(team).findByText('Atlas')).toBeInTheDocument()

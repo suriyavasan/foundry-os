@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import re
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -241,6 +242,7 @@ class ClaudeCodeAdapter(CliAdapter):
     spec = CLIS["claude_code"]
     parser_class = ClaudeParser
     tool_prefix = MCP_PREFIX
+    supports_sessions = True  # M18 Part B: --session-id / --resume (see session_args)
     config_hint = "Install with `npm install -g @anthropic-ai/claude-code`; sign in with `foundryos ai login`."
 
     def check_health(self) -> RuntimeHealth:
@@ -395,14 +397,33 @@ class ClaudeCodeAdapter(CliAdapter):
             return "Claude Code stopped at its budget cap (--max-budget-usd)"
         return f"Claude Code reported an error: {err}"
 
+    @staticmethod
+    def session_args(prep: RunPrep) -> list[str] | None:
+        """M18 Part B: the persistent-session flags of a work-graph act, None for a one-shot run.
+        ``--session-id`` starts the conversation under our uuid, ``--resume`` continues it (it only
+        exists in the CLAUDE_CONFIG_DIR of the connection that started it). A session replaces
+        ``--no-session-persistence``: the two never go together."""
+        if prep.purpose != "work" or prep.mode != "run" or not prep.session_mode:
+            return None
+        try:
+            session_id = str(uuid.UUID(str(prep.session_id)))
+        except ValueError:
+            return None
+        if prep.session_mode == "new":
+            return [f"--session-id={session_id}"]
+        if prep.session_mode == "resume":
+            return ["--resume", session_id]
+        return None
+
     def build(self, prep: RunPrep) -> Invocation:
+        session = self.session_args(prep)
         argv = [
             prep.binary,
             "-p",
             prep.prompt,
             "--output-format=stream-json",
             "--verbose",
-            "--no-session-persistence",
+            *(session if session else ["--no-session-persistence"]),
             "--restricted",
             "--disable-slash-commands",
             "--permission-mode=dontAsk",

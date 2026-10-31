@@ -42,8 +42,9 @@ def install(
     db: DbSession,
     _: Gate,
 ):
-    """Run the install command shown in ``install.command`` (npm global install). Never without
-    ``confirm: true``, never with sudo. Poll ``GET .../install-log``."""
+    """Install with one of ``install.methods`` (``npm`` or the vendor's ``script``; default per
+    ``install.default_method``). Never without ``confirm: true``, never with sudo. Poll
+    ``GET .../install-log``."""
     state = request.app.state
     return cli_runtimes.start_install(
         db,
@@ -53,6 +54,8 @@ def install(
         state.settings.logs_dir,
         cli_id,
         confirm=body.confirm,
+        method=body.method,
+        transport=getattr(state, "installer_transport", None),
     )
 
 
