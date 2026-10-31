@@ -8,6 +8,8 @@ automatically with the next patch version (see `docs/install.md`, "Cut a release
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-31
+
 ### Added
 
 - **People for the things AI cannot do, and freelancers through HR (M22).** When an AI employee needs a signature, a phone
